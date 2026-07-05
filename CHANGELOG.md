@@ -4,6 +4,19 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v0.2.0 — 2026-07-05
+
+- New `live update` command: self-updates from the release binaries served
+  at `https://liveshortly.com/install/` (sha256-verified, staged + atomically
+  swapped, sanity-run before replacing). `live update --version vX.Y.Z`
+  installs any published version, downgrades included.
+- `install.sh` accepts a version pin: `--version vX.Y.Z` flag or
+  `LIVE_VERSION` env (piped form: `curl … | bash -s -- --version vX.Y.Z`).
+- New `make release` / `make publish` targets: cross-compile stripped
+  binaries for darwin/linux × arm64/amd64 and publish them (gz + sha256 +
+  latest.txt) into the LiveShortly web app's `/install/` folder. The folder
+  is cumulative — every released version stays installable.
+
 ## v0.1.1 — 2026-07-05
 
 - `install.sh` no longer installs or modifies Go. Go 1.21+ is now a stated

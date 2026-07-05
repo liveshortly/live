@@ -14,7 +14,7 @@ import (
 	"github.com/resapce/live/internal/hostcfg"
 )
 
-var version = "0.1.1" // overridden via -ldflags "-X main.version=..."
+var version = "0.2.0" // overridden via -ldflags "-X main.version=..."
 
 const usage = `live — stream your coding-agent session to LiveShortly
 
@@ -23,6 +23,8 @@ Usage:
   live logout                Delete stored credentials
   live whoami                Show the signed-in account
   live version               Print version
+  live update                Self-update to the latest release
+  live update --version vX.Y.Z   Install a specific published version
 
   live claude [args...]      Run Claude Code, captured via lifecycle hooks
   live <command> [args...]   Run any agent/CLI, captured via PTY recording
@@ -51,6 +53,8 @@ func main() {
 		cmdWhoami()
 	case "version", "--version", "-v":
 		fmt.Println("live", version)
+	case "update":
+		cmdUpdate(os.Args[2:])
 	case "help", "--help", "-h":
 		fmt.Print(usage)
 	case "hook":

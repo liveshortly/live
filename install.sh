@@ -18,6 +18,18 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 set -euo pipefail
 
+# Optional version pin: `bash install.sh --version v0.1.1`, or when piped:
+#   curl -fsSL https://liveshortly.com/install.sh | bash -s -- --version v0.1.1
+# (env LIVE_VERSION=v0.1.1 works too). Default: latest main.
+REQ_VERSION="${LIVE_VERSION:-}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --version) REQ_VERSION="${2:-}"; shift 2 ;;
+    *) echo "[live-install] unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
+[ -n "$REQ_VERSION" ] && REQ_VERSION="v${REQ_VERSION#v}"
+
 REPO_SSH="git@github.com:resapce/live.git"
 REPO_HTTPS="https://github.com/resapce/live.git"
 SRC_DIR="${LIVE_SRC_DIR:-$HOME/.liveshortly/src/live}"
@@ -34,9 +46,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true
 if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/go.mod" ] && grep -q '^module github.com/resapce/live$' "$SCRIPT_DIR/go.mod" 2>/dev/null; then
   SRC_DIR="$SCRIPT_DIR"
   say "using existing checkout: $SRC_DIR"
+  if [ -n "$REQ_VERSION" ]; then
+    fail "--version only works on the managed copy (it moves HEAD). In your own checkout run: git checkout $REQ_VERSION && bash install.sh"
+  fi
 elif [ -d "$SRC_DIR/.git" ]; then
   say "updating $SRC_DIR"
-  git -C "$SRC_DIR" pull --ff-only --quiet || say "warning: could not fast-forward; building what's there"
+  git -C "$SRC_DIR" fetch --tags --quiet 2>/dev/null || true
+  if [ -z "$REQ_VERSION" ]; then
+    # A previous pinned install may have left the clone detached at a tag.
+    git -C "$SRC_DIR" checkout --quiet main 2>/dev/null || true
+    git -C "$SRC_DIR" pull --ff-only --quiet || say "warning: could not fast-forward; building what's there"
+  fi
 else
   mkdir -p "$(dirname "$SRC_DIR")"
   say "cloning resapce/live → $SRC_DIR"
@@ -53,8 +73,13 @@ if ! command -v go >/dev/null 2>&1; then
               or 'brew install go' / your package manager), then rerun this script."
 fi
 
-# ── 3. Build ──────────────────────────────────────────────────────────────────
-VERSION="$(git -C "$SRC_DIR" describe --tags --always --dirty 2>/dev/null || echo 0.1.1)"
+# ── 3. Pin the requested version, then build ─────────────────────────────────
+if [ -n "$REQ_VERSION" ]; then
+  git -C "$SRC_DIR" checkout --quiet "$REQ_VERSION" \
+    || fail "version $REQ_VERSION not found — see https://liveshortly.com/install/ for published versions"
+  say "pinned to $REQ_VERSION"
+fi
+VERSION="$(git -C "$SRC_DIR" describe --tags --always --dirty 2>/dev/null || echo 0.2.0)"
 say "building live $VERSION"
 (cd "$SRC_DIR" && GOTOOLCHAIN=auto go build -ldflags "-X main.version=$VERSION" -o bin/live ./cmd/live)
 
