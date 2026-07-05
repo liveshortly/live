@@ -147,15 +147,16 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 	defer cleanup()
 
 	args := []string{"--settings", settings}
-	// Channel delivery (viewer messages reaching Claude while idle) is
-	// opt-in until interactive end-to-end delivery is confirmed: it relies
-	// on the experimental claude/channel capability, and a comment routed
-	// to a channel Claude ignores would bypass the proven hook-boundary
-	// fallback. Enable with LIVE_CHANNEL=1.
-	if os.Getenv("LIVE_CHANNEL") == "1" {
+	// Channel delivery lets viewer messages reach Claude even while it is
+	// idle — the only path that works without a hook boundary, so it is on
+	// by default for interactive sessions. It is skipped in -p/--print
+	// (headless) mode, where Claude does not honor channel messages and the
+	// hook-boundary + Stop-block path delivers reliably instead. Set
+	// LIVE_CHANNEL=0 to force hook-boundary delivery everywhere.
+	if os.Getenv("LIVE_CHANNEL") != "0" && !isPrintMode(userArgs) {
 		if mcpCfg, mcpCleanup, err := adapter.WriteClaudeMCPConfig(self); err == nil {
 			defer mcpCleanup()
-			args = append(args, "--mcp-config", mcpCfg,
+			args = append(args, "--mcp-config", mcpCfg, "--strict-mcp-config",
 				"--dangerously-load-development-channels", "server:liveshortly-channel")
 		}
 	}
@@ -169,6 +170,17 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		fmt.Fprintf(os.Stderr, "live: %v\n", err)
 	}
 	return code
+}
+
+// isPrintMode reports whether the agent is being run headlessly (-p/--print),
+// where channel delivery does not apply.
+func isPrintMode(args []string) bool {
+	for _, a := range args {
+		if a == "-p" || a == "--print" {
+			return true
+		}
+	}
+	return false
 }
 
 // runPTYMode captures raw terminal output for agents without hooks. Viewer

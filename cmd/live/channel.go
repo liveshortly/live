@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -35,8 +36,16 @@ func cmdChannel() {
 		outMu.Unlock()
 	}
 
+	var logw io.Writer = os.Stderr
+	if home, err := os.UserHomeDir(); err == nil {
+		if f, err := os.OpenFile(home+"/.liveshortly/channel.log",
+			os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+			defer f.Close()
+			logw = f
+		}
+	}
 	logf := func(format string, args ...any) {
-		fmt.Fprintf(os.Stderr, "[live-channel] "+format+"\n", args...)
+		fmt.Fprintf(logw, "[live-channel] "+format+"\n", args...)
 	}
 
 	started := false
