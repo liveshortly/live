@@ -29,23 +29,35 @@ Nothing is ever captured unless you asked for it by typing `live`.
 
 ## Install
 
-### From source (currently the only channel — repo is private)
+### One command (does everything)
 
 ```bash
-git clone git@github.com:resapce/live.git
-cd live
-make install          # builds and copies to /usr/local/bin/live
-# or: go build -o ~/bin/live ./cmd/live
+curl -fsSL https://liveshortly.com/install.sh | bash
 ```
 
-Requires Go 1.22+.
+That's the whole setup: it fetches the source, installs Go if you don't have
+it, builds, puts `live` on your PATH, and opens the browser sign-in. Rerun
+the same command any time to update.
 
-### Sign in
+While the source repo is private, the clone step inside the script needs
+your GitHub SSH key (or gh auth) for `resapce/live`. No-curl equivalents:
 
 ```bash
-live login            # opens the browser device-flow approval page
+git clone git@github.com:resapce/live.git ~/.liveshortly/src/live && bash ~/.liveshortly/src/live/install.sh
+# or, with the GitHub CLI:
+gh api -H "Accept: application/vnd.github.raw" repos/resapce/live/contents/install.sh | bash
+```
+
+### Manual (if you prefer)
+
+```bash
+git clone git@github.com:resapce/live.git && cd live
+make install          # builds and copies to /usr/local/bin/live
+live login            # browser device-flow approval
 live whoami           # verify
 ```
+
+Requires Go 1.22+ (the module pins its exact toolchain; Go auto-downloads it).
 
 Credentials are stored at `~/.liveshortly/credentials.json` (mode 0600) and
 refresh automatically.
