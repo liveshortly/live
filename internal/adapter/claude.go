@@ -62,6 +62,36 @@ func WriteClaudeSettings(liveBin string) (path string, cleanup func(), err error
 	return f.Name(), func() { os.Remove(f.Name()) }, nil
 }
 
+// WriteClaudeMCPConfig writes the temporary --mcp-config file that loads the
+// `live channel` MCP server for this session only — it delivers viewer
+// comments into the conversation even while Claude is idle, and vanishes
+// with the session (nothing is registered globally).
+func WriteClaudeMCPConfig(liveBin string) (path string, cleanup func(), err error) {
+	cfg := map[string]any{
+		"mcpServers": map[string]any{
+			"liveshortly-channel": map[string]any{
+				"command": liveBin,
+				"args":    []string{"channel"},
+			},
+		},
+	}
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return "", nil, err
+	}
+	f, err := os.CreateTemp("", "live-claude-mcp-*.json")
+	if err != nil {
+		return "", nil, err
+	}
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return "", nil, err
+	}
+	f.Close()
+	return f.Name(), func() { os.Remove(f.Name()) }, nil
+}
+
 // RunWithHooks launches the agent with inherited stdio (it owns the real
 // terminal) and the sidecar address in its environment for the hook relay.
 // Blocks until the agent exits and returns its exit code.
