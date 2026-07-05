@@ -148,12 +148,16 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 
 	args := []string{"--settings", settings}
 	// Channel delivery lets viewer messages reach Claude even while it is
-	// idle — the only path that works without a hook boundary, so it is on
-	// by default for interactive sessions. It is skipped in -p/--print
-	// (headless) mode, where Claude does not honor channel messages and the
-	// hook-boundary + Stop-block path delivers reliably instead. Set
-	// LIVE_CHANNEL=0 to force hook-boundary delivery everywhere.
-	if os.Getenv("LIVE_CHANNEL") != "0" && !isPrintMode(userArgs) {
+	// idle — the only path that works without a hook boundary. It stays
+	// OPT-IN (LIVE_CHANNEL=1) because loading it requires Claude Code's
+	// --dangerously-load-development-channels flag, which shows a mandatory
+	// interactive "Loading development channels" confirmation on EVERY launch
+	// (verified 2026-07-05, Claude Code v2.1.201; it does not persist). Making
+	// it default-on would put that scary prompt in front of every `live
+	// claude` startup, breaking seamless capture. Without it, viewer messages
+	// still deliver at hook boundaries + the Stop-block, plus a desktop
+	// notification when Claude is idle. Skipped in -p/--print regardless.
+	if os.Getenv("LIVE_CHANNEL") == "1" && !isPrintMode(userArgs) {
 		if mcpCfg, mcpCleanup, err := adapter.WriteClaudeMCPConfig(self); err == nil {
 			defer mcpCleanup()
 			args = append(args, "--mcp-config", mcpCfg, "--strict-mcp-config",
