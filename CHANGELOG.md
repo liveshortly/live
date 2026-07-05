@@ -4,6 +4,13 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v0.1.1 — 2026-07-05
+
+- `install.sh` no longer installs or modifies Go. Go 1.21+ is now a stated
+  prerequisite: the script checks for it and exits with instructions
+  (go.dev/dl or your package manager) when missing. Everything else —
+  fetch/update source, build, PATH install, sign-in — is unchanged.
+
 ## v0.1.0 — 2026-07-05
 
 Initial release.

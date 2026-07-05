@@ -35,9 +35,11 @@ Nothing is ever captured unless you asked for it by typing `live`.
 curl -fsSL https://liveshortly.com/install.sh | bash
 ```
 
-That's the whole setup: it fetches the source, installs Go if you don't have
-it, builds, puts `live` on your PATH, and opens the browser sign-in. Rerun
-the same command any time to update.
+That's the whole setup: it fetches the source, builds, puts `live` on your
+PATH, and opens the browser sign-in. Rerun the same command any time to
+update. The only prerequisite is Go 1.21+ ([go.dev/dl](https://go.dev/dl/)
+or `brew install go`) — the script never installs or modifies Go itself and
+stops with clear instructions if it's missing.
 
 While the source repo is private, the clone step inside the script needs
 your GitHub SSH key (or gh auth) for `resapce/live`. No-curl equivalents:

@@ -6,9 +6,10 @@
 # (Cloning the private source repo still needs your GitHub SSH key or gh
 # auth. Equivalent while you have a checkout: bash install.sh)
 #
-# Does everything: fetches/updates the source, ensures a Go toolchain, builds,
-# installs the binary onto your PATH, and signs you in. Idempotent — rerun it
-# any time to update.
+# Does the setup end to end: fetches/updates the source, builds, installs the
+# binary onto your PATH, and signs you in. Idempotent — rerun it any time to
+# update. It never touches your Go installation — Go 1.21+ is a prerequisite
+# (https://go.dev/dl/) and the script stops with instructions if it's missing.
 
 # Piped through plain `sh` on some systems? Everything below assumes bash.
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -44,26 +45,16 @@ else
     || fail "clone failed — check your GitHub SSH key or credentials for resapce/live."
 fi
 
-# ── 2. Ensure a Go toolchain ──────────────────────────────────────────────────
+# ── 2. Check for a Go toolchain (never installed by this script) ─────────────
 # Any Go >= 1.21 auto-downloads the exact toolchain go.mod asks for
-# (GOTOOLCHAIN=auto), so a package-manager Go is always sufficient.
+# (GOTOOLCHAIN=auto), so whatever Go you already have is sufficient.
 if ! command -v go >/dev/null 2>&1; then
-  say "Go not found — installing it"
-  if [ "$(uname -s)" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
-    brew install go
-  elif command -v apt-get >/dev/null 2>&1; then
-    sudo apt-get update -qq && sudo apt-get install -y -qq golang-go
-  elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf install -y -q golang
-  elif command -v pacman >/dev/null 2>&1; then
-    sudo pacman -S --noconfirm --quiet go
-  else
-    fail "could not install Go automatically — install Go from https://go.dev/dl/ and rerun."
-  fi
+  fail "Go is required but not installed. Install it first (https://go.dev/dl/,
+              or 'brew install go' / your package manager), then rerun this script."
 fi
 
 # ── 3. Build ──────────────────────────────────────────────────────────────────
-VERSION="$(git -C "$SRC_DIR" describe --tags --always --dirty 2>/dev/null || echo 0.1.0)"
+VERSION="$(git -C "$SRC_DIR" describe --tags --always --dirty 2>/dev/null || echo 0.1.1)"
 say "building live $VERSION"
 (cd "$SRC_DIR" && GOTOOLCHAIN=auto go build -ldflags "-X main.version=$VERSION" -o bin/live ./cmd/live)
 

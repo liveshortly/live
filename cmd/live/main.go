@@ -14,7 +14,7 @@ import (
 	"github.com/resapce/live/internal/hostcfg"
 )
 
-var version = "0.1.0" // overridden via -ldflags "-X main.version=..."
+var version = "0.1.1" // overridden via -ldflags "-X main.version=..."
 
 const usage = `live — stream your coding-agent session to LiveShortly
 
