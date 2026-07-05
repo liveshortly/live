@@ -59,6 +59,8 @@ func main() {
 		fmt.Print(usage)
 	case "hook":
 		cmdHook(os.Args[2:])
+	case "channel":
+		cmdChannel()
 	default:
 		os.Exit(cmdRun(os.Args[1:]))
 	}

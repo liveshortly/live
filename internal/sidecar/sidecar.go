@@ -7,6 +7,7 @@ package sidecar
 import (
 	"context"
 	"crypto/rand"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,7 +15,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -49,6 +52,9 @@ type Sidecar struct {
 	pending       []api.Comment
 	modelReported bool
 	httpSrv       *http.Server
+
+	subMu sync.Mutex
+	subs  map[chan api.Comment]struct{}
 
 	hookToken string
 }
@@ -169,18 +175,107 @@ func (s *Sidecar) drain() {
 		}
 		return
 	}
-	s.mu.Lock()
-	s.pending = append(s.pending, comments...)
-	s.mu.Unlock()
-	s.Log.Printf("%d viewer comment(s) queued for injection", len(comments))
+	// A connected channel subscriber (`live channel` MCP) can deliver into
+	// the agent even while it is idle — prefer it; the hook-boundary queue
+	// is the fallback when no channel is attached or its buffer is full.
+	routed := 0
+	s.subMu.Lock()
+	for _, c := range comments {
+		delivered := false
+		for ch := range s.subs {
+			select {
+			case ch <- c:
+				delivered = true
+			default:
+			}
+		}
+		if delivered {
+			routed++
+		} else {
+			s.mu.Lock()
+			s.pending = append(s.pending, c)
+			s.mu.Unlock()
+		}
+	}
+	s.subMu.Unlock()
+
+	if routed > 0 {
+		s.Log.Printf("%d viewer comment(s) routed to channel", routed)
+	}
+	if routed < len(comments) {
+		s.Log.Printf("%d viewer comment(s) queued for injection", len(comments)-routed)
+	}
 
 	// The agent may be idle (no hook boundary coming) — surface arrival
 	// out-of-band so the operator knows a message is waiting.
 	go desktopNotify(comments)
 }
 
+// subscribe registers a channel-delivery consumer; anything already queued
+// for hook injection is handed over immediately. The returned func
+// unsubscribes.
+func (s *Sidecar) subscribe() (chan api.Comment, func()) {
+	ch := make(chan api.Comment, 64)
+	s.subMu.Lock()
+	if s.subs == nil {
+		s.subs = make(map[chan api.Comment]struct{})
+	}
+	s.subs[ch] = struct{}{}
+	s.subMu.Unlock()
+
+	for _, c := range s.takePending() {
+		select {
+		case ch <- c:
+		default:
+		}
+	}
+	return ch, func() {
+		s.subMu.Lock()
+		delete(s.subs, ch)
+		s.subMu.Unlock()
+		// Anything still buffered was never delivered — put it back on the
+		// hook-injection queue rather than losing it.
+		for {
+			select {
+			case c := <-ch:
+				s.mu.Lock()
+				s.pending = append(s.pending, c)
+				s.mu.Unlock()
+			default:
+				return
+			}
+		}
+	}
+}
+
+//go:embed assets/icon.png
+var iconPNG []byte
+
+// iconPath writes the embedded LiveShortly icon to ~/.liveshortly/icon.png
+// once and returns its path (empty on failure). Used to brand notifications.
+func iconPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	p := filepath.Join(home, ".liveshortly", "icon.png")
+	if fi, err := os.Stat(p); err == nil && fi.Size() == int64(len(iconPNG)) {
+		return p
+	}
+	if os.MkdirAll(filepath.Dir(p), 0o755) != nil {
+		return ""
+	}
+	if os.WriteFile(p, iconPNG, 0o644) != nil {
+		return ""
+	}
+	return p
+}
+
 // desktopNotify shows a best-effort OS notification for a comment batch.
-// It must never touch the terminal: the agent owns it.
+// It must never touch the terminal: the agent owns it. On macOS it uses
+// terminal-notifier (which shows the LiveShortly icon) when installed,
+// falling back to osascript (which always shows the Script Editor icon —
+// an Apple limitation that cannot be overridden from AppleScript).
 func desktopNotify(comments []api.Comment) {
 	if len(comments) == 0 {
 		return
@@ -193,16 +288,28 @@ func desktopNotify(comments []api.Comment) {
 	if len(comments) > 1 {
 		body = fmt.Sprintf("%s (+%d more)", body, len(comments)-1)
 	}
-	body = strings.ReplaceAll(body, `"`, `'`)
-	who = strings.ReplaceAll(who, `"`, `'`)
 
 	switch runtime.GOOS {
 	case "darwin":
-		script := fmt.Sprintf(`display notification %q with title "LiveShortly" subtitle %q`, body, who)
+		if tn, err := exec.LookPath("terminal-notifier"); err == nil {
+			args := []string{"-title", "LiveShortly", "-subtitle", who, "-message", body,
+				"-sound", "default", "-open", "https://liveshortly.com"}
+			if icon := iconPath(); icon != "" {
+				args = append(args, "-appIcon", icon, "-contentImage", icon)
+			}
+			_ = exec.Command(tn, args...).Run()
+			return
+		}
+		esc := func(s string) string { return strings.ReplaceAll(s, `"`, `'`) }
+		script := fmt.Sprintf(`display notification %q with title "LiveShortly" subtitle %q`, esc(body), esc(who))
 		_ = exec.Command("osascript", "-e", script).Run()
 	case "linux":
 		if p, err := exec.LookPath("notify-send"); err == nil {
-			_ = exec.Command(p, "LiveShortly — "+who, body).Run()
+			args := []string{"LiveShortly — " + who, body}
+			if icon := iconPath(); icon != "" {
+				args = append([]string{"-i", icon}, args...)
+			}
+			_ = exec.Command(p, args...).Run()
 		}
 	}
 }
@@ -251,6 +358,44 @@ func (s *Sidecar) StartHookServer() (addr, token string, err error) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	// SSE feed of viewer comments for the `live channel` MCP subprocess.
+	mux.HandleFunc("GET /comments/subscribe", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Live-Token") != s.hookToken {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		fl, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusOK)
+		fl.Flush()
+
+		ch, unsub := s.subscribe()
+		defer unsub()
+		s.Log.Printf("channel subscriber connected")
+
+		hb := time.NewTicker(15 * time.Second)
+		defer hb.Stop()
+		for {
+			select {
+			case c := <-ch:
+				b, _ := json.Marshal(c)
+				fmt.Fprintf(w, "data: %s\n\n", b)
+				fl.Flush()
+			case <-hb.C:
+				fmt.Fprint(w, ": hb\n\n")
+				fl.Flush()
+			case <-r.Context().Done():
+				s.Log.Printf("channel subscriber disconnected")
+				return
+			}
+		}
 	})
 
 	s.httpSrv = &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}

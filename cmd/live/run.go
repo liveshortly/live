@@ -146,7 +146,20 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 	}
 	defer cleanup()
 
-	args := append([]string{"--settings", settings}, userArgs...)
+	args := []string{"--settings", settings}
+	// Channel delivery (viewer messages reaching Claude while idle) is
+	// opt-in until interactive end-to-end delivery is confirmed: it relies
+	// on the experimental claude/channel capability, and a comment routed
+	// to a channel Claude ignores would bypass the proven hook-boundary
+	// fallback. Enable with LIVE_CHANNEL=1.
+	if os.Getenv("LIVE_CHANNEL") == "1" {
+		if mcpCfg, mcpCleanup, err := adapter.WriteClaudeMCPConfig(self); err == nil {
+			defer mcpCleanup()
+			args = append(args, "--mcp-config", mcpCfg,
+				"--dangerously-load-development-channels", "server:liveshortly-channel")
+		}
+	}
+	args = append(args, userArgs...)
 	code, err := adapter.RunWithHooks(binPath, args, []string{
 		"LIVE_SIDECAR=" + addr,
 		"LIVE_TOKEN=" + token,
