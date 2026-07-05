@@ -3,6 +3,7 @@ package sidecar
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -178,6 +179,23 @@ func (s *Sidecar) hookNotification(p map[string]any) map[string]any {
 }
 
 func (s *Sidecar) hookStop(p map[string]any) map[string]any {
+	// Viewer messages that arrived too late for a tool boundary would
+	// otherwise sit invisible until the next user prompt. Block the stop
+	// once so Claude addresses them before the turn ends.
+	if comments := s.takePending(); len(comments) > 0 {
+		lines := make([]string, 0, len(comments))
+		for _, c := range comments {
+			lines = append(lines, "  • "+username(c)+": "+c.Message)
+		}
+		s.Log.Printf("blocked stop to deliver %d viewer comment(s)", len(comments))
+		return map[string]any{
+			"decision": "block",
+			"reason": "[live] Viewer message(s) arrived during this turn — respond to them now, then finish:\n" +
+				strings.Join(lines, "\n"),
+			"systemMessage": "[live] 💬 " + deliveredSummary(comments),
+		}
+	}
+
 	// Report the true model once — a session is created before the first
 	// assistant turn, so it starts model-less.
 	s.mu.Lock()
@@ -219,11 +237,26 @@ func (s *Sidecar) injectComments(hookEventName string) map[string]any {
 	}
 	s.Log.Printf("injected %d viewer comment(s) at %s", len(comments), hookEventName)
 	return map[string]any{
+		// systemMessage is shown to the operator in the CLI — without it,
+		// delivery is invisible and looks broken.
+		"systemMessage": "[live] 💬 " + deliveredSummary(comments),
 		"hookSpecificOutput": map[string]any{
 			"hookEventName":     hookEventName,
 			"additionalContext": strings.Join(lines, "\n"),
 		},
 	}
+}
+
+// deliveredSummary is the one-line operator-facing receipt for a batch.
+func deliveredSummary(comments []api.Comment) string {
+	if len(comments) == 1 {
+		return username(comments[0]) + ": " + truncate(comments[0].Message, 120) + " → delivered to Claude"
+	}
+	names := make([]string, 0, len(comments))
+	for _, c := range comments {
+		names = append(names, username(c))
+	}
+	return fmt.Sprintf("%d viewer messages (%s) → delivered to Claude", len(comments), strings.Join(names, ", "))
 }
 
 func username(c api.Comment) string {
