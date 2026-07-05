@@ -8,26 +8,24 @@ live gemini        # any other agent CLI — terminal-output capture
 live npm run dev   # works for any command at all
 ```
 
-`live` is a single Go binary that replaces the LiveShortly Claude-Code plugin
-with an explicit, per-session, agent-agnostic launcher. Nothing is captured
-unless you asked for it by typing `live`.
+`live` is a single Go binary. Run your agent through it and viewers get a
+live event feed of the session — every prompt, tool call, file diff, and
+response — plus a replay link when you're done. Viewers can message the
+session while it runs, and the agent sees those messages mid-task.
 
----
+Nothing is ever captured unless you asked for it by typing `live`.
 
-## Why a shim instead of a plugin?
+## Features
 
-| | plugin (hooks-only) | `live` shim |
-|---|---|---|
-| Activation | always-on once installed | explicit, per session |
-| Install | per-agent marketplace | one binary, every agent |
-| Viewer → agent delivery | polling inside short-lived hook processes | persistent process: SSE push (or 3s polling fallback), injected at the next hook boundary |
-| Session end detection | inferred from hooks that sometimes don't fire | process exit — always correct |
-| Non-Claude agents | not supported | PTY capture for anything |
-
-The shim still uses Claude Code's lifecycle hooks for *capture* (they're the
-only way to get structured tool events), but it injects them itself via a
-temporary `--settings` file and runs a persistent in-process sidecar that owns
-auth, upload retries, and the viewer-comment return path.
+- **One binary, every agent.** Deep integration for Claude Code; universal
+  terminal capture for anything else you can run in a shell.
+- **Explicit, per-session.** `live claude` streams; plain `claude` doesn't.
+- **Two-way.** Viewers with comment permission talk back; messages are
+  delivered into the agent's context at the next safe boundary.
+- **Zero-config sharing.** The share link prints the moment the session
+  starts; the replay link prints when it ends. Exit codes are preserved.
+- **Never in the way.** Capture is fully best-effort: if the API is down,
+  your agent runs exactly as it would have without `live`.
 
 ## Install
 
@@ -49,9 +47,8 @@ live login            # opens the browser device-flow approval page
 live whoami           # verify
 ```
 
-Credentials are stored at `~/.liveshortly/credentials.json` — the same file
-the LiveShortly plugin uses, so **an existing plugin login works as-is** and
-vice versa.
+Credentials are stored at `~/.liveshortly/credentials.json` (mode 0600) and
+refresh automatically.
 
 ## Usage
 
@@ -76,7 +73,7 @@ The agent's exit code is preserved.
 
 Viewers on the session page see the event feed live (prompts, tool calls,
 file diffs, responses). Anyone with comment permission can message the
-session; the shim delivers messages to the agent:
+session; `live` delivers messages to the agent:
 
 - **claude (hooks mode):** injected as context at the next prompt or
   tool-use boundary — Claude reads them mid-task and can respond inline.
@@ -104,18 +101,24 @@ live claude
  │    │  3s polling of /comments/pending otherwise (drain = ack)
  │    └─ localhost hook endpoint (random port + shared token)
  ├─ write temp settings: every Claude hook = `live hook <event>`
- │  (also disables the legacy liveshortly plugin to avoid double capture)
  ├─ exec claude --settings <tmp> (inherits the real terminal)
  └─ on exit: flush events → POST /stop → print replay link
 ```
 
-`live hook <event>` is the same binary in relay mode: it forwards the hook's
-stdin JSON to the sidecar over localhost and prints the sidecar's hook
-response (which is how viewer comments become `additionalContext`). It always
-exits 0 in ≤6s so a broken sidecar can never wedge the agent.
+For Claude Code, `live` injects lifecycle hooks through a temporary
+`--settings` file — that's what yields structured, semantic events instead
+of raw terminal text. `live hook <event>` is the same binary in relay mode:
+it forwards the hook's stdin JSON to the sidecar over localhost and prints
+the sidecar's hook response (which is how viewer comments become
+`additionalContext`). It always exits 0 in ≤6s, so capture problems can
+never wedge the agent.
+
+For everything else, `live` runs the command inside a pseudo-terminal and
+records its output, mirroring the terminal untouched for you.
 
 Full architecture and design decisions: [docs/DESIGN.md](docs/DESIGN.md).
-Server-side changes this client is ready for: [docs/SERVER-PROMPT.md](docs/SERVER-PROMPT.md).
+Upcoming server-side capabilities this client is ready for:
+[docs/SERVER-PROMPT.md](docs/SERVER-PROMPT.md).
 
 ## Configuration
 
@@ -123,7 +126,7 @@ Server-side changes this client is ready for: [docs/SERVER-PROMPT.md](docs/SERVE
 |---|---|
 | API endpoint | `~/.liveshortly/host.json` `{"api_url": "...", "web_url": "..."}`, else `LIVESHORTLY_API_URL` env, else `http://localhost:8000` |
 | Credentials | `~/.liveshortly/credentials.json` (0600), override with `LIVESHORTLY_CRED_PATH` |
-| Diagnostics log | `~/.liveshortly/live.log` (the shim never prints over the agent's TUI) |
+| Diagnostics log | `~/.liveshortly/live.log` (`live` never prints over the agent's TUI) |
 
 ## Troubleshooting
 
@@ -131,12 +134,8 @@ Server-side changes this client is ready for: [docs/SERVER-PROMPT.md](docs/SERVE
   `~/.liveshortly/credentials.json` and retry.
 - **No events in the feed** — check `~/.liveshortly/live.log`; every upload
   failure is logged there with the reason.
-- **Duplicate sessions when running `live claude`** — an old liveshortly
-  plugin is still enabled under a non-standard marketplace name. `live`
-  disables `liveshortly@liveshortly` automatically; disable others with
-  `claude /plugin` or uninstall the plugin.
 - **Session stuck "live" after a crash** — the server reaps agent-silent
-  sessions once the presence feature (docs/SERVER-PROMPT.md) is deployed;
+  sessions once presence support (docs/SERVER-PROMPT.md) is deployed;
   until then it ends on the next `/stop` or archive pass.
 
 ## Development
@@ -151,7 +150,7 @@ Layout:
 
 ```
 cmd/live/            CLI entry: run / login / whoami / hook relay
-internal/hostcfg/    endpoint + credential path resolution (plugin-compatible)
+internal/hostcfg/    endpoint + credential path resolution
 internal/auth/       device flow, token refresh, credentials.json
 internal/api/        LiveShortly REST + agent SSE client
 internal/sidecar/    event queue, comment receiver, hook handlers, diffs
