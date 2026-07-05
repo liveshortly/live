@@ -48,6 +48,18 @@ git clone git@github.com:resapce/live.git ~/.liveshortly/src/live && bash ~/.liv
 gh api -H "Accept: application/vnd.github.raw" repos/resapce/live/contents/install.sh | bash
 ```
 
+### Homebrew
+
+```bash
+brew tap resapce/tap git@github.com:resapce/homebrew-tap.git
+brew install resapce/tap/live
+live login
+```
+
+Builds the latest tagged release from source (the tap and repo are private,
+so your GitHub SSH key must have access; once public this becomes plain
+`brew tap resapce/tap`). Upgrade with `brew upgrade resapce/tap/live`.
+
 ### Manual (if you prefer)
 
 ```bash
@@ -175,5 +187,5 @@ internal/adapter/    claude (--settings hook injection) and PTY runners
 - [ ] Codex hooks adapter
 - [ ] Real-time comment push via `/agent/stream` (client ready; server change in flight)
 - [ ] `live --interactive-viewers`: opt-in PTY stdin injection when the agent is idle
-- [ ] Homebrew tap + release binaries
+- [x] Homebrew tap (`resapce/homebrew-tap`) — release binaries still to come
 - [ ] asciinema-style visual replay upload alongside semantic events
