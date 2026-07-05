@@ -157,6 +157,21 @@ func (c *Client) DrainPending(id string) ([]Comment, error) {
 	return out.Comments, nil
 }
 
+// GetDecision pops the next queued viewer permission verdict, if any.
+// Returns "allow", "deny", or "" when no verdict is waiting.
+func (c *Client) GetDecision(id string) (string, error) {
+	var out struct {
+		Decision string `json:"decision"`
+	}
+	if _, err := c.do("GET", "/api/sessions/"+id+"/decision", nil, &out); err != nil {
+		return "", err
+	}
+	if out.Decision == "allow" || out.Decision == "deny" {
+		return out.Decision, nil
+	}
+	return "", nil
+}
+
 // ── Agent stream (server change in flight — see docs/SERVER-PROMPT.md) ────────
 
 // ErrAgentStreamUnsupported means the server predates GET .../agent/stream;

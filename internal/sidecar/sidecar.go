@@ -314,6 +314,47 @@ func desktopNotify(comments []api.Comment) {
 	}
 }
 
+// permissionGrace bounds how long the channel waits for a UI verdict before
+// defaulting to deny (the local terminal prompt remains answerable meanwhile).
+const permissionGrace = 8 * time.Minute
+
+// awaitDecision emits a permission prompt to the web feed and polls the
+// server's decision queue until the owner answers, the context is cancelled
+// (Claude resolved it locally, dropping the connection), or the grace window
+// expires. Returns "allow" or "deny" ("deny" on timeout — the safe default).
+func (s *Sidecar) awaitDecision(ctx context.Context, tool, desc string) string {
+	msg := "Claude wants to run " + tool
+	if desc != "" {
+		msg += ": " + desc
+	}
+	s.Emit("input_requested", map[string]any{
+		"message": truncate(msg, 500),
+		"kind":    "permission",
+		"ts":      nowISO(),
+	})
+	go desktopNotify([]api.Comment{{Username: "permission", Message: msg}})
+
+	deadline := time.After(permissionGrace)
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return "deny"
+		case <-deadline:
+			s.Log.Printf("permission prompt timed out → deny")
+			return "deny"
+		case <-tick.C:
+			v, err := s.Client.GetDecision(s.SessionID)
+			if err != nil || v == "" {
+				continue
+			}
+			s.Log.Printf("permission %q resolved via UI → %s", tool, v)
+			return v
+		}
+	}
+}
+
 // takePending returns and clears locally queued comments (hooks mode).
 func (s *Sidecar) takePending() []api.Comment {
 	s.mu.Lock()
@@ -358,6 +399,26 @@ func (s *Sidecar) StartHookServer() (addr, token string, err error) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	// Permission relay for the `live channel` MCP subprocess: surface the
+	// prompt to the web UI and long-poll for the owner's allow/deny verdict.
+	mux.HandleFunc("POST /permission", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Live-Token") != s.hookToken {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		var req struct {
+			RequestID   string `json:"request_id"`
+			ToolName    string `json:"tool_name"`
+			Description string `json:"description"`
+		}
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		_ = json.Unmarshal(body, &req)
+
+		verdict := s.awaitDecision(r.Context(), req.ToolName, req.Description)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"behavior": verdict})
 	})
 
 	// SSE feed of viewer comments for the `live channel` MCP subprocess.

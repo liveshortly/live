@@ -90,7 +90,8 @@ func cmdChannel() {
 					"protocolVersion": p.ProtocolVersion,
 					"capabilities": map[string]any{
 						"experimental": map[string]any{
-							"claude/channel": map[string]any{},
+							"claude/channel":            map[string]any{},
+							"claude/channel/permission": map[string]any{},
 						},
 						"tools": map[string]any{},
 					},
@@ -106,6 +107,34 @@ func cmdChannel() {
 		case "notifications/initialized":
 			// Claude is ready — start pushing viewer comments.
 			startForwarder()
+
+		case "notifications/claude/channel/permission_request":
+			// Claude is asking to run a tool — relay to the web UI for an
+			// owner allow/deny, then hand the verdict back. The local
+			// terminal prompt stays answerable in parallel.
+			var p struct {
+				RequestID   string `json:"request_id"`
+				ToolName    string `json:"tool_name"`
+				Description string `json:"description"`
+			}
+			_ = json.Unmarshal(msg.Params, &p)
+			if p.RequestID == "" {
+				break
+			}
+			go func() {
+				behavior := requestPermission(addr, token, p.ToolName, p.Description, logf)
+				if behavior == "" {
+					return // could not resolve remotely; leave it to the local prompt
+				}
+				send(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "notifications/claude/channel/permission",
+					"params": map[string]any{
+						"request_id": p.RequestID,
+						"behavior":   behavior,
+					},
+				})
+			}()
 
 		case "tools/list":
 			send(map[string]any{
@@ -167,6 +196,32 @@ func forwardComments(addr, token string, send func(any), logf func(string, ...an
 			backoff *= 2
 		}
 	}
+}
+
+// requestPermission long-polls the sidecar, which surfaces the prompt in the
+// web UI and returns the owner's verdict ("allow"/"deny"), or "" on error.
+func requestPermission(addr, token, tool, desc string, logf func(string, ...any)) string {
+	body, _ := json.Marshal(map[string]string{"tool_name": tool, "description": desc})
+	req, err := http.NewRequest("POST", addr+"/permission", strings.NewReader(string(body)))
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("X-Live-Token", token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 10 * time.Minute}).Do(req)
+	if err != nil {
+		logf("permission relay failed: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Behavior string `json:"behavior"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&out) != nil {
+		return ""
+	}
+	logf("permission for %s → %s", tool, out.Behavior)
+	return out.Behavior
 }
 
 func consumeSSE(addr, token string, onData func(string)) error {
