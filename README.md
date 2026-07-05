@@ -62,6 +62,24 @@ Builds the latest tagged release from source (the tap and repo are private,
 so your GitHub SSH key must have access; once public this becomes plain
 `brew tap resapce/tap`). Upgrade with `brew upgrade resapce/tap/live`.
 
+### Updating & version pinning
+
+Once installed, the binary updates itself:
+
+```bash
+live update                     # upgrade to the latest release
+live update --version v0.1.1    # install a specific version (downgrades too)
+```
+
+`live update` pulls sha256-verified release binaries from
+`https://liveshortly.com/install/` (`live-<version>-<os>-<arch>.gz`, one per
+platform, plus `latest.txt`; the folder is cumulative, so every released
+version stays available). The installer accepts the same pin:
+
+```bash
+curl -fsSL https://liveshortly.com/install.sh | bash -s -- --version v0.1.1
+```
+
 ### Manual (if you prefer)
 
 ```bash
@@ -189,5 +207,6 @@ internal/adapter/    claude (--settings hook injection) and PTY runners
 - [ ] Codex hooks adapter
 - [ ] Real-time comment push via `/agent/stream` (client ready; server change in flight)
 - [ ] `live --interactive-viewers`: opt-in PTY stdin injection when the agent is idle
-- [x] Homebrew tap (`resapce/homebrew-tap`) — release binaries still to come
+- [x] Homebrew tap (`resapce/homebrew-tap`)
+- [x] Release binaries + `live update` self-updater (`/install/` on the website)
 - [ ] asciinema-style visual replay upload alongside semantic events
