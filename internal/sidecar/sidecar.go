@@ -14,6 +14,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -171,6 +173,38 @@ func (s *Sidecar) drain() {
 	s.pending = append(s.pending, comments...)
 	s.mu.Unlock()
 	s.Log.Printf("%d viewer comment(s) queued for injection", len(comments))
+
+	// The agent may be idle (no hook boundary coming) — surface arrival
+	// out-of-band so the operator knows a message is waiting.
+	go desktopNotify(comments)
+}
+
+// desktopNotify shows a best-effort OS notification for a comment batch.
+// It must never touch the terminal: the agent owns it.
+func desktopNotify(comments []api.Comment) {
+	if len(comments) == 0 {
+		return
+	}
+	who := comments[0].Username
+	if who == "" {
+		who = "viewer"
+	}
+	body := comments[0].Message
+	if len(comments) > 1 {
+		body = fmt.Sprintf("%s (+%d more)", body, len(comments)-1)
+	}
+	body = strings.ReplaceAll(body, `"`, `'`)
+	who = strings.ReplaceAll(who, `"`, `'`)
+
+	switch runtime.GOOS {
+	case "darwin":
+		script := fmt.Sprintf(`display notification %q with title "LiveShortly" subtitle %q`, body, who)
+		_ = exec.Command("osascript", "-e", script).Run()
+	case "linux":
+		if p, err := exec.LookPath("notify-send"); err == nil {
+			_ = exec.Command(p, "LiveShortly — "+who, body).Run()
+		}
+	}
 }
 
 // takePending returns and clears locally queued comments (hooks mode).
