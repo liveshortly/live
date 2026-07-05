@@ -1,0 +1,83 @@
+// Package hostcfg resolves the LiveShortly API/web endpoints and credential
+// path. It reads the same files the plugin ecosystem uses (~/.liveshortly/
+// host.json, ~/.liveshortly/credentials.json) so an existing login keeps
+// working with the shim.
+package hostcfg
+
+import (
+	"encoding/json"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+type hostFile struct {
+	APIURL string `json:"api_url"`
+	WebURL string `json:"web_url"`
+}
+
+func home() string {
+	h, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	return h
+}
+
+func loadHost() hostFile {
+	var h hostFile
+	b, err := os.ReadFile(filepath.Join(home(), ".liveshortly", "host.json"))
+	if err == nil {
+		_ = json.Unmarshal(b, &h)
+	}
+	return h
+}
+
+// APIURL returns the API base URL. Order matches the plugin: host.json,
+// then LIVESHORTLY_API_URL, then localhost.
+func APIURL() string {
+	if h := loadHost(); h.APIURL != "" {
+		return strings.TrimRight(h.APIURL, "/")
+	}
+	if v := strings.TrimSpace(os.Getenv("LIVESHORTLY_API_URL")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return "http://localhost:8000"
+}
+
+// WebURL returns the base URL for shareable session links. Falls back to the
+// API origin when host.json has no web_url and the API isn't localhost
+// (production serves both on one domain).
+func WebURL() string {
+	if h := loadHost(); h.WebURL != "" {
+		return strings.TrimRight(h.WebURL, "/")
+	}
+	for _, k := range []string{"LIVESHORTLY_WEB_URL", "LIVESHORTLY_FRONTEND_URL"} {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return strings.TrimRight(v, "/")
+		}
+	}
+	api := APIURL()
+	if u, err := url.Parse(api); err == nil && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" {
+		return api
+	}
+	return "http://localhost:3000"
+}
+
+// CredPath returns the credentials file path (shared with the plugin).
+func CredPath() string {
+	if v := strings.TrimSpace(os.Getenv("LIVESHORTLY_CRED_PATH")); v != "" {
+		if strings.HasPrefix(v, "~/") {
+			return filepath.Join(home(), v[2:])
+		}
+		return v
+	}
+	return filepath.Join(home(), ".liveshortly", "credentials.json")
+}
+
+// LogPath is where the shim writes diagnostics while an agent owns the
+// terminal (we must never print over a TUI).
+func LogPath() string {
+	return filepath.Join(home(), ".liveshortly", "live.log")
+}

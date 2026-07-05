@@ -1,0 +1,297 @@
+package sidecar
+
+import (
+	"bufio"
+	"encoding/json"
+	"os"
+	"regexp"
+	"strings"
+
+	"github.com/resapce/live/internal/api"
+)
+
+// handleHook maps a Claude Code hook payload (relayed by `live hook`) to feed
+// events and hook JSON output. Event types and payload shapes mirror the
+// LiveShortly plugin so the web viewer renders both identically.
+func (s *Sidecar) handleHook(event string, p map[string]any) map[string]any {
+	switch event {
+	case "session-start":
+		return s.hookSessionStart()
+	case "user-prompt-submit":
+		return s.hookUserPromptSubmit(p)
+	case "pre-tool-use":
+		return s.hookPreToolUse(p)
+	case "post-tool-use":
+		return s.hookPostToolUse(p)
+	case "notification":
+		return s.hookNotification(p)
+	case "stop":
+		return s.hookStop(p)
+	}
+	return nil
+}
+
+func (s *Sidecar) hookSessionStart() map[string]any {
+	liveURL := s.WebURL + "/session/" + s.SessionID
+	return map[string]any{
+		"systemMessage": "You are live-streaming on 😍liveshortly. " +
+			"Viewers are watching at: " + liveURL + " — " +
+			"acknowledge viewer messages when they arrive and keep coding.",
+	}
+}
+
+func (s *Sidecar) hookUserPromptSubmit(p map[string]any) map[string]any {
+	prompt := str(p, "prompt")
+	if prompt != "" {
+		s.Emit("prompt", map[string]any{
+			"content": truncate(prompt, 4000),
+			"ts":      nowISO(),
+		})
+	}
+	return s.injectComments("UserPromptSubmit")
+}
+
+var dangerPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\brm\s+-[rf]{1,2}\b`),
+	regexp.MustCompile(`\bdrop\s+table\b`),
+	regexp.MustCompile(`\btruncate\b`),
+	regexp.MustCompile(`\bgit\s+(push\s+.*--force|reset\s+--hard)\b`),
+	regexp.MustCompile(`\bpkill\b`),
+	regexp.MustCompile(`\bkill\s+-9\b`),
+	regexp.MustCompile(`\bchmod\s+777\b`),
+	regexp.MustCompile(`\bmkfs\b`),
+	regexp.MustCompile(`\bdd\s+if=`),
+}
+
+func isDangerous(cmd string) bool {
+	low := strings.ToLower(cmd)
+	for _, re := range dangerPatterns {
+		if re.MatchString(low) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
+	tool := str(p, "tool_name")
+	in := sub(p, "tool_input")
+
+	switch tool {
+	case "Edit", "Write", "MultiEdit":
+		s.Emit("pre_tool", map[string]any{
+			"tool":   tool,
+			"action": "editing",
+			"file":   filePath(in),
+			"ts":     nowISO(),
+		})
+	case "Bash":
+		cmd := str(in, "command")
+		s.Emit("pre_tool", map[string]any{
+			"tool":      "Bash",
+			"action":    "running",
+			"command":   truncate(cmd, 300),
+			"dangerous": isDangerous(cmd),
+			"ts":        nowISO(),
+		})
+	case "WebFetch":
+		s.Emit("pre_tool", map[string]any{
+			"tool":   "WebFetch",
+			"action": "fetching",
+			"url":    str(in, "url"),
+			"ts":     nowISO(),
+		})
+	}
+	return nil
+}
+
+func (s *Sidecar) hookPostToolUse(p map[string]any) map[string]any {
+	tool := str(p, "tool_name")
+	in := sub(p, "tool_input")
+
+	switch tool {
+	case "Edit", "Write", "MultiEdit":
+		path := filePath(in)
+		var diff string
+		var added, removed int
+		switch tool {
+		case "Edit":
+			diff, added, removed = unifiedDiff(path, str(in, "old_string"), str(in, "new_string"))
+		case "Write":
+			diff, added, removed = writeDiff(path, str(in, "content"))
+		case "MultiEdit":
+			var parts []string
+			if edits, ok := in["edits"].([]any); ok {
+				for _, e := range edits {
+					em, _ := e.(map[string]any)
+					d, a, r := unifiedDiff(path, str(em, "old_string"), str(em, "new_string"))
+					parts = append(parts, d)
+					added += a
+					removed += r
+				}
+			}
+			diff = strings.Join(parts, "\n")
+		}
+		s.Emit("file_write", map[string]any{
+			"tool":    tool,
+			"file":    path,
+			"diff":    diff,
+			"added":   added,
+			"removed": removed,
+			"ts":      nowISO(),
+		})
+
+	case "Bash":
+		out := ""
+		switch tr := p["tool_response"].(type) {
+		case map[string]any:
+			out = truncate(str(tr, "stdout"), 300)
+		case string:
+			out = truncate(tr, 300)
+		}
+		s.Emit("tool_call", map[string]any{
+			"tool":    "Bash",
+			"command": truncate(str(in, "command"), 500),
+			"output":  out,
+			"ts":      nowISO(),
+		})
+	}
+	return s.injectComments("PostToolUse")
+}
+
+func (s *Sidecar) hookNotification(p map[string]any) map[string]any {
+	msg := strings.TrimSpace(str(p, "message"))
+	if msg == "" {
+		msg = "Claude is waiting for your input"
+	}
+	kind := "input"
+	low := strings.ToLower(msg)
+	if strings.Contains(low, "permission") || strings.Contains(low, "approve") || strings.Contains(low, "allow") {
+		kind = "permission"
+	}
+	s.Emit("input_requested", map[string]any{
+		"message": truncate(msg, 500),
+		"kind":    kind,
+		"ts":      nowISO(),
+	})
+	return nil
+}
+
+func (s *Sidecar) hookStop(p map[string]any) map[string]any {
+	// Report the true model once — a session is created before the first
+	// assistant turn, so it starts model-less.
+	s.mu.Lock()
+	needModel := !s.modelReported
+	s.mu.Unlock()
+	if needModel {
+		if model := detectModel(str(p, "transcript_path")); model != "" {
+			s.mu.Lock()
+			s.modelReported = true
+			s.mu.Unlock()
+			go func() {
+				if err := s.Client.ReportModel(s.SessionID, model); err != nil {
+					s.Log.Printf("report model: %v", err)
+				}
+			}()
+		}
+	}
+
+	if last := str(p, "last_assistant_message"); last != "" {
+		s.Emit("response", map[string]any{
+			"content": truncate(last, 8000),
+			"ts":      nowISO(),
+		})
+	}
+	s.Emit("stream_end", map[string]any{"ts": nowISO()})
+	return nil
+}
+
+// injectComments drains locally queued viewer comments into hook output as
+// additionalContext so the agent sees them at the next boundary.
+func (s *Sidecar) injectComments(hookEventName string) map[string]any {
+	comments := s.takePending()
+	if len(comments) == 0 {
+		return nil
+	}
+	lines := []string{"[live] Viewer message(s) (respond if relevant):"}
+	for _, c := range comments {
+		lines = append(lines, "  • "+username(c)+": "+c.Message)
+	}
+	s.Log.Printf("injected %d viewer comment(s) at %s", len(comments), hookEventName)
+	return map[string]any{
+		"hookSpecificOutput": map[string]any{
+			"hookEventName":     hookEventName,
+			"additionalContext": strings.Join(lines, "\n"),
+		},
+	}
+}
+
+func username(c api.Comment) string {
+	if strings.TrimSpace(c.Username) != "" {
+		return c.Username
+	}
+	return "viewer"
+}
+
+// detectModel scans a Claude Code JSONL transcript from the end for the most
+// recent assistant turn's model id.
+func detectModel(path string) string {
+	if path == "" {
+		return ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	var lines []string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 256*1024), 8<<20)
+	for sc.Scan() {
+		if l := strings.TrimSpace(sc.Text()); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		var obj struct {
+			Message struct {
+				Model string `json:"model"`
+			} `json:"message"`
+		}
+		if json.Unmarshal([]byte(lines[i]), &obj) != nil {
+			continue
+		}
+		if m := obj.Message.Model; m != "" && m != "<synthetic>" {
+			return m
+		}
+	}
+	return ""
+}
+
+// ── payload accessors ─────────────────────────────────────────────────────────
+
+func str(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	v, _ := m[key].(string)
+	return v
+}
+
+func sub(m map[string]any, key string) map[string]any {
+	if m == nil {
+		return nil
+	}
+	v, _ := m[key].(map[string]any)
+	return v
+}
+
+func filePath(in map[string]any) string {
+	for _, k := range []string{"file_path", "path", "new_path"} {
+		if v := str(in, k); v != "" {
+			return v
+		}
+	}
+	return ""
+}
