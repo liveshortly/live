@@ -36,6 +36,12 @@ func WriteClaudeSettings(liveBin string) (path string, cleanup func(), err error
 		"enabledPlugins": map[string]any{
 			"liveshortly@liveshortly": false,
 		},
+		// Pre-approve the channel MCP server so Claude does not halt at the
+		// interactive "enable these MCP servers?" trust prompt — that dialog
+		// blocks the whole session (viewer input never reaches Claude).
+		// Paired with --strict-mcp-config so only our server loads and no
+		// project .mcp.json server is auto-enabled.
+		"enabledMcpjsonServers": []string{"liveshortly-channel"},
 		"hooks": map[string]any{
 			"SessionStart":     []any{claudeHook(liveBin, "session-start", 15, "")},
 			"UserPromptSubmit": []any{claudeHook(liveBin, "user-prompt-submit", 10, "")},

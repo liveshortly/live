@@ -171,6 +171,7 @@ Upcoming server-side capabilities this client is ready for:
 | API endpoint | `~/.liveshortly/host.json` `{"api_url": "...", "web_url": "..."}`, else `LIVESHORTLY_API_URL` env, else `http://localhost:8000` |
 | Credentials | `~/.liveshortly/credentials.json` (0600), override with `LIVESHORTLY_CRED_PATH` |
 | Diagnostics log | `~/.liveshortly/live.log` (`live` never prints over the agent's TUI) |
+| Idle viewer delivery | On by default for interactive `live claude` via a per-session channel MCP server, so messages reach Claude even while idle. `LIVE_CHANNEL=0` forces hook-boundary delivery. Channel diagnostics: `~/.liveshortly/channel.log` |
 
 ## Troubleshooting
 
