@@ -14,6 +14,13 @@ Homebrew formula and `live version` report.
   (allow → tool runs, deny → tool blocked, no keyboard prompt either way).
   While on, it gates every matched tool, so the local allowlist is bypassed;
   falls back to deny if unanswered within ~8 minutes.
+- `--web-permissions` gains **Allow always**: tapping ✓✓ ALLOW ALWAYS on the
+  session page allows the tool now and remembers it for the rest of the
+  session, so matching calls auto-allow without re-prompting — Claude Code's
+  "don't ask again", owner-driven. Memory is keyed by the leading command word
+  for Bash (`git`, `npm`, …), the tool for Edit/Write/MultiEdit, and the host
+  for WebFetch. Verified end to end: after one "always" on `touch`, a second
+  `touch` auto-ran with no further prompt; deny still blocks.
 
 ## v0.2.2 — 2026-07-06
 

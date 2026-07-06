@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -128,16 +129,65 @@ func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
 	// prompt to the feed and long-polls /decision; the verdict becomes Claude's
 	// PreToolUse permission decision, pre-empting the local keyboard prompt.
 	if s.WebPermissions {
-		verdict := s.awaitDecision(context.Background(), tool, permissionDesc(tool, in))
-		return map[string]any{
-			"hookSpecificOutput": map[string]any{
-				"hookEventName":            "PreToolUse",
-				"permissionDecision":       verdict, // "allow" | "deny"
-				"permissionDecisionReason": "Answered by the session owner via LiveShortly",
-			},
+		key := permKey(tool, in)
+		// An earlier "always allow" for this tool/command auto-allows without
+		// re-prompting — Claude Code's "don't ask again", owner-driven.
+		if s.permAllowed(key) {
+			s.Log.Printf("permission %q auto-allowed (remembered %q)", tool, key)
+			return permOutput("allow", "Allowed earlier via LiveShortly (don't ask again)")
 		}
+		verdict := s.awaitDecision(context.Background(), tool, permissionDesc(tool, in))
+		reason := "Answered by the session owner via LiveShortly"
+		if verdict == "always" {
+			s.permRemember(key)
+			verdict = "allow"
+			reason = "Allowed via LiveShortly — won't ask again for " + key
+			s.Log.Printf("permission %q allowed + remembered %q", tool, key)
+		}
+		return permOutput(verdict, reason)
 	}
 	return nil
+}
+
+// permOutput builds a PreToolUse permission-decision hook response.
+func permOutput(decision, reason string) map[string]any {
+	return map[string]any{
+		"hookSpecificOutput": map[string]any{
+			"hookEventName":            "PreToolUse",
+			"permissionDecision":       decision, // "allow" | "deny"
+			"permissionDecisionReason": reason,
+		},
+	}
+}
+
+// permKey is the "always allow" memory key for a tool call. Bash remembers the
+// leading command word (git, npm, echo…) — matching Claude's "don't ask again
+// for X commands"; file tools remember the tool (accept-all-edits); WebFetch
+// remembers the host.
+func permKey(tool string, in map[string]any) string {
+	switch tool {
+	case "Bash":
+		cmd := strings.TrimSpace(str(in, "command"))
+		word := cmd
+		if i := strings.IndexAny(cmd, " \t\n"); i > 0 {
+			word = cmd[:i]
+		}
+		if word == "" {
+			return "Bash"
+		}
+		return "Bash:" + word
+	case "WebFetch":
+		return "WebFetch:" + hostOf(str(in, "url"))
+	}
+	return tool // Edit / Write / MultiEdit → accept all of this kind
+}
+
+// hostOf extracts the host from a URL for coarse WebFetch memory.
+func hostOf(raw string) string {
+	if u, err := url.Parse(strings.TrimSpace(raw)); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return raw
 }
 
 // permissionDesc is the human-readable subject of a permission prompt.

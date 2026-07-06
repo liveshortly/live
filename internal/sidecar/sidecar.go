@@ -61,7 +61,29 @@ type Sidecar struct {
 	subMu sync.Mutex
 	subs  map[chan api.Comment]struct{}
 
+	// permAllow remembers "always allow" decisions (web-permissions mode) so a
+	// remembered tool/command auto-allows on later calls without re-prompting.
+	permMu    sync.Mutex
+	permAllow map[string]bool
+
 	hookToken string
+}
+
+// permAllowed reports whether an "always allow" was recorded for this key.
+func (s *Sidecar) permAllowed(key string) bool {
+	s.permMu.Lock()
+	defer s.permMu.Unlock()
+	return s.permAllow[key]
+}
+
+// permRemember records an "always allow" for this key.
+func (s *Sidecar) permRemember(key string) {
+	s.permMu.Lock()
+	defer s.permMu.Unlock()
+	if s.permAllow == nil {
+		s.permAllow = map[string]bool{}
+	}
+	s.permAllow[key] = true
 }
 
 // Start launches the upload worker and the comment receiver.
@@ -422,6 +444,9 @@ func (s *Sidecar) StartHookServer() (addr, token string, err error) {
 		_ = json.Unmarshal(body, &req)
 
 		verdict := s.awaitDecision(r.Context(), req.ToolName, req.Description)
+		if verdict == "always" { // the channel path has no "remember" — treat as allow
+			verdict = "allow"
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"behavior": verdict})
 	})

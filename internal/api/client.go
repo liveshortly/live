@@ -166,7 +166,7 @@ func (c *Client) GetDecision(id string) (string, error) {
 	if _, err := c.do("GET", "/api/sessions/"+id+"/decision", nil, &out); err != nil {
 		return "", err
 	}
-	if out.Decision == "allow" || out.Decision == "deny" {
+	if out.Decision == "allow" || out.Decision == "deny" || out.Decision == "always" {
 		return out.Decision, nil
 	}
 	return "", nil
