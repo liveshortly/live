@@ -12,9 +12,9 @@
 </p>
 
 <p align="center">
-  <a href="https://liveshortly.com">
+  <video src="https://github.com/resapce/Live/raw/main/docs/demo.mp4" poster="docs/demo-poster.jpg" width="100%" autoplay loop muted playsinline controls>
     <img src="docs/demo.gif" width="100%" alt="live demo — run `live claude`, a shareable URL is generated, open it in the browser to watch the session stream live, and viewers talk back into the running session" />
-  </a>
+  </video>
 </p>
 
 <p align="center">
