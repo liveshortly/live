@@ -41,8 +41,26 @@ func (s *Sidecar) hookSessionStart() map[string]any {
 	}
 }
 
+// channelTagRe matches a viewer comment the `live channel` MCP server injects
+// as a synthetic user turn: <channel source="liveshortly-channel" ...>…</channel>.
+var channelTagRe = regexp.MustCompile(`(?is)<channel\s[^>]*liveshortly[^>]*>.*?</channel>`)
+
+// isChannelTurn reports whether the whole prompt is just a channel-wrapped
+// viewer comment (nothing the user actually typed). Those already appear in
+// the feed as clean viewer_comment events, so re-emitting the raw wrapper as a
+// prompt would show the XML scaffolding around the message.
+func isChannelTurn(text string) bool {
+	return channelTagRe.MatchString(text) &&
+		strings.TrimSpace(channelTagRe.ReplaceAllString(text, "")) == ""
+}
+
 func (s *Sidecar) hookUserPromptSubmit(p map[string]any) map[string]any {
 	prompt := str(p, "prompt")
+	// A channel-delivered viewer comment arrives here as a synthetic prompt;
+	// skip it — the viewer_comment event already represents it cleanly.
+	if isChannelTurn(prompt) {
+		return nil
+	}
 	if prompt != "" {
 		s.Emit("prompt", map[string]any{
 			"content": truncate(prompt, 4000),
