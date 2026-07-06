@@ -1,4 +1,15 @@
-# live
+<h1 align="center">live</h1>
+
+<p align="center">
+  <em>Put <code>live</code> in front of your coding agent — and people can watch it work.</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/stars/resapce/live?style=flat-square&labelColor=1a1a1a&color=1f7a4d&label=stars" alt="Stars">
+  <img src="https://img.shields.io/badge/works_with-claude_%C2%B7_gemini_%C2%B7_codex_%C2%B7_anything-1f7a4d?style=flat-square&labelColor=1a1a1a" alt="Works with any agent">
+  <img src="https://img.shields.io/badge/built_with-Go-1f7a4d?style=flat-square&labelColor=1a1a1a&logo=go&logoColor=white" alt="Built with Go">
+  <a href="https://liveshortly.com"><img src="https://img.shields.io/badge/watch-liveshortly.com-1f7a4d?style=flat-square&labelColor=1a1a1a" alt="liveshortly.com"></a>
+</p>
 
 <p align="center">
   <a href="https://liveshortly.com">
@@ -6,7 +17,16 @@
   </a>
 </p>
 
-**Put `live` in front of your coding agent and people can watch it work.**
+<p align="center">
+  <strong>Any agent &middot; live in one word &middot; watch it, replay it, talk back to it.</strong><br>
+  <sub>Type <code>live claude</code> instead of <code>claude</code> and a shareable link appears — friends, your team, or the internet watch every prompt, tool call and file diff as it happens, and message the session while it runs. When it ends, the link becomes a replay. One small Go binary; nothing is captured unless you typed <code>live</code>.</sub>
+</p>
+
+<p align="center">
+  <code>curl -fsSL https://liveshortly.com/install.sh | bash</code>
+</p>
+
+---
 
 ```bash
 live claude        # Claude Code — the full story: prompts, tools, diffs, replies
@@ -14,17 +34,11 @@ live gemini        # some other agent? still works — we capture the terminal
 live npm run dev   # honestly, run whatever you want through it
 ```
 
-That's the whole idea. You type `live claude` instead of `claude`, and now
-there's a shareable link where friends (or your team, or the internet) can
-watch the session unfold live — every prompt, every tool call, every file
-diff — and message you while it's happening. When you're done, the link turns
-into a replay.
-
-It's one small Go binary. It started as a weekend "wouldn't it be cool if…"
-and it turned out to be pretty cool, so here we are. 🙂
-
-And nothing gets captured unless you actually typed `live`. Plain `claude` is
-still plain `claude`.
+That's the whole idea: you type `live claude` instead of `claude`, and now
+there's a shareable link where people watch the session unfold live — every
+prompt, tool call and file diff — and message you while it's happening. When
+you're done, it turns into a replay. It started as a weekend "wouldn't it be
+cool if…" and turned out to be pretty cool. 🙂
 
 ## Why you might like it
 
