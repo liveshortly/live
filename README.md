@@ -1,48 +1,55 @@
 # live
 
-**Stream any coding-agent session to [LiveShortly](https://liveshortly.com) — live, replayable, shareable — by prefixing one word.**
+**Put `live` in front of your coding agent and people can watch it work.**
 
 ```bash
-live claude        # Claude Code, full semantic capture (prompts, tools, diffs, responses)
-live gemini        # any other agent CLI — terminal-output capture
-live npm run dev   # works for any command at all
+live claude        # Claude Code — the full story: prompts, tools, diffs, replies
+live gemini        # some other agent? still works — we capture the terminal
+live npm run dev   # honestly, run whatever you want through it
 ```
 
-`live` is a single Go binary. Run your agent through it and viewers get a
-live event feed of the session — every prompt, tool call, file diff, and
-response — plus a replay link when you're done. Viewers can message the
-session while it runs, and the agent sees those messages mid-task.
+That's the whole idea. You type `live claude` instead of `claude`, and now
+there's a shareable link where friends (or your team, or the internet) can
+watch the session unfold live — every prompt, every tool call, every file
+diff — and message you while it's happening. When you're done, the link turns
+into a replay.
 
-Nothing is ever captured unless you asked for it by typing `live`.
+It's one small Go binary. It started as a weekend "wouldn't it be cool if…"
+and it turned out to be pretty cool, so here we are. 🙂
 
-## Features
+And nothing gets captured unless you actually typed `live`. Plain `claude` is
+still plain `claude`.
 
-- **One binary, every agent.** Deep integration for Claude Code; universal
-  terminal capture for anything else you can run in a shell.
-- **Explicit, per-session.** `live claude` streams; plain `claude` doesn't.
-- **Two-way.** Viewers with comment permission talk back; messages are
-  delivered into the agent's context at the next safe boundary.
-- **Zero-config sharing.** The share link prints the moment the session
-  starts; the replay link prints when it ends. Exit codes are preserved.
-- **Never in the way.** Capture is fully best-effort: if the API is down,
-  your agent runs exactly as it would have without `live`.
+## Why you might like it
 
-## Install
+- **One binary, works with everything.** Deep hooks for Claude Code, and a
+  "just record the terminal" fallback for any other CLI on earth.
+- **You opt in, every time.** No always-on daemon, no background magic —
+  `live claude` streams, `claude` doesn't.
+- **Viewers can talk back.** Anyone with comment access can message the
+  session, and the agent actually sees it — even while it's sitting idle
+  waiting for you.
+- **The link just appears.** Share link when it starts, replay link when it
+  ends. No dashboards to click through.
+- **It stays out of your way.** If the server's down or you're offline, your
+  agent runs exactly like normal. Capture is best-effort; your work is not.
 
-### One command (does everything)
+## Getting it
+
+### The easy way
 
 ```bash
 curl -fsSL https://liveshortly.com/install.sh | bash
 ```
 
-That's the whole setup: it fetches the source, builds, puts `live` on your
-PATH, and opens the browser sign-in. Rerun the same command any time to
-update. The only prerequisite is Go 1.21+ ([go.dev/dl](https://go.dev/dl/)
-or `brew install go`) — the script never installs or modifies Go itself and
-stops with clear instructions if it's missing.
+Fetches the source, builds it, drops `live` on your PATH, and pops open the
+browser to sign in. Run it again whenever you want to update. You'll need
+Go 1.21+ ([go.dev/dl](https://go.dev/dl/) or `brew install go`) — the script
+won't touch your Go setup, it just checks it's there and tells you if it
+isn't.
 
-While the source repo is private, the clone step inside the script needs
-your GitHub SSH key (or gh auth) for `resapce/live`. No-curl equivalents:
+Heads up: the source repo is private for now, so the clone step wants your
+GitHub SSH key (or `gh` auth). If you'd rather not pipe curl into bash:
 
 ```bash
 git clone git@github.com:resapce/live.git ~/.liveshortly/src/live && bash ~/.liveshortly/src/live/install.sh
@@ -50,7 +57,7 @@ git clone git@github.com:resapce/live.git ~/.liveshortly/src/live && bash ~/.liv
 gh api -H "Accept: application/vnd.github.raw" repos/resapce/live/contents/install.sh | bash
 ```
 
-### Homebrew
+### Homebrew, if that's your thing
 
 ```bash
 brew tap resapce/tap git@github.com:resapce/homebrew-tap.git
@@ -58,156 +65,157 @@ brew install resapce/tap/live
 live login
 ```
 
-Builds the latest tagged release from source (the tap and repo are private,
-so your GitHub SSH key must have access; once public this becomes plain
-`brew tap resapce/tap`). Upgrade with `brew upgrade resapce/tap/live`.
+Builds the latest tagged release. (Repo's private, so again your SSH key needs
+access — once it's public this is just `brew tap resapce/tap`.) Update later
+with `brew upgrade resapce/tap/live`.
 
-### Updating & version pinning
+### Keeping it current
 
-Once installed, the binary updates itself:
+Once it's installed, it updates itself:
 
 ```bash
-live update                     # upgrade to the latest release
-live update --version v0.1.1    # install a specific version (downgrades too)
+live update                     # grab the latest
+live update --version v0.1.1    # or pin a specific one (yes, downgrades too)
 ```
 
-`live update` pulls sha256-verified release binaries from
-`https://liveshortly.com/install/` (`live-<version>-<os>-<arch>.gz`, one per
-platform, plus `latest.txt`; the folder is cumulative, so every released
-version stays available). The installer accepts the same pin:
+Under the hood it pulls checksum-verified binaries from
+`https://liveshortly.com/install/` (one per platform, plus a `latest.txt`).
+Every release stays up there, so nothing you've pinned ever disappears. The
+installer takes the same pin if you prefer:
 
 ```bash
 curl -fsSL https://liveshortly.com/install.sh | bash -s -- --version v0.1.1
 ```
 
-### Manual (if you prefer)
+### Or just build it yourself
 
 ```bash
 git clone git@github.com:resapce/live.git && cd live
-make install          # builds and copies to /usr/local/bin/live
-live login            # browser device-flow approval
-live whoami           # verify
+make install          # → /usr/local/bin/live
+live login            # browser sign-in
+live whoami           # make sure it took
 ```
 
-Requires Go 1.22+ (the module pins its exact toolchain; Go auto-downloads it).
+Your login lives at `~/.liveshortly/credentials.json` (locked down to 0600)
+and refreshes on its own.
 
-Credentials are stored at `~/.liveshortly/credentials.json` (mode 0600) and
-refresh automatically.
-
-## Usage
+## Using it
 
 ```bash
-live claude                       # interactive Claude Code, captured
-live claude -p "fix the tests"    # print-mode runs are captured too
-live --title "demo run" claude    # custom session title
-live gemini                       # PTY capture (see support matrix)
-live -- ./scripts/deploy.sh       # any command; `--` ends live's own flags
+live claude                       # normal interactive Claude Code, streamed
+live claude -p "fix the tests"    # one-shot runs get captured too
+live --title "friday demo" claude # give the session a name
+live gemini                       # any other agent (terminal capture)
+live -- ./scripts/deploy.sh       # anything at all; `--` ends live's flags
 ```
 
-On launch the shim prints the share link:
+When it starts you'll see your link:
 
 ```
 ● live streaming → https://liveshortly.com/session/<id>
 ```
 
-On exit it stops and archives the session and prints the replay link.
-The agent's exit code is preserved.
+When it exits, it wraps up the session and prints the replay link. Your
+agent's exit code passes straight through, so scripts don't care that `live`
+was in the middle.
 
-### What viewers can do
+### What the people watching get
 
-Viewers on the session page see the event feed live (prompts, tool calls,
-file diffs, responses). Anyone with comment permission can message the
-session; `live` delivers messages to the agent:
+They see the feed roll by live — prompts, tool calls, file diffs, replies.
+Anyone allowed to comment can send you a message, and `live` gets it to the
+agent:
 
-- **claude (hooks mode):** injected as context at the next prompt or
-  tool-use boundary — Claude reads them mid-task and can respond inline.
-- **PTY mode:** shown to *you* as a yellow `[live] 💬` overlay in the
-  terminal (arbitrary agents can't accept injected input safely).
+- **Claude:** it lands in Claude's context at the next natural pause (a
+  prompt, a tool call, or when it's idle waiting on you), so it can actually
+  react mid-task.
+- **Everything else (terminal capture):** the message pops up for *you* as a
+  yellow `[live] 💬` line in your terminal — random CLIs can't safely have
+  text injected into them, so you relay it.
 
-## Agent support matrix
+## Who works with what
 
-| Command | Capture | Events | Viewer messages |
+| Command | How it's captured | What shows up | Messages back |
 |---|---|---|---|
-| `live claude` | lifecycle hooks | prompt, pre_tool, tool_call, file_write (with diffs), response, input_requested, stream_end + model auto-detect | injected into the agent |
-| `live gemini` | PTY (hooks adapter planned — Gemini CLI v0.26+ has a hooks system) | output (ANSI-stripped, batched) | operator overlay |
-| `live codex` | PTY (hooks adapter planned — Codex supports hooks.json) | output | operator overlay |
-| `live <anything>` | PTY | output | operator overlay |
+| `live claude` | Claude Code hooks | prompts, tool calls, file diffs, replies, "waiting for you" pings, model auto-detect | straight into the agent |
+| `live gemini` | terminal recording (proper hooks planned — Gemini CLI has a hook system now) | terminal output, cleaned up | shown to you |
+| `live codex` | terminal recording (hooks planned — Codex has hooks too) | terminal output | shown to you |
+| `live <anything>` | terminal recording | terminal output | shown to you |
 
-## How it works
+## How it actually works
 
 ```
 live claude
- ├─ device-flow auth (~/.liveshortly/credentials.json, auto-refresh)
- ├─ POST /api/sessions            → session id + share link
- ├─ start in-process sidecar
- │    ├─ event queue → POST /events (ordered, retried, batched)
- │    ├─ viewer comments: SSE /agent/stream when the server supports it,
- │    │  3s polling of /comments/pending otherwise (drain = ack)
- │    └─ localhost hook endpoint (random port + shared token)
- ├─ write temp settings: every Claude hook = `live hook <event>`
- ├─ exec claude --settings <tmp> (inherits the real terminal)
- └─ on exit: flush events → POST /stop → print replay link
+ ├─ sign in (~/.liveshortly/credentials.json, auto-refreshes)
+ ├─ open a session          → get the share link
+ ├─ spin up a little sidecar (lives as long as your session)
+ │    ├─ ships events to the server (ordered, retried)
+ │    ├─ listens for viewer comments (real-time push, polling as fallback)
+ │    └─ a tiny localhost endpoint for the hooks to talk to
+ ├─ hand Claude a temp settings file wiring every hook to `live hook <event>`
+ ├─ run claude for real (it owns your terminal like normal)
+ └─ on exit: flush everything → close the session → print the replay link
 ```
 
-For Claude Code, `live` injects lifecycle hooks through a temporary
-`--settings` file — that's what yields structured, semantic events instead
-of raw terminal text. `live hook <event>` is the same binary in relay mode:
-it forwards the hook's stdin JSON to the sidecar over localhost and prints
-the sidecar's hook response (which is how viewer comments become
-`additionalContext`). It always exits 0 in ≤6s, so capture problems can
-never wedge the agent.
+The trick for Claude is those lifecycle hooks — that's how we get real
+structured events (this file changed, that command ran) instead of just
+scraping terminal text. `live hook <event>` is the same binary wearing a
+different hat: it just relays the hook's data to the sidecar and hands back
+the response. It always bails out cleanly in a few seconds, so even if
+something's broken on our end, Claude never hangs waiting on us.
 
-For everything else, `live` runs the command inside a pseudo-terminal and
-records its output, mirroring the terminal untouched for you.
+For non-Claude agents there's no hook system to lean on, so we run them inside
+a pseudo-terminal and record what scrolls by — mirroring it to you untouched.
 
-Full architecture and design decisions: [docs/DESIGN.md](docs/DESIGN.md).
-Upcoming server-side capabilities this client is ready for:
-[docs/SERVER-PROMPT.md](docs/SERVER-PROMPT.md).
+Want the deeper dive? [docs/DESIGN.md](docs/DESIGN.md). And the server side
+this client already talks to: [docs/SERVER-PROMPT.md](docs/SERVER-PROMPT.md).
 
-## Configuration
+## Knobs & files
 
-| What | Where |
+| Thing | Where it lives |
 |---|---|
-| API endpoint | `~/.liveshortly/host.json` `{"api_url": "...", "web_url": "..."}`, else `LIVESHORTLY_API_URL` env, else `http://localhost:8000` |
-| Credentials | `~/.liveshortly/credentials.json` (0600), override with `LIVESHORTLY_CRED_PATH` |
-| Diagnostics log | `~/.liveshortly/live.log` (`live` never prints over the agent's TUI) |
-| Idle viewer delivery | On by default for interactive `live claude`: a per-session channel MCP server pushes viewer messages to Claude even while it sits idle. The first launch shows Claude Code's one-time "Loading development channels" confirmation (accept it once — it's remembered thereafter). Set `LIVE_CHANNEL=0` to force pure hook-boundary delivery. Skipped in `-p`/headless mode. Channel diagnostics: `~/.liveshortly/channel.log` |
+| Which server | `~/.liveshortly/host.json` `{"api_url": "...", "web_url": "..."}`, or the `LIVESHORTLY_API_URL` env var, else localhost |
+| Your login | `~/.liveshortly/credentials.json` (0600) — point elsewhere with `LIVESHORTLY_CRED_PATH` |
+| Logs | `~/.liveshortly/live.log` (we never scribble over the agent's screen) |
+| Idle messages | On by default for `live claude` — a per-session channel lets viewer messages reach Claude even while it's idle. First run, Claude Code shows a one-time "load development channels?" prompt — just say yes. Set `LIVE_CHANNEL=0` to turn it off. Channel logs at `~/.liveshortly/channel.log` |
 
-## Troubleshooting
+## When something's off
 
-- **"not signed in"** — `live login`. If it loops, delete
-  `~/.liveshortly/credentials.json` and retry.
-- **No events in the feed** — check `~/.liveshortly/live.log`; every upload
-  failure is logged there with the reason.
-- **Session stuck "live" after a crash** — the server reaps agent-silent
-  sessions once presence support (docs/SERVER-PROMPT.md) is deployed;
-  until then it ends on the next `/stop` or archive pass.
+- **"not signed in"** — run `live login`. If it keeps looping, delete
+  `~/.liveshortly/credentials.json` and try again.
+- **Nothing showing up in the feed** — peek at `~/.liveshortly/live.log`,
+  every failed upload logs why.
+- **Session stuck on "live" after a crash** — the server cleans up sessions
+  whose agent went quiet; worst case it wraps up on the next stop.
 
-## Development
+## Poking at the code
 
 ```bash
-make build      # ./bin/live
+make build      # → ./bin/live
 make vet
 go test ./...
 ```
 
-Layout:
+Roughly where things are:
 
 ```
-cmd/live/            CLI entry: run / login / whoami / hook relay
-internal/hostcfg/    endpoint + credential path resolution
-internal/auth/       device flow, token refresh, credentials.json
-internal/api/        LiveShortly REST + agent SSE client
-internal/sidecar/    event queue, comment receiver, hook handlers, diffs
-internal/adapter/    claude (--settings hook injection) and PTY runners
+cmd/live/            the CLI: run / login / whoami / hook relay
+internal/hostcfg/    figuring out the server + where creds live
+internal/auth/       sign-in, token refresh, the credentials file
+internal/api/        talking to LiveShortly (REST + live stream)
+internal/sidecar/    event queue, comment listener, hook handlers, diffs
+internal/adapter/    Claude (hook injection) and the terminal-capture runner
 ```
 
-## Roadmap
+## Where this is headed
 
-- [ ] Gemini CLI hooks adapter (semantic events instead of PTY)
-- [ ] Codex hooks adapter
-- [ ] Real-time comment push via `/agent/stream` (client ready; server change in flight)
-- [ ] `live --interactive-viewers`: opt-in PTY stdin injection when the agent is idle
-- [x] Homebrew tap (`resapce/homebrew-tap`)
-- [x] Release binaries + `live update` self-updater (`/install/` on the website)
-- [ ] asciinema-style visual replay upload alongside semantic events
+- [ ] Proper hooks for Gemini CLI (real events instead of terminal scraping)
+- [ ] Same for Codex
+- [x] Real-time viewer comments (live push, no more polling)
+- [x] Idle-viewer messages that reach Claude while it's waiting
+- [x] Homebrew tap
+- [x] Self-updating releases (`live update`)
+- [ ] Let viewers answer Claude's "can I run this?" prompts from the web
+- [ ] Visual asciinema-style replay alongside the event feed
+
+It's early and moving fast — if you try it and something's janky, that's
+useful to hear. 🚀
