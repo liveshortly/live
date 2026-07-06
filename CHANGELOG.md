@@ -4,10 +4,20 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v0.4.0 — 2026-07-06
+
+- **Permission control is now ON by default** for interactive `live claude`.
+  You approve tool runs from a tmux popup (when tmux is installed) or the
+  session page — allow / deny / allow-always, owner only. Turn it off per run
+  with `--no-permissions` / `LIVE_WEB_PERMS=0`; disable just the tmux popup
+  with `LIVE_TMUX=0`. When tmux is absent, a plain `live claude` falls back to
+  Claude's native terminal prompts (install tmux for the in-terminal popup),
+  and headless `-p`/`--print` runs are never gated.
+
 ## v0.3.0 — 2026-07-06
 
-**Permission control — answer Claude's tool prompts from the web, or a tmux
-popup.** All opt-in; plain `live claude` is unchanged.
+Permission control — answer Claude's tool prompts from the web, or a tmux
+popup. (Opt-in in v0.3.0; on by default from v0.4.0.)
 
 - New `--web-permissions` mode (`LIVE_WEB_PERMS=1`), opt-in, owner-only:
   answer Claude's tool-permission prompts from the web instead of the

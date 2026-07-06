@@ -130,4 +130,4 @@ else
 fi
 
 say "done. Try:  live claude"
-say "permission control (opt-in):  LIVE_WEB_PERMS=1 live claude  ·  LIVE_TMUX=1 live claude (needs tmux)"
+say "permission control is on by default (tmux popup / session page) — disable with LIVE_WEB_PERMS=0"

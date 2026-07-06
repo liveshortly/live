@@ -30,17 +30,22 @@ Usage:
   live <command> [args...]   Run any agent/CLI, captured via PTY recording
   live -- <command> [...]    Same, unambiguous form
 
+Permission control (ON by default for live claude):
+  You approve Claude's tool runs from a tmux popup (if tmux is installed) or
+  the session page — allow / deny / allow-always, owner only. While on, it
+  gates every tool, so your local allowlist is bypassed. Without tmux, a plain
+  live claude uses Claude's native terminal prompts instead.
+
 Options (before the command):
   --title <t>                Session title (default: current directory name)
-  --web-permissions          Answer Claude's tool-permission prompts from the
-                             web (owner only). Claude pauses on each tool until
-                             you approve/deny on the session page. While on, it
-                             gates every tool — your local allowlist is bypassed.
+  --no-permissions           Turn permission control off for this run
+  --web-permissions          Force it on (e.g. web-only when tmux is absent)
 
 Environment:
   LIVESHORTLY_API_URL        API base (default from ~/.liveshortly/host.json)
   LIVESHORTLY_CRED_PATH      Credential file (default ~/.liveshortly/credentials.json)
-  LIVE_WEB_PERMS=1           Same as --web-permissions
+  LIVE_WEB_PERMS=0           Turn permission control off (default: on)
+  LIVE_TMUX=0                Disable the tmux popup (use web-only; default: on)
 `
 
 func main() {

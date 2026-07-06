@@ -43,7 +43,13 @@ func profileFor(bin string) agentProfile {
 // code to propagate.
 func cmdRun(args []string) int {
 	title := ""
-	webPerms := os.Getenv("LIVE_WEB_PERMS") == "1"
+	// Permission control is ON by default; disable with LIVE_WEB_PERMS=0.
+	// tmux popups are ON by default when tmux is present; disable with
+	// LIVE_TMUX=0. Flags below still force-enable for convenience.
+	wpEnv := os.Getenv("LIVE_WEB_PERMS")
+	tmEnv := os.Getenv("LIVE_TMUX")
+	webPerms := wpEnv != "0"
+	tmuxWanted := tmEnv != "0"
 	for len(args) > 0 {
 		switch args[0] {
 		case "--title":
@@ -55,6 +61,9 @@ func cmdRun(args []string) int {
 			args = args[2:]
 		case "--web-permissions":
 			webPerms = true
+			args = args[1:]
+		case "--no-permissions":
+			webPerms = false
 			args = args[1:]
 		case "--":
 			args = args[1:]
@@ -108,16 +117,34 @@ parsed:
 		logger = log.New(logf, sessionID[:8]+" ", log.LstdFlags)
 	}
 
-	tmuxMode := os.Getenv("LIVE_TMUX") == "1" && prof.captureMode == "hooks"
-	if tmuxMode {
-		webPerms = true // tmux popups only make sense with permission gating
+	hooks := prof.captureMode == "hooks"
+	// Headless -p/--print runs are non-interactive automation — no human is
+	// there to answer a permission, so never gate them.
+	if isPrintMode(userArgs) {
+		webPerms = false
+	}
+	hasTmux := false
+	if hooks {
+		if _, err := exec.LookPath("tmux"); err == nil {
+			hasTmux = true
+		}
+	}
+
+	// Resolve the permission mode. Default: tmux popups when tmux is present;
+	// otherwise, on a pure default (no LIVE_* set), fall back to Claude's
+	// native terminal prompts rather than stranding a solo keyboard user on
+	// web-only. Explicit LIVE_WEB_PERMS=1 forces web-only even without tmux.
+	tmuxMode := webPerms && tmuxWanted && hooks && hasTmux
+	if webPerms && hooks && !tmuxMode && !hasTmux && wpEnv == "" && tmEnv == "" {
+		fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m tip: install tmux for in-terminal permission popups — using Claude's native prompts for now\n\n")
+		webPerms = false
 	}
 
 	sc := &sidecar.Sidecar{
 		Client:         client,
 		SessionID:      sessionID,
 		WebURL:         hostcfg.WebURL(),
-		WebPermissions: webPerms && prof.captureMode == "hooks",
+		WebPermissions: webPerms && hooks,
 		Log:            logger,
 	}
 	if sc.WebPermissions {
@@ -125,14 +152,14 @@ parsed:
 		if tmuxMode {
 			where = "a CLI popup or the session page"
 		}
-		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m web permissions ON — approve tool runs from %s\n\n", where)
+		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m permission control ON — approve tool runs from %s (LIVE_WEB_PERMS=0 to disable)\n\n", where)
 	}
 
 	var exitCode int
 	switch {
 	case tmuxMode:
 		exitCode = runHooksTmuxMode(sc, binPath, userArgs)
-	case prof.captureMode == "hooks":
+	case hooks:
 		exitCode = runHooksMode(sc, binPath, userArgs)
 	default:
 		exitCode = runPTYMode(sc, binPath, userArgs)
