@@ -40,6 +40,7 @@ func profileFor(bin string) agentProfile {
 // code to propagate.
 func cmdRun(args []string) int {
 	title := ""
+	webPerms := os.Getenv("LIVE_WEB_PERMS") == "1"
 	for len(args) > 0 {
 		switch args[0] {
 		case "--title":
@@ -49,6 +50,9 @@ func cmdRun(args []string) int {
 			}
 			title = args[1]
 			args = args[2:]
+		case "--web-permissions":
+			webPerms = true
+			args = args[1:]
 		case "--":
 			args = args[1:]
 			goto parsed
@@ -102,10 +106,14 @@ parsed:
 	}
 
 	sc := &sidecar.Sidecar{
-		Client:    client,
-		SessionID: sessionID,
-		WebURL:    hostcfg.WebURL(),
-		Log:       logger,
+		Client:         client,
+		SessionID:      sessionID,
+		WebURL:         hostcfg.WebURL(),
+		WebPermissions: webPerms && prof.captureMode == "hooks",
+		Log:            logger,
+	}
+	if sc.WebPermissions {
+		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m web permissions ON — approve tool runs from the session page\n\n")
 	}
 
 	var exitCode int
@@ -139,12 +147,24 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		fmt.Fprintf(os.Stderr, "live: %v\n", err)
 		return 1
 	}
-	settings, cleanup, err := adapter.WriteClaudeSettings(self)
+	settings, cleanup, err := adapter.WriteClaudeSettings(self, sc.WebPermissions)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "live: %v\n", err)
 		return 1
 	}
 	defer cleanup()
+
+	env := []string{
+		"LIVE_SIDECAR=" + addr,
+		"LIVE_TOKEN=" + token,
+		"LIVE_SESSION_ID=" + sc.SessionID,
+	}
+	if sc.WebPermissions {
+		// The PreToolUse relay blocks on a human verdict; give its HTTP client
+		// headroom past the sidecar's decision grace so it doesn't time out
+		// mid-wait. Must exceed awaitDecision's 8m grace, under the 10m hook.
+		env = append(env, "LIVE_HOOK_TIMEOUT=590")
+	}
 
 	args := []string{"--settings", settings}
 	// Channel delivery lets viewer messages reach Claude even while it is
@@ -165,11 +185,7 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		}
 	}
 	args = append(args, userArgs...)
-	code, err := adapter.RunWithHooks(binPath, args, []string{
-		"LIVE_SIDECAR=" + addr,
-		"LIVE_TOKEN=" + token,
-		"LIVE_SESSION_ID=" + sc.SessionID,
-	})
+	code, err := adapter.RunWithHooks(binPath, args, env)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "live: %v\n", err)
 	}

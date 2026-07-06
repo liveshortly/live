@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -42,7 +43,15 @@ func relay(args []string) []byte {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Live-Token", token)
 
-	hc := &http.Client{Timeout: 6 * time.Second}
+	// Default to a snappy timeout; web-permissions mode raises it via
+	// LIVE_HOOK_TIMEOUT so the PreToolUse relay can block on a human verdict.
+	timeout := 6 * time.Second
+	if v := os.Getenv("LIVE_HOOK_TIMEOUT"); v != "" {
+		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
+			timeout = time.Duration(secs) * time.Second
+		}
+	}
+	hc := &http.Client{Timeout: timeout}
 	resp, err := hc.Do(req)
 	if err != nil {
 		return nil

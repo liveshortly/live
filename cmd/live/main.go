@@ -32,10 +32,15 @@ Usage:
 
 Options (before the command):
   --title <t>                Session title (default: current directory name)
+  --web-permissions          Answer Claude's tool-permission prompts from the
+                             web (owner only). Claude pauses on each tool until
+                             you approve/deny on the session page. While on, it
+                             gates every tool — your local allowlist is bypassed.
 
 Environment:
   LIVESHORTLY_API_URL        API base (default from ~/.liveshortly/host.json)
   LIVESHORTLY_CRED_PATH      Credential file (default ~/.liveshortly/credentials.json)
+  LIVE_WEB_PERMS=1           Same as --web-permissions
 `
 
 func main() {

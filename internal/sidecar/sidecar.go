@@ -42,6 +42,11 @@ type Sidecar struct {
 	// and are injected into the agent at the next hook boundary.
 	OnComment func(api.Comment)
 
+	// WebPermissions, when true, makes the PreToolUse hook block on the web
+	// `/decision` queue and answer Claude's tool-permission prompt from the
+	// owner's browser tap instead of the local keyboard. Opt-in.
+	WebPermissions bool
+
 	Log *log.Logger
 
 	events chan event

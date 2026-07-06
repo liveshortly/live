@@ -4,6 +4,17 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## Unreleased
+
+- New `--web-permissions` mode (`LIVE_WEB_PERMS=1`), opt-in, owner-only:
+  answer Claude's tool-permission prompts from the web instead of the
+  keyboard. The PreToolUse hook blocks and long-polls the `/decision`
+  endpoint; your Approve/Deny tap on the session page becomes Claude's
+  permission decision, pre-empting the local prompt. Verified end to end
+  (allow → tool runs, deny → tool blocked, no keyboard prompt either way).
+  While on, it gates every matched tool, so the local allowlist is bypassed;
+  falls back to deny if unanswered within ~8 minutes.
+
 ## v0.2.2 — 2026-07-06
 
 - Fix: viewer comments delivered to an idle Claude over the channel were

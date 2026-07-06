@@ -30,8 +30,16 @@ func claudeHook(liveBin, event string, timeoutSec int, matcher string) map[strin
 
 // WriteClaudeSettings writes the temporary settings file passed to
 // `claude --settings`. It wires all capture hooks and disables the legacy
-// liveshortly marketplace plugin so a session is never captured twice.
-func WriteClaudeSettings(liveBin string) (path string, cleanup func(), err error) {
+// liveshortly marketplace plugin so a session is never captured twice. When
+// webPerms is set, the PreToolUse hook is given a long timeout so it can block
+// while the owner answers the permission prompt from the web.
+func WriteClaudeSettings(liveBin string, webPerms bool) (path string, cleanup func(), err error) {
+	// PreToolUse normally returns instantly; in web-permissions mode it blocks
+	// on a human verdict (awaitDecision grace is 8m), so give it 10m headroom.
+	preToolTimeout := 8
+	if webPerms {
+		preToolTimeout = 600
+	}
 	settings := map[string]any{
 		"enabledPlugins": map[string]any{
 			"liveshortly@liveshortly": false,
@@ -45,7 +53,7 @@ func WriteClaudeSettings(liveBin string) (path string, cleanup func(), err error
 		"hooks": map[string]any{
 			"SessionStart":     []any{claudeHook(liveBin, "session-start", 15, "")},
 			"UserPromptSubmit": []any{claudeHook(liveBin, "user-prompt-submit", 10, "")},
-			"PreToolUse":       []any{claudeHook(liveBin, "pre-tool-use", 8, "Edit|Write|MultiEdit|Bash|WebFetch")},
+			"PreToolUse":       []any{claudeHook(liveBin, "pre-tool-use", preToolTimeout, "Edit|Write|MultiEdit|Bash|WebFetch")},
 			"PostToolUse":      []any{claudeHook(liveBin, "post-tool-use", 10, "Edit|Write|MultiEdit|Bash")},
 			"Notification":     []any{claudeHook(liveBin, "notification", 10, "")},
 			"Stop":             []any{claudeHook(liveBin, "stop", 15, "")},

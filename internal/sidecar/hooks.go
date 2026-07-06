@@ -2,6 +2,7 @@ package sidecar
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -121,7 +122,35 @@ func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
 			"ts":     nowISO(),
 		})
 	}
+
+	// Opt-in web permissions: block here and let the owner answer Claude's
+	// permission prompt from the web. awaitDecision surfaces an Approve/Deny
+	// prompt to the feed and long-polls /decision; the verdict becomes Claude's
+	// PreToolUse permission decision, pre-empting the local keyboard prompt.
+	if s.WebPermissions {
+		verdict := s.awaitDecision(context.Background(), tool, permissionDesc(tool, in))
+		return map[string]any{
+			"hookSpecificOutput": map[string]any{
+				"hookEventName":            "PreToolUse",
+				"permissionDecision":       verdict, // "allow" | "deny"
+				"permissionDecisionReason": "Answered by the session owner via LiveShortly",
+			},
+		}
+	}
 	return nil
+}
+
+// permissionDesc is the human-readable subject of a permission prompt.
+func permissionDesc(tool string, in map[string]any) string {
+	switch tool {
+	case "Bash":
+		return truncate(str(in, "command"), 300)
+	case "Edit", "Write", "MultiEdit":
+		return filePath(in)
+	case "WebFetch":
+		return str(in, "url")
+	}
+	return tool
 }
 
 func (s *Sidecar) hookPostToolUse(p map[string]any) map[string]any {
