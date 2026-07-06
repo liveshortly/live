@@ -4,6 +4,16 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v0.2.1 — 2026-07-06
+
+- Idle-viewer channel delivery is now **on by default** for interactive
+  `live claude`: a per-session channel MCP server pushes viewer messages to
+  Claude even while it sits idle (previously opt-in behind `LIVE_CHANNEL=1`).
+  Verified end to end — an idle Claude surfaces and answers a viewer comment.
+  The first launch shows Claude Code's one-time "Loading development channels"
+  confirmation (accept it once). Set `LIVE_CHANNEL=0` to force pure
+  hook-boundary delivery; skipped automatically in `-p`/headless mode.
+
 ## v0.2.0 — 2026-07-05
 
 - New `live update` command: self-updates from the release binaries served
