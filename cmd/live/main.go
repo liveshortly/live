@@ -64,6 +64,8 @@ func main() {
 		fmt.Print(usage)
 	case "hook":
 		cmdHook(os.Args[2:])
+	case "perm-prompt":
+		cmdPermPrompt(os.Args[2:])
 	case "channel":
 		cmdChannel()
 	default:

@@ -6,14 +6,17 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/resapce/live/internal/adapter"
 	"github.com/resapce/live/internal/api"
 	"github.com/resapce/live/internal/auth"
 	"github.com/resapce/live/internal/hostcfg"
+	"github.com/resapce/live/internal/perm"
 	"github.com/resapce/live/internal/sidecar"
 )
 
@@ -105,6 +108,11 @@ parsed:
 		logger = log.New(logf, sessionID[:8]+" ", log.LstdFlags)
 	}
 
+	tmuxMode := os.Getenv("LIVE_TMUX") == "1" && prof.captureMode == "hooks"
+	if tmuxMode {
+		webPerms = true // tmux popups only make sense with permission gating
+	}
+
 	sc := &sidecar.Sidecar{
 		Client:         client,
 		SessionID:      sessionID,
@@ -113,12 +121,18 @@ parsed:
 		Log:            logger,
 	}
 	if sc.WebPermissions {
-		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m web permissions ON — approve tool runs from the session page\n\n")
+		where := "the session page"
+		if tmuxMode {
+			where = "a CLI popup or the session page"
+		}
+		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m web permissions ON — approve tool runs from %s\n\n", where)
 	}
 
 	var exitCode int
-	switch prof.captureMode {
-	case "hooks":
+	switch {
+	case tmuxMode:
+		exitCode = runHooksTmuxMode(sc, binPath, userArgs)
+	case prof.captureMode == "hooks":
 		exitCode = runHooksMode(sc, binPath, userArgs)
 	default:
 		exitCode = runPTYMode(sc, binPath, userArgs)
@@ -131,6 +145,110 @@ parsed:
 		fmt.Fprintf(os.Stderr, "\nlive: session stop failed (will be reaped): %v\n", err)
 	}
 	return exitCode
+}
+
+// runHooksTmuxMode (experimental, LIVE_TMUX=1) runs Claude inside an isolated
+// tmux session so a permission prompt can appear in a clean display-popup
+// (keyboard-answerable) without corrupting Claude's TUI — racing the web
+// verdict. Falls back to web-only if tmux is missing.
+func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
+	tmuxBin, err := exec.LookPath("tmux")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "live: LIVE_TMUX set but tmux not found — using web-only permissions")
+		return runHooksMode(sc, binPath, userArgs)
+	}
+
+	broker := perm.New(func(ctx context.Context) (string, error) {
+		return sc.Client.GetDecision(sc.SessionID)
+	}, 8*time.Minute)
+	sc.Broker = broker
+
+	sc.Start(context.Background())
+	addr, token, err := sc.StartHookServer()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "live: sidecar failed: %v\n", err)
+		return 1
+	}
+	self, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "live: %v\n", err)
+		return 1
+	}
+	settings, cleanup, err := adapter.WriteClaudeSettings(self, true)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "live: %v\n", err)
+		return 1
+	}
+	defer cleanup()
+
+	const sock = "liveshortly"
+	sess := "live-" + sc.SessionID[:8]
+	tmux := func(args ...string) *exec.Cmd {
+		c := exec.Command(tmuxBin, append([]string{"-L", sock}, args...)...)
+		// nested-tmux guard: our isolated socket must not inherit $TMUX.
+		c.Env = envWithout(os.Environ(), "TMUX", "TMUX_PANE")
+		return c
+	}
+	_ = tmux("kill-session", "-t", sess).Run() // clear any stale session
+
+	newArgs := []string{"new-session", "-d", "-s", sess,
+		"-e", "LIVE_SIDECAR=" + addr, "-e", "LIVE_TOKEN=" + token, "-e", "LIVE_SESSION_ID=" + sc.SessionID,
+		// The PreToolUse relay blocks on the broker (popup or web); its HTTP
+		// client must outlast the 8m decision grace, under the 10m hook.
+		"-e", "LIVE_HOOK_TIMEOUT=590",
+		binPath, "--settings", settings}
+	newArgs = append(newArgs, userArgs...)
+	if out, err := tmux(newArgs...).CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "live: tmux new-session failed: %v: %s\n", err, out)
+		return 1
+	}
+	_ = tmux("set-option", "-t", sess, "status", "off").Run()
+
+	// popup driver: raise a display-popup whenever a permission is pending
+	popupCmd := fmt.Sprintf("%q perm-prompt %q %q", self, addr, token)
+	go func() {
+		for range broker.Notify() {
+			_ = tmux("display-popup", "-t", sess, "-w", "76", "-h", "9", "-E", popupCmd).Run()
+		}
+	}()
+
+	// attach the user (foreground; returns when Claude exits and the session ends)
+	att := tmux("attach-session", "-t", sess)
+	att.Stdin, att.Stdout, att.Stderr = os.Stdin, os.Stdout, os.Stderr
+	signal.Ignore(os.Interrupt, syscall.SIGQUIT)
+	defer signal.Reset(os.Interrupt, syscall.SIGQUIT)
+	_ = att.Run()
+
+	_ = tmux("kill-session", "-t", sess).Run()
+	return 0
+}
+
+// envWithout returns env minus the named keys.
+func envWithout(env []string, keys ...string) []string {
+	drop := map[string]bool{}
+	for _, k := range keys {
+		drop[k] = true
+	}
+	out := env[:0:0]
+	for _, e := range env {
+		name := e
+		if i := indexByte(e, '='); i >= 0 {
+			name = e[:i]
+		}
+		if !drop[name] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func indexByte(s string, b byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == b {
+			return i
+		}
+	}
+	return -1
 }
 
 // runHooksMode captures via the agent's own lifecycle hooks (Claude Code).

@@ -22,6 +22,17 @@ Homebrew formula and `live version` report.
   for WebFetch. Verified end to end: after one "always" on `touch`, a second
   `touch` auto-ran with no further prompt; deny still blocks.
 
+- Experimental `LIVE_TMUX=1` — clean CLI permission prompts via tmux. Runs
+  Claude inside an isolated tmux session (dedicated socket) so a permission
+  request appears in a `tmux display-popup` (`[y] allow / [a] allow always /
+  [n] deny`) **without corrupting Claude's TUI** — tmux composites them in
+  separate regions. Dual-source: answer from the popup keyboard OR the web,
+  first responder wins (via the broker + a local `/perm` endpoint and a
+  `live perm-prompt` popup subcommand). Requires tmux; falls back to web-only
+  if absent. Verified e2e: both the popup-keyboard and web answers run the
+  tool. Caveat: you're wrapped in tmux (Ctrl-B prefix; nested-tmux quirks),
+  and it shows our allow/deny/always, not Claude's exact native menu.
+
 ## v0.2.2 — 2026-07-06
 
 - Fix: viewer comments delivered to an idle Claude over the channel were

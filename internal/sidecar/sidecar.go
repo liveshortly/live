@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/resapce/live/internal/api"
+	"github.com/resapce/live/internal/perm"
 )
 
 type event struct {
@@ -41,6 +42,10 @@ type Sidecar struct {
 	// it arrives. When nil (hooks mode) comments accumulate in a local queue
 	// and are injected into the agent at the next hook boundary.
 	OnComment func(api.Comment)
+
+	// Broker, when set (tmux mode), races a CLI popup answer against the web
+	// verdict for each permission. When nil, web-only (awaitDecision).
+	Broker *perm.Broker
 
 	// WebPermissions, when true, makes the PreToolUse hook block on the web
 	// `/decision` queue and answer Claude's tool-permission prompt from the
@@ -426,6 +431,42 @@ func (s *Sidecar) StartHookServer() (addr, token string, err error) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	// tmux popup <-> broker: the `live perm-prompt` popup reads the pending
+	// permission and posts the owner's keyboard answer.
+	mux.HandleFunc("GET /perm/pending", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Live-Token") != s.hookToken {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		out := map[string]any{}
+		if s.Broker != nil {
+			if p := s.Broker.Current(); p != nil {
+				out = map[string]any{"pending": true, "tool": p.Tool, "detail": p.Detail}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	})
+	mux.HandleFunc("POST /perm/answer", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Live-Token") != s.hookToken {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		var req struct {
+			Decision string `json:"decision"`
+		}
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		_ = json.Unmarshal(body, &req)
+		ok := false
+		if s.Broker != nil && (req.Decision == "allow" || req.Decision == "deny" || req.Decision == "always") {
+			if p := s.Broker.Current(); p != nil {
+				ok = p.Resolve(req.Decision, "cli")
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": ok})
 	})
 
 	// Permission relay for the `live channel` MCP subprocess: surface the

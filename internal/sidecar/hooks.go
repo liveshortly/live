@@ -136,7 +136,22 @@ func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
 			s.Log.Printf("permission %q auto-allowed (remembered %q)", tool, key)
 			return permOutput("allow", "Allowed earlier via LiveShortly (don't ask again)")
 		}
-		verdict := s.awaitDecision(context.Background(), tool, permissionDesc(tool, in))
+		desc := permissionDesc(tool, in)
+		var verdict string
+		if s.Broker != nil {
+			// tmux mode: surface the web prompt too, then race popup vs web.
+			msg := "Claude wants to run " + tool
+			if desc != "" {
+				msg += ": " + desc
+			}
+			s.Emit("input_requested", map[string]any{"message": truncate(msg, 500), "kind": "permission", "ts": nowISO()})
+			go desktopNotify([]api.Comment{{Username: "permission", Message: msg}})
+			var source string
+			verdict, source = s.Broker.Request(context.Background(), tool, desc)
+			s.Log.Printf("permission %q → %s (%s)", tool, verdict, source)
+		} else {
+			verdict = s.awaitDecision(context.Background(), tool, desc)
+		}
 		reason := "Answered by the session owner via LiveShortly"
 		if verdict == "always" {
 			s.permRemember(key)
