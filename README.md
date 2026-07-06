@@ -1,5 +1,11 @@
 # live
 
+<p align="center">
+  <a href="https://liveshortly.com">
+    <img src="docs/demo.gif" width="100%" alt="live demo — run `live claude`, a shareable URL is generated, open it in the browser to watch the session stream live, and viewers talk back into the running session" />
+  </a>
+</p>
+
 **Put `live` in front of your coding agent and people can watch it work.**
 
 ```bash
