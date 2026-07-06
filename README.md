@@ -12,10 +12,11 @@
 </p>
 
 <p align="center">
-  <video src="https://github.com/resapce/Live/raw/main/docs/demo.mp4" poster="docs/demo-poster.jpg" width="100%" autoplay loop muted playsinline controls>
+  <a href="https://github.com/resapce/Live/raw/main/docs/demo.mp4">
     <img src="docs/demo.gif" width="100%" alt="live demo — run `live claude`, a shareable URL is generated, open it in the browser to watch the session stream live, and viewers talk back into the running session" />
-  </video>
+  </a>
 </p>
+<p align="center"><sub><a href="https://github.com/resapce/Live/raw/main/docs/demo.mp4">▶ watch in HD (mp4)</a></sub></p>
 
 <p align="center">
   <strong>Any agent &middot; live in one word &middot; watch it, replay it, talk back to it.</strong><br>
