@@ -4,7 +4,10 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
-## Unreleased
+## v0.3.0 — 2026-07-06
+
+**Permission control — answer Claude's tool prompts from the web, or a tmux
+popup.** All opt-in; plain `live claude` is unchanged.
 
 - New `--web-permissions` mode (`LIVE_WEB_PERMS=1`), opt-in, owner-only:
   answer Claude's tool-permission prompts from the web instead of the
@@ -22,7 +25,8 @@ Homebrew formula and `live version` report.
   for WebFetch. Verified end to end: after one "always" on `touch`, a second
   `touch` auto-ran with no further prompt; deny still blocks.
 
-- Experimental `LIVE_TMUX=1` — clean CLI permission prompts via tmux. Runs
+- `LIVE_TMUX=1` — clean CLI permission prompts via tmux (**install tmux for
+  the best experience**). Runs
   Claude inside an isolated tmux session (dedicated socket) so a permission
   request appears in a `tmux display-popup` (`[y] allow / [a] allow always /
   [n] deny`) **without corrupting Claude's TUI** — tmux composites them in

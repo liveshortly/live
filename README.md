@@ -119,28 +119,33 @@ live whoami           # make sure it took
 Your login lives at `~/.liveshortly/credentials.json` (locked down to 0600)
 and refreshes on its own.
 
-### Experimental / preview builds 🧪
+### Nice to have: tmux 🪄
 
-Want the bleeding edge (answer Claude's tool-permission prompts from the web,
-or from a clean tmux popup)? Those live in preview builds, off the stable
-channel — `live update` won't pull them, so your normal install is safe. Grab
-one by pinning its version:
+Not required, but **install tmux for the best experience** — it powers the
+clean CLI permission popups (`LIVE_TMUX=1`, below). Without it, permission
+control still works from the web. `brew install tmux` / `apt install tmux`.
 
-```bash
-live update --version v0.3.0-experimental.0.0.3
-# or straight from the installer:
-curl -fsSL https://liveshortly.com/install.sh | bash -s -- --version v0.3.0-experimental.0.0.3
-```
+## Answering Claude's permission prompts (v0.3.0+)
 
-Then opt into the experimental behavior per-session (both are off by default):
+By default Claude asks you to approve tool runs in the terminal. `live` can
+route those prompts to **the web, or a clean tmux popup** instead — handy when
+you're watching a session from your phone, or streaming it. Both are opt-in;
+plain `live claude` is unchanged.
 
 ```bash
-LIVE_WEB_PERMS=1 live claude   # approve/deny/allow-always tool runs from the session page
-LIVE_TMUX=1      live claude    # same, plus a clean CLI popup to answer at the keyboard (needs tmux)
+LIVE_WEB_PERMS=1 live claude   # approve / deny / allow-always from the session page
+LIVE_TMUX=1      live claude    # same, plus a clean CLI popup you answer at the keyboard (needs tmux)
 ```
 
-Plain `live claude` is unchanged in these builds. To go back to stable:
-`live update` (grabs the latest release).
+- **Allow / Deny / Allow-always** — "allow always" remembers the command for
+  the session so it stops asking (Claude's "don't ask again"), owner-only.
+- **`LIVE_TMUX=1`** runs Claude inside an isolated tmux session so the prompt
+  shows in a `display-popup` without touching Claude's TUI — answer from the
+  popup keyboard *or* the web, first one wins. Needs tmux; falls back to
+  web-only if it's missing.
+- While on, every write/execute/fetch tool is gated (your allowlist is
+  bypassed) — use **allow-always** to quiet the repeats. Unanswered prompts
+  deny after ~8 minutes.
 
 ## Using it
 

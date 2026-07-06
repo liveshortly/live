@@ -73,6 +73,12 @@ if ! command -v go >/dev/null 2>&1; then
               or 'brew install go' / your package manager), then rerun this script."
 fi
 
+# tmux is optional but recommended — it powers the clean in-terminal permission
+# popups (LIVE_TMUX=1). Without it, permission control still works from the web.
+if ! command -v tmux >/dev/null 2>&1; then
+  say "tip: install tmux for clean CLI permission popups (LIVE_TMUX=1) — 'brew install tmux' / your package manager. Optional."
+fi
+
 # ── 3. Pin the requested version, then build ─────────────────────────────────
 if [ -n "$REQ_VERSION" ]; then
   git -C "$SRC_DIR" checkout --quiet "$REQ_VERSION" \
@@ -124,3 +130,4 @@ else
 fi
 
 say "done. Try:  live claude"
+say "permission control (opt-in):  LIVE_WEB_PERMS=1 live claude  ·  LIVE_TMUX=1 live claude (needs tmux)"
