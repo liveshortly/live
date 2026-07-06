@@ -239,3 +239,9 @@ internal/adapter/    Claude (hook injection) and the terminal-capture runner
 
 It's early and moving fast — if you try it and something's janky, that's
 useful to hear. 🚀
+
+---
+
+<p align="center">
+  <sub>Made with 💚 by <a href="https://x.com/ironfisto/">@ironfisto</a> &middot; <a href="https://x.com/sec_r0">@sec_r0</a> &nbsp;·&nbsp; <a href="https://liveshortly.com">liveshortly.com</a></sub>
+</p>
