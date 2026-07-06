@@ -119,6 +119,29 @@ live whoami           # make sure it took
 Your login lives at `~/.liveshortly/credentials.json` (locked down to 0600)
 and refreshes on its own.
 
+### Experimental / preview builds 🧪
+
+Want the bleeding edge (answer Claude's tool-permission prompts from the web,
+or from a clean tmux popup)? Those live in preview builds, off the stable
+channel — `live update` won't pull them, so your normal install is safe. Grab
+one by pinning its version:
+
+```bash
+live update --version v0.3.0-experimental.0.0.3
+# or straight from the installer:
+curl -fsSL https://liveshortly.com/install.sh | bash -s -- --version v0.3.0-experimental.0.0.3
+```
+
+Then opt into the experimental behavior per-session (both are off by default):
+
+```bash
+LIVE_WEB_PERMS=1 live claude   # approve/deny/allow-always tool runs from the session page
+LIVE_TMUX=1      live claude    # same, plus a clean CLI popup to answer at the keyboard (needs tmux)
+```
+
+Plain `live claude` is unchanged in these builds. To go back to stable:
+`live update` (grabs the latest release).
+
 ## Using it
 
 ```bash
