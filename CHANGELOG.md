@@ -4,6 +4,14 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v0.2.2 — 2026-07-06
+
+- Fix: viewer comments delivered to an idle Claude over the channel were
+  echoed into the feed a second time as a raw `prompt` event, showing the
+  `<channel …>…</channel>` wrapper around the message. These synthetic
+  channel turns are now skipped — the clean `viewer_comment` event already
+  represents them.
+
 ## v0.2.1 — 2026-07-06
 
 - Idle-viewer channel delivery is now **on by default** for interactive
