@@ -4,6 +4,24 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v0.5.0 — 2026-07-07
+
+- **Session handoff / fork.** Continue any session you can read — live or
+  archived, yours or someone else's — as a brand-new session **you own**, with
+  any agent:
+  - `live claude --session <id>` forks from a session's latest state.
+  - `live claude --handoff <code>` forks from a pinned handoff snapshot.
+  - The original session is untouched; the server increments its fork count.
+    On launch, the new agent is seeded with the prior context: the digest is
+    written to `~/.liveshortly/handoffs/<id>.md` and Claude opens with a prompt
+    to read it, restate the state, and continue. PTY agents (gemini/codex/…)
+    get the file plus a paste-in banner. A private, unshared source prints a
+    clean "you don't have access to fork this session".
+  - `--pre-digest` (off by default) pre-compresses the context with a headless
+    `claude -p` pass before the interactive launch.
+- **`live handoff <session-id>`** prints the copyable command to continue a
+  session (mints a handoff code server-side).
+
 ## v0.4.0 — 2026-07-06
 
 - **Permission control is now ON by default** for interactive `live claude`.

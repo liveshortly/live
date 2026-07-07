@@ -10,11 +10,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/resapce/live/internal/api"
 	"github.com/resapce/live/internal/auth"
 	"github.com/resapce/live/internal/hostcfg"
 )
 
-var version = "0.2.0" // overridden via -ldflags "-X main.version=..."
+var version = "0.5.0" // overridden via -ldflags "-X main.version=..."
 
 const usage = `live — stream your coding-agent session to LiveShortly
 
@@ -30,6 +31,15 @@ Usage:
   live claude [args...]      Run Claude Code, captured via lifecycle hooks
   live <command> [args...]   Run any agent/CLI, captured via PTY recording
   live -- <command> [...]    Same, unambiguous form
+  live handoff <session-id>  Print the copyable command to continue a session
+
+Continue (fork) an existing session as a NEW session you own:
+  live claude --session <id>       Continue from a session's latest state
+  live claude --handoff <code>     Continue from a pinned handoff snapshot
+  The original session is untouched; the fork is a new session owned by you,
+  and your agent orients itself from the prior context on launch. Works with
+  any agent (live gemini --session <id>, …). --session/--handoff need read
+  access to the source (a private, unshared session returns "no access").
 
 Permission control (always ON for live claude):
   You approve Claude's tool runs from a tmux popup (if tmux is installed) or
@@ -40,6 +50,9 @@ Permission control (always ON for live claude):
 Options (before the command):
   --title <t>                Session title (default: current directory name)
   --no-permissions           Turn permission control off for this run
+  --session <id>             Continue from an existing session (fork)
+  --handoff <code>           Continue from a handoff snapshot (fork)
+  --pre-digest               Pre-compress the handoff context with claude -p
 
 Environment:
   LIVESHORTLY_API_URL        API base (default from ~/.liveshortly/host.json)
@@ -75,9 +88,44 @@ func main() {
 		cmdPermPrompt(os.Args[2:])
 	case "channel":
 		cmdChannel()
+	case "handoff":
+		os.Exit(cmdHandoff(os.Args[2:]))
 	default:
 		os.Exit(cmdRun(os.Args[1:]))
 	}
+}
+
+// cmdHandoff mints a handoff code for a session and prints the copyable command
+// that continues it as a new session. `live handoff <session-id>`.
+func cmdHandoff(args []string) int {
+	if len(args) < 1 || args[0] == "" {
+		fmt.Fprintln(os.Stderr, "usage: live handoff <session-id>")
+		return 2
+	}
+	id := args[0]
+	if _, err := auth.AccessToken(); err != nil {
+		fmt.Fprintln(os.Stderr, "live:", err)
+		return 1
+	}
+	info, err := api.New().GenerateHandoff(id)
+	if err != nil {
+		if err == api.ErrForkForbidden {
+			fmt.Fprintln(os.Stderr, "live: you don't have access to hand off this session")
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "live: could not create handoff: %v\n", err)
+		return 1
+	}
+	cmd := info.Command
+	if cmd == "" && info.Code != "" {
+		cmd = "live claude --handoff " + info.Code
+	}
+	if cmd == "" {
+		fmt.Fprintln(os.Stderr, "live: server returned no handoff command")
+		return 1
+	}
+	fmt.Println(cmd)
+	return 0
 }
 
 func cmdLogin() {

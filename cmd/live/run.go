@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -39,45 +43,132 @@ func profileFor(bin string) agentProfile {
 	}
 }
 
-// cmdRun implements `live [--title t] <agent> [args...]`. Returns the exit
-// code to propagate.
-func cmdRun(args []string) int {
-	title := ""
+// runOpts holds the flags parsed off the front of `live [opts] <agent> …`.
+type runOpts struct {
+	title       string
+	webPerms    bool
+	handoffCode string // --handoff <code>  → fork from a pinned handoff snapshot
+	sessionID   string // --session <id>    → fork from a session's latest state
+	preDigest   bool   // --pre-digest      → pre-compress the digest with claude -p
+}
+
+// parseRunFlags pulls the live-specific options out of the argument list and
+// returns them plus the remaining args (the agent command and its arguments).
+//
+// Leading options (--title, --no-permissions, and the fork flags) are consumed
+// up to the first non-flag token. The fork flags (--handoff/--session/
+// --pre-digest) are ALSO honored when they appear AFTER the agent name, since
+// that's how the feature reads — `live claude --session <id>`; the rest of the
+// agent's args pass through untouched. An explicit `--` ends live's parsing:
+// everything after it (including any --session) goes verbatim to the agent.
+// --handoff and --session are mutually exclusive. Split out for unit-testing.
+func parseRunFlags(args []string) (runOpts, []string, error) {
 	// tmux popups + web permission control are hardcoded ON for live claude
-	// (equivalent to LIVE_TMUX=1 LIVE_WEB_PERMS=1). Use --no-permissions to turn
+	// (equivalent to LIVE_TMUX=1 LIVE_WEB_PERMS=1). --no-permissions turns
 	// permission control off for a single run; headless -p/--print disables it
-	// automatically below.
-	webPerms := true
-	tmuxWanted := true
-	for len(args) > 0 {
-		switch args[0] {
-		case "--title":
-			if len(args) < 2 {
-				fmt.Fprintln(os.Stderr, "live: --title needs a value")
-				return 2
+	// automatically in cmdRun.
+	o := runOpts{webPerms: true}
+
+	// forkFlag consumes a fork option at args[i], advancing the index. Shared by
+	// the leading-flag loop and the post-agent scan so both placements behave
+	// identically. Returns the new index, or an error on a missing value.
+	forkFlag := func(args []string, i int) (int, bool, error) {
+		switch args[i] {
+		case "--handoff":
+			if i+1 >= len(args) {
+				return i, true, fmt.Errorf("--handoff needs a value")
 			}
-			title = args[1]
-			args = args[2:]
+			o.handoffCode = args[i+1]
+			return i + 2, true, nil
+		case "--session":
+			if i+1 >= len(args) {
+				return i, true, fmt.Errorf("--session needs a value")
+			}
+			o.sessionID = args[i+1]
+			return i + 2, true, nil
+		case "--pre-digest":
+			o.preDigest = true
+			return i + 1, true, nil
+		}
+		return i, false, nil
+	}
+
+	// Phase 1: leading options, up to the agent command or `--`.
+	i := 0
+	doubleDash := false
+leading:
+	for i < len(args) {
+		if ni, ok, err := forkFlag(args, i); err != nil {
+			return o, nil, err
+		} else if ok {
+			i = ni
+			continue
+		}
+		switch args[i] {
+		case "--title":
+			if i+1 >= len(args) {
+				return o, nil, fmt.Errorf("--title needs a value")
+			}
+			o.title = args[i+1]
+			i += 2
 		case "--web-permissions":
-			webPerms = true
-			args = args[1:]
+			o.webPerms = true
+			i++
 		case "--no-permissions":
-			webPerms = false
-			args = args[1:]
+			o.webPerms = false
+			i++
 		case "--":
-			args = args[1:]
-			goto parsed
+			i++
+			doubleDash = true
+			break leading
 		default:
-			goto parsed
+			break leading
 		}
 	}
-parsed:
-	if len(args) == 0 {
+	rest := args[i:]
+
+	// Phase 2: the agent + its args. Unless `--` was used, pull any fork flags
+	// out of the agent args too (so `live claude --session X` forks), leaving
+	// everything else for the agent.
+	if !doubleDash && len(rest) > 0 {
+		out := []string{rest[0]}
+		j := 1
+		for j < len(rest) {
+			if nj, ok, err := forkFlag(rest, j); err != nil {
+				return o, nil, err
+			} else if ok {
+				j = nj
+				continue
+			}
+			out = append(out, rest[j])
+			j++
+		}
+		rest = out
+	}
+
+	if o.handoffCode != "" && o.sessionID != "" {
+		return o, nil, fmt.Errorf("--handoff and --session are mutually exclusive")
+	}
+	return o, rest, nil
+}
+
+// cmdRun implements `live [opts] <agent> [args...]`. Returns the exit code to
+// propagate.
+func cmdRun(args []string) int {
+	opts, rest, err := parseRunFlags(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "live:", err)
+		return 2
+	}
+	title := opts.title
+	webPerms := opts.webPerms
+	tmuxWanted := true
+	if len(rest) == 0 {
 		fmt.Print(usage)
 		return 2
 	}
 
-	bin, userArgs := args[0], args[1:]
+	bin, userArgs := rest[0], rest[1:]
 	binPath, err := exec.LookPath(bin)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "live: command not found: %s\n", bin)
@@ -100,10 +191,34 @@ parsed:
 	}
 
 	client := api.New()
-	sessionID, err := client.CreateSession(title, prof.framework, prof.framework, prof.captureMode)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "live: could not start session: %v\n", err)
-		return 1
+
+	// A handoff/fork creates a brand-new session owned by the current user that
+	// continues from another (live or archived, possibly someone else's). The
+	// server returns a digest of the source; everything downstream runs
+	// unchanged against the new sessionID.
+	var (
+		sessionID string
+		bundle    api.HandoffBundle
+		forked    bool
+	)
+	if opts.handoffCode != "" || opts.sessionID != "" {
+		ref := api.ForkRef{HandoffCode: opts.handoffCode, SessionID: opts.sessionID}
+		sessionID, bundle, err = client.CreateSessionForked(title, prof.framework, prof.framework, prof.captureMode, ref)
+		if err != nil {
+			if errors.Is(err, api.ErrForkForbidden) {
+				fmt.Fprintln(os.Stderr, "live: you don't have access to fork this session")
+			} else {
+				fmt.Fprintf(os.Stderr, "live: could not fork session: %v\n", err)
+			}
+			return 1
+		}
+		forked = true
+	} else {
+		sessionID, err = client.CreateSession(title, prof.framework, prof.framework, prof.captureMode)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "live: could not start session: %v\n", err)
+			return 1
+		}
 	}
 	liveURL := hostcfg.WebURL() + "/session/" + sessionID
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m streaming → %s\n\n", liveURL)
@@ -151,6 +266,14 @@ parsed:
 			where = "a CLI popup or the session page"
 		}
 		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m permission control ON — approve tool runs from %s (LIVE_WEB_PERMS=0 to disable)\n\n", where)
+	}
+
+	// Seed the new agent with the prior context. For hooks agents (claude) this
+	// appends an opening prompt that points at the digest file; for pty agents
+	// it writes the file and prints a banner to paste. Must run before dispatch
+	// so the (possibly augmented) userArgs reach the launcher.
+	if forked {
+		userArgs = seedHandoff(bundle, sessionID, hooks, userArgs, opts.preDigest, binPath)
 	}
 
 	var exitCode int
@@ -375,6 +498,91 @@ func isPrintMode(args []string) bool {
 		}
 	}
 	return false
+}
+
+// seedHandoff persists the handoff digest and orients the new agent with it.
+// The digest is deliberately raw — the CLI does not summarize it; the user's
+// own agent does the comprehension. Returns userArgs, possibly with an opening
+// prompt appended (hooks agents only). Best-effort: a write failure degrades to
+// a plain live session rather than aborting the run.
+func seedHandoff(b api.HandoffBundle, sessionID string, hooks bool, userArgs []string, preDigest bool, claudeBin string) []string {
+	path, err := writeHandoffFile(sessionID, b.Markdown)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "live: could not write handoff digest (%v) — continuing without prior context\n", err)
+		return userArgs
+	}
+
+	// Optional pre-compression with the user's own Claude (off by default).
+	if preDigest && hooks {
+		if compact, derr := preDigestMarkdown(claudeBin, b.Markdown); derr == nil && compact != "" {
+			if werr := os.WriteFile(path, []byte(compact), 0o644); werr == nil {
+				fmt.Fprint(os.Stderr, "\x1b[36m● live\x1b[0m pre-digest: compressed the prior context with claude -p\n")
+			}
+		}
+	}
+
+	src := b.Source
+	fmt.Fprintf(os.Stderr, "\x1b[36m● live\x1b[0m continuing from \x1b[1m%s\x1b[0m", firstNonEmpty(src.Title, src.ID, "a prior session"))
+	if src.OwnerHandle != "" {
+		fmt.Fprintf(os.Stderr, " (@%s)", src.OwnerHandle)
+	}
+	fmt.Fprintf(os.Stderr, " — digest at %s\n", path)
+	if b.Truncated {
+		fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m the prior context was long; the digest keeps the most recent turns (truncated)\n")
+	}
+	fmt.Fprintln(os.Stderr)
+
+	seed := fmt.Sprintf("You are continuing a handed-off LiveShortly session. Read %s for the full prior context, then restate the state in 2–3 lines and continue. The working tree may differ from the original machine.", path)
+	if hooks {
+		// claude takes an initial prompt as a trailing positional arg.
+		return append(userArgs, seed)
+	}
+	// pty agents: we can't reliably inject a first prompt agent-agnostically, so
+	// tell the operator what to paste.
+	fmt.Fprintf(os.Stderr, "\x1b[36m● live\x1b[0m paste this to orient your agent:\n    %s\n\n", seed)
+	return userArgs
+}
+
+// writeHandoffFile stores a session's digest markdown at
+// ~/.liveshortly/handoffs/<id>.md and returns the path.
+func writeHandoffFile(sessionID, markdown string) (string, error) {
+	dir := hostcfg.HandoffDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, sessionID+".md")
+	if err := os.WriteFile(path, []byte(markdown), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// preDigestMarkdown runs a one-shot headless `claude -p` over the raw digest to
+// pre-compress it into a tighter brief. Best-effort; the caller keeps the raw
+// digest on any error.
+func preDigestMarkdown(claudeBin, markdown string) (string, error) {
+	if claudeBin == "" {
+		return "", fmt.Errorf("no claude binary for pre-digest")
+	}
+	cmd := exec.Command(claudeBin, "-p",
+		"Compress the following handoff digest into a tight brief a coding agent can act on: goal, key decisions, current state, and next steps. Preserve file paths and identifiers verbatim. Output only the brief.")
+	cmd.Stdin = strings.NewReader(markdown)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // runPTYMode captures raw terminal output for agents without hooks. Viewer

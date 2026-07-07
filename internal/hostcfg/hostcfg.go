@@ -81,3 +81,9 @@ func CredPath() string {
 func LogPath() string {
 	return filepath.Join(home(), ".liveshortly", "live.log")
 }
+
+// HandoffDir is where the shim stores handoff digests (one markdown file per
+// forked session) that get handed to the new agent as opening context.
+func HandoffDir() string {
+	return filepath.Join(home(), ".liveshortly", "handoffs")
+}

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -99,6 +100,120 @@ func (c *Client) CreateSession(title, framework, agent, captureMode string) (str
 		return "", fmt.Errorf("create session: empty id")
 	}
 	return out.ID, nil
+}
+
+// ── Handoff / fork ────────────────────────────────────────────────────────────
+
+// ErrForkForbidden means the caller can't read the source session (server 403),
+// so it can't be forked. Surfaced with a clean message by the CLI.
+var ErrForkForbidden = errors.New("you don't have access to fork this session")
+
+// ForkRef identifies the session to continue from. Exactly one of HandoffCode
+// or SessionID is set; Seq optionally pins a snapshot (only meaningful with
+// SessionID — a handoff code already carries its own pinned snapshot).
+type ForkRef struct {
+	HandoffCode string // "ho_…" → forked_from
+	SessionID   string // → forked_from_session_id
+	Seq         *int   // → forked_from_seq (optional)
+}
+
+// HandoffTurn is one condensed turn from the source session's digest.
+type HandoffTurn struct {
+	Seq  int    `json:"seq"`
+	Role string `json:"role"`
+	Text string `json:"text"`
+	Tool string `json:"tool,omitempty"`
+	File string `json:"file,omitempty"`
+}
+
+// HandoffSource describes the session that was forked from.
+type HandoffSource struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	OwnerHandle string `json:"owner_handle"`
+	Agent       string `json:"agent"`
+	GitRemote   string `json:"git_remote"`
+	GitBranch   string `json:"git_branch"`
+	Model       string `json:"model"`
+	CreatedAt   string `json:"created_at"`
+	EndedAt     string `json:"ended_at"`
+	Status      string `json:"status"`
+	SnapshotSeq int    `json:"snapshot_seq"`
+}
+
+// HandoffBundle is the digest the server returns when creating a forked
+// session: raw markdown plus structured turns and source metadata. The CLI
+// hands the markdown to the new agent as opening context and does not
+// summarize it — the user's own agent does the comprehension.
+type HandoffBundle struct {
+	Markdown  string        `json:"markdown"`
+	Turns     []HandoffTurn `json:"turns"`
+	Source    HandoffSource `json:"source"`
+	Truncated bool          `json:"truncated"`
+}
+
+// CreateSessionForked opens a new session (owned by the caller) that continues
+// from another session, and returns its id plus the handoff digest. Server-side
+// authorization (canRead) and the source's fork_count increment happen
+// automatically; a 403 is mapped to ErrForkForbidden.
+func (c *Client) CreateSessionForked(title, framework, agent, captureMode string, from ForkRef) (string, HandoffBundle, error) {
+	body := map[string]any{
+		"title":        title,
+		"framework":    framework,
+		"agent":        agent,
+		"capture_mode": captureMode,
+	}
+	switch {
+	case from.HandoffCode != "":
+		body["forked_from"] = from.HandoffCode
+	case from.SessionID != "":
+		body["forked_from_session_id"] = from.SessionID
+		if from.Seq != nil {
+			body["forked_from_seq"] = *from.Seq
+		}
+	default:
+		return "", HandoffBundle{}, fmt.Errorf("fork: no handoff code or session id")
+	}
+
+	var out struct {
+		ID      string        `json:"id"`
+		Handoff HandoffBundle `json:"handoff"`
+	}
+	status, err := c.do("POST", "/api/sessions", body, &out)
+	if status == http.StatusForbidden {
+		return "", HandoffBundle{}, ErrForkForbidden
+	}
+	if err != nil {
+		return "", HandoffBundle{}, err
+	}
+	if out.ID == "" {
+		return "", HandoffBundle{}, fmt.Errorf("fork session: empty id")
+	}
+	return out.ID, out.Handoff, nil
+}
+
+// HandoffInfo is the copyable-command payload from POST
+// /api/sessions/{id}/handoff — used to mint `live claude --handoff <code>`.
+type HandoffInfo struct {
+	Code        string `json:"code"`
+	SessionID   string `json:"session_id"`
+	SnapshotSeq int    `json:"snapshot_seq"`
+	Command     string `json:"command"`
+	ExpiresAt   string `json:"expires_at"`
+}
+
+// GenerateHandoff mints a handoff code + copyable command for a session the
+// caller can read.
+func (c *Client) GenerateHandoff(id string) (HandoffInfo, error) {
+	var out HandoffInfo
+	status, err := c.do("POST", "/api/sessions/"+id+"/handoff", nil, &out)
+	if status == http.StatusForbidden {
+		return HandoffInfo{}, ErrForkForbidden
+	}
+	if err != nil {
+		return HandoffInfo{}, err
+	}
+	return out, nil
 }
 
 // ReportModel sets the session's model label once it is known.
