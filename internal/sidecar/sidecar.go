@@ -207,36 +207,36 @@ func (s *Sidecar) drain() {
 		}
 		return
 	}
-	// A connected channel subscriber (`live channel` MCP) can deliver into
-	// the agent even while it is idle — prefer it; the hook-boundary queue
-	// is the fallback when no channel is attached or its buffer is full.
+	// A connected channel subscriber (`live channel` MCP) can deliver into the
+	// agent even while it is idle. We push to it AND always keep the comment in
+	// the hook-boundary queue: a buffered send to the subscriber is not proof
+	// Claude actually consumed it — the experimental channels path can silently
+	// drop, in which case the comment (already popped from the server queue)
+	// would be lost forever. The hook fallback (UserPromptSubmit/PostToolUse/
+	// Stop) guarantees delivery. A rare duplicate when the channel *is* healthy
+	// is acceptable; a silently-lost viewer message is not.
 	routed := 0
 	s.subMu.Lock()
 	for _, c := range comments {
-		delivered := false
 		for ch := range s.subs {
 			select {
 			case ch <- c:
-				delivered = true
+				routed++
 			default:
 			}
-		}
-		if delivered {
-			routed++
-		} else {
-			s.mu.Lock()
-			s.pending = append(s.pending, c)
-			s.mu.Unlock()
 		}
 	}
 	s.subMu.Unlock()
 
+	// Always queue for hook-boundary injection (guaranteed-delivery backbone).
+	s.mu.Lock()
+	s.pending = append(s.pending, comments...)
+	s.mu.Unlock()
+
 	if routed > 0 {
-		s.Log.Printf("%d viewer comment(s) routed to channel", routed)
+		s.Log.Printf("%d viewer comment(s) pushed to channel", routed)
 	}
-	if routed < len(comments) {
-		s.Log.Printf("%d viewer comment(s) queued for injection", len(comments)-routed)
-	}
+	s.Log.Printf("%d viewer comment(s) queued for hook injection", len(comments))
 
 	// The agent may be idle (no hook boundary coming) — surface arrival
 	// out-of-band so the operator knows a message is waiting.
