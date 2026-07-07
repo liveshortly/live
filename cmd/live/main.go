@@ -25,27 +25,27 @@ Usage:
   live version               Print version
   live update                Self-update to the latest release
   live update --version vX.Y.Z   Install a specific published version
+  live uninstall             Remove the binary + sign out (add --purge for all state)
 
   live claude [args...]      Run Claude Code, captured via lifecycle hooks
   live <command> [args...]   Run any agent/CLI, captured via PTY recording
   live -- <command> [...]    Same, unambiguous form
 
-Permission control (ON by default for live claude):
+Permission control (always ON for live claude):
   You approve Claude's tool runs from a tmux popup (if tmux is installed) or
   the session page — allow / deny / allow-always, owner only. While on, it
-  gates every tool, so your local allowlist is bypassed. Without tmux, a plain
-  live claude uses Claude's native terminal prompts instead.
+  gates every tool, so your local allowlist is bypassed. Without tmux you
+  approve from the session page. Use --no-permissions to turn it off for a run.
 
 Options (before the command):
   --title <t>                Session title (default: current directory name)
   --no-permissions           Turn permission control off for this run
-  --web-permissions          Force it on (e.g. web-only when tmux is absent)
 
 Environment:
   LIVESHORTLY_API_URL        API base (default from ~/.liveshortly/host.json)
   LIVESHORTLY_CRED_PATH      Credential file (default ~/.liveshortly/credentials.json)
-  LIVE_WEB_PERMS=0           Turn permission control off (default: on)
-  LIVE_TMUX=0                Disable the tmux popup (use web-only; default: on)
+  LIVE_CHANNEL=0             Disable the viewer channel (instant idle comment
+                             delivery); comments then arrive at hook boundaries
 `
 
 func main() {
@@ -65,6 +65,8 @@ func main() {
 		fmt.Println("live", version)
 	case "update":
 		cmdUpdate(os.Args[2:])
+	case "uninstall":
+		os.Exit(cmdUninstall(os.Args[2:]))
 	case "help", "--help", "-h":
 		fmt.Print(usage)
 	case "hook":

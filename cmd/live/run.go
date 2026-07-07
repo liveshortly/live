@@ -43,13 +43,12 @@ func profileFor(bin string) agentProfile {
 // code to propagate.
 func cmdRun(args []string) int {
 	title := ""
-	// Permission control is ON by default; disable with LIVE_WEB_PERMS=0.
-	// tmux popups are ON by default when tmux is present; disable with
-	// LIVE_TMUX=0. Flags below still force-enable for convenience.
-	wpEnv := os.Getenv("LIVE_WEB_PERMS")
-	tmEnv := os.Getenv("LIVE_TMUX")
-	webPerms := wpEnv != "0"
-	tmuxWanted := tmEnv != "0"
+	// tmux popups + web permission control are hardcoded ON for live claude
+	// (equivalent to LIVE_TMUX=1 LIVE_WEB_PERMS=1). Use --no-permissions to turn
+	// permission control off for a single run; headless -p/--print disables it
+	// automatically below.
+	webPerms := true
+	tmuxWanted := true
 	for len(args) > 0 {
 		switch args[0] {
 		case "--title":
@@ -135,9 +134,8 @@ parsed:
 	// native terminal prompts rather than stranding a solo keyboard user on
 	// web-only. Explicit LIVE_WEB_PERMS=1 forces web-only even without tmux.
 	tmuxMode := webPerms && tmuxWanted && hooks && hasTmux
-	if webPerms && hooks && !tmuxMode && !hasTmux && wpEnv == "" && tmEnv == "" {
-		fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m tip: install tmux for in-terminal permission popups — using Claude's native prompts for now\n\n")
-		webPerms = false
+	if webPerms && hooks && !tmuxMode && !hasTmux {
+		fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m no tmux — approve tool runs from the session page (install tmux for in-terminal popups)\n\n")
 	}
 
 	sc := &sidecar.Sidecar{
@@ -218,13 +216,25 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	}
 	_ = tmux("kill-session", "-t", sess).Run() // clear any stale session
 
+	// Same viewer-channel wiring as the plain hooks mode — without this, tmux
+	// sessions (the default when tmux is installed) never load channels, so the
+	// "Loading development channels" prompt never appears.
+	claudeArgs := []string{"--settings", settings}
+	if chArgs, chCleanup := channelArgs(self, userArgs); chArgs != nil {
+		if chCleanup != nil {
+			defer chCleanup()
+		}
+		claudeArgs = append(claudeArgs, chArgs...)
+	}
+	claudeArgs = append(claudeArgs, userArgs...)
+
 	newArgs := []string{"new-session", "-d", "-s", sess,
 		"-e", "LIVE_SIDECAR=" + addr, "-e", "LIVE_TOKEN=" + token, "-e", "LIVE_SESSION_ID=" + sc.SessionID,
 		// The PreToolUse relay blocks on the broker (popup or web); its HTTP
 		// client must outlast the 8m decision grace, under the 10m hook.
 		"-e", "LIVE_HOOK_TIMEOUT=590",
-		binPath, "--settings", settings}
-	newArgs = append(newArgs, userArgs...)
+		binPath}
+	newArgs = append(newArgs, claudeArgs...)
 	if out, err := tmux(newArgs...).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "live: tmux new-session failed: %v: %s\n", err, out)
 		return 1
@@ -312,22 +322,11 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 	}
 
 	args := []string{"--settings", settings}
-	// Channel delivery lets viewer messages reach Claude even while it is
-	// idle — the only path that works without a hook boundary, so it is ON by
-	// default for interactive sessions. Loading it needs Claude Code's
-	// --dangerously-load-development-channels flag, which shows a "Loading
-	// development channels" confirmation — but that approval is remembered
-	// after you accept it once (verified 2026-07-06, Claude Code v2.1.201:
-	// confirm on launch 1, launch 2 skips the dialog), so it is a one-time
-	// hurdle, not a per-session one. Set LIVE_CHANNEL=0 to force pure
-	// hook-boundary delivery. Skipped in -p/--print regardless (headless
-	// Claude ignores channel messages; the hook + Stop-block path handles it).
-	if os.Getenv("LIVE_CHANNEL") != "0" && !isPrintMode(userArgs) {
-		if mcpCfg, mcpCleanup, err := adapter.WriteClaudeMCPConfig(self); err == nil {
-			defer mcpCleanup()
-			args = append(args, "--mcp-config", mcpCfg, "--strict-mcp-config",
-				"--dangerously-load-development-channels", "server:liveshortly-channel")
+	if chArgs, chCleanup := channelArgs(self, userArgs); chArgs != nil {
+		if chCleanup != nil {
+			defer chCleanup()
 		}
+		args = append(args, chArgs...)
 	}
 	args = append(args, userArgs...)
 	code, err := adapter.RunWithHooks(binPath, args, env)
@@ -339,6 +338,36 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 
 // isPrintMode reports whether the agent is being run headlessly (-p/--print),
 // where channel delivery does not apply.
+// channelArgs returns the Claude Code flags that load the viewer "channel" —
+// the MCP-backed path that delivers viewer comments into Claude even while it
+// sits idle. Loading it needs --dangerously-load-development-channels, which
+// pops a one-time "Loading development channels" confirmation (remembered after
+// you accept it once). Returns nil (channels off) in -p/--print mode, when
+// LIVE_CHANNEL=0, or if the temp MCP config can't be written — and logs WHY on
+// stderr, so a missing prompt is diagnosable instead of a silent no-op. cleanup
+// removes the temp MCP config (nil when no args). Shared by both interactive
+// run modes (plain hooks + tmux) so channels behave the same with or without
+// tmux. Set LIVE_CHANNEL=0 to force pure hook-boundary delivery.
+func channelArgs(self string, userArgs []string) (args []string, cleanup func()) {
+	if isPrintMode(userArgs) {
+		return nil, nil // headless -p/--print: no human, channels are irrelevant
+	}
+	if os.Getenv("LIVE_CHANNEL") == "0" {
+		fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m viewer channel OFF (LIVE_CHANNEL=0) — comments arrive at hook boundaries\n\n")
+		return nil, nil
+	}
+	mcpCfg, mcpCleanup, err := adapter.WriteClaudeMCPConfig(self)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m viewer channel could not load (%v) — comments arrive at hook boundaries\n\n", err)
+		return nil, nil
+	}
+	fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m loading viewer channel — accept Claude's \"Loading development channels\" prompt on first launch (one-time)\n\n")
+	return []string{
+		"--mcp-config", mcpCfg, "--strict-mcp-config",
+		"--dangerously-load-development-channels", "server:liveshortly-channel",
+	}, mcpCleanup
+}
+
 func isPrintMode(args []string) bool {
 	for _, a := range args {
 		if a == "-p" || a == "--print" {
