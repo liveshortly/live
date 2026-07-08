@@ -70,9 +70,11 @@ func (c *codexApp) emitItem(raw json.RawMessage) {
 		if text == "" || looksLikeViewerInput(text) {
 			return
 		}
+		c.cliEcho("\x1b[36m❯\x1b[0m " + clip(text, 400))
 		c.emit("prompt", map[string]any{"content": clip(text, 4000), "ts": isoNow()})
 	case "agentMessage":
 		if t := strings.TrimSpace(it.Text); t != "" {
+			c.cliEcho("\x1b[32m🤖\x1b[0m " + clip(t, 800))
 			c.emit("response", map[string]any{"content": clip(t, 8000), "ts": isoNow()})
 		}
 	case "commandExecution":
@@ -80,6 +82,7 @@ func (c *codexApp) emitItem(raw json.RawMessage) {
 		if out == "" {
 			out = it.Output
 		}
+		c.cliEcho("\x1b[2m⚡ " + clip(it.Command, 200) + "\x1b[0m")
 		c.emit("tool_call", map[string]any{
 			"tool":    "Shell",
 			"command": clip(it.Command, 500),
@@ -94,6 +97,14 @@ func (c *codexApp) emitItem(raw json.RawMessage) {
 				"ts":   isoNow(),
 			})
 		}
+	}
+}
+
+// cliEcho prints a transcript line to the terminal (app-server mode is headless,
+// so this is how the operator sees activity in the CLI). No-op in tests.
+func (c *codexApp) cliEcho(line string) {
+	if c.echo != nil {
+		c.echo(line)
 	}
 }
 

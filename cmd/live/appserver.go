@@ -36,6 +36,7 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		emit:        sc.Emit,
 		logf:        sc.Log.Printf,
 		requestPerm: sc.RequestPermission,
+		echo:        func(s string) { fmt.Fprintln(os.Stderr, s) }, // live CLI transcript
 		pending:     map[int]chan rpcResp{},
 	}
 	if err := c.start(ctx, binPath); err != nil {
@@ -75,6 +76,7 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		if who == "" {
 			who = "viewer"
 		}
+		c.echo("\x1b[33m💬 " + who + ":\x1b[0m " + cm.Message)
 		c.injectInput(fmt.Sprintf("%s (live viewer): %s", who, cm.Message))
 	}
 	sc.WebPermissions = true // approvals are answered from the web
@@ -121,6 +123,7 @@ type codexApp struct {
 	emit        func(string, map[string]any)                 // feed events
 	logf        func(string, ...any)                         // diagnostics
 	requestPerm func(context.Context, string, string) string // web permission verdict
+	echo        func(string)                                 // live CLI transcript (nil in tests)
 
 	cmd  *exec.Cmd
 	done chan struct{}
