@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -272,13 +273,13 @@ func cmdRun(args []string) int {
 		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m permission control ON — approve tool runs from %s (LIVE_WEB_PERMS=0 to disable)\n\n", where)
 	}
 
-	// Seed the new agent with the prior context. Agents that take an initial
-	// [prompt] positional (claude, codex) get the opening prompt injected
-	// automatically; other pty agents get the file written and a banner to
-	// paste. Must run before dispatch so the (possibly augmented) userArgs reach
-	// the launcher.
+	// Seed the new agent with the prior context. The operator reads the history
+	// and drives — no auto-continue. For claude the digest is loaded as appended
+	// system context so the agent is oriented but idle until the operator types.
+	// Must run before dispatch so the (possibly augmented) userArgs reach the
+	// launcher.
 	if forked {
-		userArgs = seedHandoff(bundle, sessionID, prof.acceptsInitialPrompt, userArgs, opts.preDigest, binPath)
+		userArgs = seedHandoff(bundle, sessionID, userArgs, opts.preDigest, binPath)
 	}
 
 	var exitCode int
@@ -517,10 +518,15 @@ func isPrintMode(args []string) bool {
 
 // seedHandoff persists the handoff digest and orients the new agent with it.
 // The digest is deliberately raw — the CLI does not summarize it; the user's
-// own agent does the comprehension. Returns userArgs, possibly with an opening
-// prompt appended (hooks agents only). Best-effort: a write failure degrades to
-// a plain live session rather than aborting the run.
-func seedHandoff(b api.HandoffBundle, sessionID string, acceptsInitialPrompt bool, userArgs []string, preDigest bool, claudeBin string) []string {
+// own agent does the comprehension.
+//
+// On a fork the operator wants to READ the prior history and then drive, so we
+// do NOT auto-submit an opening prompt. For claude we load the digest as
+// appended system context (`--append-system-prompt-file`): the agent is oriented
+// the moment the operator types but does nothing until then. Returns userArgs,
+// possibly with that flag appended. Best-effort: a write failure degrades to a
+// plain live session rather than aborting the run.
+func seedHandoff(b api.HandoffBundle, sessionID string, userArgs []string, preDigest bool, claudeBin string) []string {
 	path, err := writeHandoffFile(sessionID, b.Markdown)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "live: could not write handoff digest (%v) — continuing without prior context\n", err)
@@ -556,8 +562,33 @@ func seedHandoff(b api.HandoffBundle, sessionID string, acceptsInitialPrompt boo
 		printPriorContext(os.Stderr, b, path)
 	}
 
-	seed := fmt.Sprintf("You are continuing a handed-off LiveShortly session. Read %s for the full prior context, then restate the state in 2–3 lines and continue. The working tree may differ from the original machine.", path)
-	return appendSeedPrompt(userArgs, seed, acceptsInitialPrompt)
+	// Don't auto-continue. For claude, load the digest as appended system context
+	// so the agent is oriented but idle until the operator types; pause first so
+	// the printed history is readable before claude's tmux TUI replaces the screen.
+	if filepath.Base(claudeBin) == "claude" {
+		waitForEnterBeforeAgent()
+		return append(userArgs, "--append-system-prompt-file", path)
+	}
+
+	// Other agents (codex/pty): don't auto-submit either — the agent opens and
+	// waits; the prior context is shown above and saved at the digest path.
+	fmt.Fprintf(os.Stderr, "\x1b[36m● live\x1b[0m your agent will wait — prior context is shown above and saved at %s\n\n", path)
+	return userArgs
+}
+
+// waitForEnterBeforeAgent pauses so the operator can read the printed prior
+// context before the agent's full-screen (tmux) TUI replaces it. No-op when
+// stdin isn't an interactive terminal (piped/headless) or LIVE_NO_PAUSE=1.
+func waitForEnterBeforeAgent() {
+	if os.Getenv("LIVE_NO_PAUSE") == "1" {
+		return
+	}
+	if fi, err := os.Stdin.Stat(); err != nil || (fi.Mode()&os.ModeCharDevice) == 0 {
+		return // not a TTY — nothing to pause for
+	}
+	fmt.Fprint(os.Stderr, "\x1b[36m● live\x1b[0m press \x1b[1mEnter\x1b[0m to open your agent — it has the prior context and will wait for your first message… ")
+	_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	fmt.Fprintln(os.Stderr)
 }
 
 // printPriorContext renders a compact, bounded view of the forked-from session's
