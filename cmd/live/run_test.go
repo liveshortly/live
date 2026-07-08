@@ -1,7 +1,9 @@
 package main
 
 import (
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -109,4 +111,54 @@ func TestParseRunFlags(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestChannelArgsDoNotSwallowPrompt guards the arg ordering in channelArgs:
+// --dangerously-load-development-channels is variadic and eats every following
+// non-flag token as a channel name. Callers append the user's args (and, on a
+// fork/handoff, the seeded opening prompt) AFTER these, so if the channel flag
+// were last, a trailing prompt positional would be consumed as a bogus channel
+// and claude would start with no prompt and exit instantly. The flag must be
+// followed by a flag token (here the boolean --strict-mcp-config), which
+// terminates the variadic and lets the prompt through.
+func TestChannelArgsDoNotSwallowPrompt(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	t.Setenv("LIVE_CHANNEL", "") // ensure channels are enabled
+	args, cleanup := channelArgs(self, nil /* interactive, not -p */)
+	if cleanup != nil {
+		defer cleanup()
+	}
+	if args == nil {
+		t.Skip("channelArgs returned nil (mcp config unavailable in this env)")
+	}
+
+	i := indexOf(args, "--dangerously-load-development-channels")
+	if i < 0 {
+		t.Fatalf("channel flag not present in %v", args)
+	}
+	// Its single value must be followed by a flag token, so the variadic stops
+	// before any appended positional prompt.
+	if i+2 >= len(args) {
+		t.Fatalf("channel flag+value are at the tail of %v — a trailing prompt would be swallowed", args)
+	}
+	if next := args[i+2]; !strings.HasPrefix(next, "-") {
+		t.Fatalf("token after the channel value is %q (not a flag) — variadic would keep eating in %v", next, args)
+	}
+	// Belt and suspenders: the whole slice must end on a flag, so appending a
+	// bare prompt positional is always safe.
+	if last := args[len(args)-1]; !strings.HasPrefix(last, "-") {
+		t.Fatalf("channelArgs ends with non-flag %q; appended prompt is unsafe: %v", last, args)
+	}
+}
+
+func indexOf(ss []string, want string) int {
+	for i, s := range ss {
+		if s == want {
+			return i
+		}
+	}
+	return -1
 }

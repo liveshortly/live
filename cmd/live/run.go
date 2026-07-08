@@ -485,9 +485,17 @@ func channelArgs(self string, userArgs []string) (args []string, cleanup func())
 		return nil, nil
 	}
 	fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m loading viewer channel — accept Claude's \"Loading development channels\" prompt on first launch (one-time)\n\n")
+	// Order matters: --dangerously-load-development-channels is VARIADIC — it eats
+	// every following non-flag token as a channel name. The callers append the
+	// user's args (and, on a fork/handoff, the seeded opening prompt) AFTER these,
+	// so the channel flag must NOT be last: a trailing prompt positional would be
+	// swallowed as a bogus channel, claude would start with no prompt and exit
+	// instantly. Keep the boolean --strict-mcp-config last so it terminates the
+	// variadic and the prompt reaches claude.
 	return []string{
-		"--mcp-config", mcpCfg, "--strict-mcp-config",
+		"--mcp-config", mcpCfg,
 		"--dangerously-load-development-channels", "server:liveshortly-channel",
+		"--strict-mcp-config",
 	}, mcpCleanup
 }
 
