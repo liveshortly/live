@@ -549,8 +549,65 @@ func seedHandoff(b api.HandoffBundle, sessionID string, acceptsInitialPrompt boo
 	}
 	fmt.Fprintln(os.Stderr)
 
+	// Auto-show the prior context in the terminal so the operator sees what
+	// they forked from without opening the file or the web. LIVE_NO_CONTEXT=1
+	// suppresses it.
+	if os.Getenv("LIVE_NO_CONTEXT") != "1" {
+		printPriorContext(os.Stderr, b, path)
+	}
+
 	seed := fmt.Sprintf("You are continuing a handed-off LiveShortly session. Read %s for the full prior context, then restate the state in 2–3 lines and continue. The working tree may differ from the original machine.", path)
 	return appendSeedPrompt(userArgs, seed, acceptsInitialPrompt)
+}
+
+// printPriorContext renders a compact, bounded view of the forked-from session's
+// digest on fork. It prefers the structured Turns (role + text, tool/file
+// annotated); the full digest remains at `path`. Nothing is written when there
+// are no turns. Writer-injected so the format is unit-testable.
+func printPriorContext(w io.Writer, b api.HandoffBundle, path string) {
+	if len(b.Turns) == 0 {
+		return
+	}
+	const maxTurns = 12
+
+	fmt.Fprintf(w, "\x1b[36m● live\x1b[0m \x1b[1mprior context\x1b[0m (%d turn(s)):\n", len(b.Turns))
+
+	turns := b.Turns
+	if len(turns) > maxTurns {
+		fmt.Fprintf(w, "    \x1b[2m… %d earlier turn(s) omitted — see %s\x1b[0m\n", len(turns)-maxTurns, path)
+		turns = turns[len(turns)-maxTurns:]
+	}
+	for _, t := range turns {
+		label := priorTurnLabel(t)
+		fmt.Fprintf(w, "    \x1b[2m▸\x1b[0m \x1b[36m%s\x1b[0m %s\n", label, clipLine(t.Text, 160))
+	}
+	fmt.Fprintf(w, "\x1b[36m● live\x1b[0m full prior context at %s\n\n", path)
+}
+
+// priorTurnLabel formats the role/tool prefix for one digest turn.
+func priorTurnLabel(t api.HandoffTurn) string {
+	if t.Tool != "" {
+		if t.File != "" {
+			return t.Tool + " " + t.File + ":"
+		}
+		return t.Tool + ":"
+	}
+	if t.Role != "" {
+		return t.Role + ":"
+	}
+	return "-"
+}
+
+// clipLine collapses a turn's text to a single bounded line for terminal display.
+func clipLine(s string, n int) string {
+	s = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(s, "\r", " "), "\n", " "))
+	for strings.Contains(s, "  ") {
+		s = strings.ReplaceAll(s, "  ", " ")
+	}
+	if len(s) > n {
+		return s[:n] + "…"
+	}
+	return s
 }
 
 // appendSeedPrompt injects the handoff orient prompt as a trailing positional
