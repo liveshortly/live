@@ -27,19 +27,23 @@ import (
 // agentProfile maps a command name to how we capture it.
 type agentProfile struct {
 	framework   string
-	captureMode string // "hooks" | "pty"
+	captureMode string // "hooks" | "pty" | "rollout"
+	// acceptsInitialPrompt is true for agents that take an initial [prompt]
+	// positional arg (claude, codex). Used to inject the handoff seed prompt
+	// automatically instead of asking the operator to paste it.
+	acceptsInitialPrompt bool
 }
 
 func profileFor(bin string) agentProfile {
 	switch filepath.Base(bin) {
 	case "claude":
-		return agentProfile{"claude-code", "hooks"}
+		return agentProfile{framework: "claude-code", captureMode: "hooks", acceptsInitialPrompt: true}
 	case "gemini":
-		return agentProfile{"gemini-cli", "pty"}
+		return agentProfile{framework: "gemini-cli", captureMode: "pty"}
 	case "codex":
-		return agentProfile{"codex", "pty"}
+		return agentProfile{framework: "codex", captureMode: "rollout", acceptsInitialPrompt: true}
 	default:
-		return agentProfile{"terminal", "pty"}
+		return agentProfile{framework: "terminal", captureMode: "pty"}
 	}
 }
 
@@ -268,12 +272,13 @@ func cmdRun(args []string) int {
 		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m permission control ON — approve tool runs from %s (LIVE_WEB_PERMS=0 to disable)\n\n", where)
 	}
 
-	// Seed the new agent with the prior context. For hooks agents (claude) this
-	// appends an opening prompt that points at the digest file; for pty agents
-	// it writes the file and prints a banner to paste. Must run before dispatch
-	// so the (possibly augmented) userArgs reach the launcher.
+	// Seed the new agent with the prior context. Agents that take an initial
+	// [prompt] positional (claude, codex) get the opening prompt injected
+	// automatically; other pty agents get the file written and a banner to
+	// paste. Must run before dispatch so the (possibly augmented) userArgs reach
+	// the launcher.
 	if forked {
-		userArgs = seedHandoff(bundle, sessionID, hooks, userArgs, opts.preDigest, binPath)
+		userArgs = seedHandoff(bundle, sessionID, prof.acceptsInitialPrompt, userArgs, opts.preDigest, binPath)
 	}
 
 	var exitCode int
@@ -282,6 +287,8 @@ func cmdRun(args []string) int {
 		exitCode = runHooksTmuxMode(sc, binPath, userArgs)
 	case hooks:
 		exitCode = runHooksMode(sc, binPath, userArgs)
+	case prof.captureMode == "rollout":
+		exitCode = runRolloutMode(sc, binPath, userArgs)
 	default:
 		exitCode = runPTYMode(sc, binPath, userArgs)
 	}
@@ -513,15 +520,17 @@ func isPrintMode(args []string) bool {
 // own agent does the comprehension. Returns userArgs, possibly with an opening
 // prompt appended (hooks agents only). Best-effort: a write failure degrades to
 // a plain live session rather than aborting the run.
-func seedHandoff(b api.HandoffBundle, sessionID string, hooks bool, userArgs []string, preDigest bool, claudeBin string) []string {
+func seedHandoff(b api.HandoffBundle, sessionID string, acceptsInitialPrompt bool, userArgs []string, preDigest bool, claudeBin string) []string {
 	path, err := writeHandoffFile(sessionID, b.Markdown)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "live: could not write handoff digest (%v) — continuing without prior context\n", err)
 		return userArgs
 	}
 
-	// Optional pre-compression with the user's own Claude (off by default).
-	if preDigest && hooks {
+	// Optional pre-compression with the user's own Claude (off by default). This
+	// runs `claude -p`, so it only applies when the launched binary is claude —
+	// codex uses `codex exec`, not `-p`.
+	if preDigest && filepath.Base(claudeBin) == "claude" {
 		if compact, derr := preDigestMarkdown(claudeBin, b.Markdown); derr == nil && compact != "" {
 			if werr := os.WriteFile(path, []byte(compact), 0o644); werr == nil {
 				fmt.Fprint(os.Stderr, "\x1b[36m● live\x1b[0m pre-digest: compressed the prior context with claude -p\n")
@@ -541,12 +550,22 @@ func seedHandoff(b api.HandoffBundle, sessionID string, hooks bool, userArgs []s
 	fmt.Fprintln(os.Stderr)
 
 	seed := fmt.Sprintf("You are continuing a handed-off LiveShortly session. Read %s for the full prior context, then restate the state in 2–3 lines and continue. The working tree may differ from the original machine.", path)
-	if hooks {
-		// claude takes an initial prompt as a trailing positional arg.
+	return appendSeedPrompt(userArgs, seed, acceptsInitialPrompt)
+}
+
+// appendSeedPrompt injects the handoff orient prompt as a trailing positional
+// arg for agents that accept an initial [prompt] (claude, codex). For other
+// pty agents it can't be injected agent-agnostically, so it prints a paste
+// banner and leaves userArgs untouched. Split out (and pure w.r.t. userArgs) so
+// the injection contract is unit-testable.
+//
+// NB flag ordering: the seed is appended LAST. Any launcher that also prepends
+// its own flags (e.g. claude's channel args) must not end on a variadic flag,
+// or the trailing prompt gets swallowed — see the 6a75b17 fix + its test.
+func appendSeedPrompt(userArgs []string, seed string, acceptsInitialPrompt bool) []string {
+	if acceptsInitialPrompt {
 		return append(userArgs, seed)
 	}
-	// pty agents: we can't reliably inject a first prompt agent-agnostically, so
-	// tell the operator what to paste.
 	fmt.Fprintf(os.Stderr, "\x1b[36m● live\x1b[0m paste this to orient your agent:\n    %s\n\n", seed)
 	return userArgs
 }

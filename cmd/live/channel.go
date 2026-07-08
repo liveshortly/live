@@ -25,6 +25,14 @@ func cmdChannel() {
 	addr := os.Getenv("LIVE_SIDECAR")
 	token := os.Getenv("LIVE_TOKEN")
 
+	// toolMode serves viewer comments as a standard MCP *tool* the agent pulls,
+	// instead of Claude's proprietary `notifications/claude/channel` push. This
+	// is how codex (a standard MCP client that ignores the claude/* extension)
+	// receives viewer comments. Set by the codex launcher (LIVE_CHANNEL_TOOL=1).
+	toolMode := os.Getenv("LIVE_CHANNEL_TOOL") == "1"
+	var inboxMu sync.Mutex
+	var inbox []string // buffered "who: message" lines awaiting a poll (tool mode)
+
 	var outMu sync.Mutex
 	send := func(v any) {
 		b, err := json.Marshal(v)
@@ -54,7 +62,18 @@ func cmdChannel() {
 			return
 		}
 		started = true
-		go forwardComments(addr, token, send, logf)
+		if toolMode {
+			// Buffer comments locally; the agent drains them via the
+			// poll_viewer_messages tool (standard MCP, codex-compatible).
+			go forwardComments(addr, token, nil, logf, func(who, msg string) {
+				inboxMu.Lock()
+				inbox = append(inbox, who+": "+msg)
+				inboxMu.Unlock()
+			})
+			return
+		}
+		// Claude: push each comment as a claude/channel notification.
+		go forwardComments(addr, token, send, logf, nil)
 	}
 
 	sc := bufio.NewScanner(os.Stdin)
@@ -99,8 +118,7 @@ func cmdChannel() {
 						"name":    "liveshortly-channel",
 						"version": version,
 					},
-					"instructions": "Messages arrive as channel events from live viewers watching this session. " +
-						"Acknowledge them and respond inline in your current work.",
+					"instructions": channelInstructions(toolMode),
 				},
 			})
 
@@ -137,9 +155,44 @@ func cmdChannel() {
 			}()
 
 		case "tools/list":
+			tools := []any{}
+			if toolMode {
+				tools = append(tools, map[string]any{
+					"name": "poll_viewer_messages",
+					"description": "Return any new messages from live viewers watching this " +
+						"LiveShortly session. Call it whenever you finish a step or pause, so you " +
+						"can acknowledge viewers and act on their requests. Returns 'No new messages.' " +
+						"when the inbox is empty.",
+					"inputSchema": map[string]any{
+						"type":       "object",
+						"properties": map[string]any{},
+					},
+				})
+			}
 			send(map[string]any{
 				"jsonrpc": "2.0", "id": msg.ID,
-				"result": map[string]any{"tools": []any{}},
+				"result": map[string]any{"tools": tools},
+			})
+
+		case "tools/call":
+			var p struct {
+				Name string `json:"name"`
+			}
+			_ = json.Unmarshal(msg.Params, &p)
+			text := "No new messages."
+			if toolMode && p.Name == "poll_viewer_messages" {
+				inboxMu.Lock()
+				if len(inbox) > 0 {
+					text = "New viewer message(s):\n" + strings.Join(inbox, "\n")
+					inbox = nil
+				}
+				inboxMu.Unlock()
+			}
+			send(map[string]any{
+				"jsonrpc": "2.0", "id": msg.ID,
+				"result": map[string]any{
+					"content": []any{map[string]any{"type": "text", "text": text}},
+				},
 			})
 
 		case "ping":
@@ -157,10 +210,24 @@ func cmdChannel() {
 	// stdin closed → Claude exited; we're done.
 }
 
-// forwardComments consumes the sidecar's SSE comment feed and emits one
-// channel notification per comment, reconnecting until stdin closes the
-// process.
-func forwardComments(addr, token string, send func(any), logf func(string, ...any)) {
+// channelInstructions returns the MCP server instructions, tailored to how the
+// client consumes viewer comments: codex (toolMode) pulls them via a tool;
+// Claude receives them as channel notifications.
+func channelInstructions(toolMode bool) string {
+	if toolMode {
+		return "Live viewers are watching this LiveShortly session and can send you messages. " +
+			"Call the poll_viewer_messages tool whenever you finish a step or pause to fetch any " +
+			"new messages, then acknowledge them and act on their requests inline in your work."
+	}
+	return "Messages arrive as channel events from live viewers watching this session. " +
+		"Acknowledge them and respond inline in your current work."
+}
+
+// forwardComments consumes the sidecar's SSE comment feed. For Claude it emits
+// one claude/channel notification per comment (send != nil); for standard MCP
+// clients (codex) it hands each comment to deliver() so the process can buffer
+// them for a poll tool. Reconnects until stdin closes the process.
+func forwardComments(addr, token string, send func(any), logf func(string, ...any), deliver func(who, msg string)) {
 	nextID := 1
 	backoff := time.Second
 	for {
@@ -177,6 +244,10 @@ func forwardComments(addr, token string, send func(any), logf func(string, ...an
 				who = "viewer"
 			}
 			logf("viewer comment from %s: %s", who, c.Message)
+			if deliver != nil {
+				deliver(who, c.Message)
+				return
+			}
 			send(map[string]any{
 				"jsonrpc": "2.0",
 				"method":  "notifications/claude/channel",
