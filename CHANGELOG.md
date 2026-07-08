@@ -4,6 +4,23 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v0.6.1 — 2026-07-08
+
+- **Real-time `live codex` via the app-server protocol** (opt-in,
+  `LIVE_CODEX_APPSERVER=1`). Drives a headless `codex app-server` over JSON-RPC
+  instead of the native-TUI sidecar, for true real-time parity with Claude:
+  - **Viewer comments push instantly** as real turns (`turn/steer` mid-turn,
+    `turn/start` when idle) — no polling.
+  - **Permission prompts answered from the browser.** Codex's approval requests
+    (command / file-change) are gated through the same web allow/deny flow as
+    Claude and mapped to codex's decision.
+  - Streamed items map to the existing feed rows (prompt / response / tool_call
+    / file_write / stream_end).
+  - Codex is headless in this mode — you watch, steer, and approve from the
+    session page. The default remains the native-TUI rollout mode.
+- Also shows the **prior-context digest in the terminal on fork** (from the
+  interim build) — `LIVE_NO_CONTEXT=1` to suppress.
+
 ## v0.6.0 — 2026-07-08
 
 - **`live codex` — full parity with `live claude`** (codex-cli 0.142.5). See
