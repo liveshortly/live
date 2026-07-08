@@ -156,15 +156,15 @@ func TestCodexPermArgs(t *testing.T) {
 }
 
 func TestCodexPermsWanted(t *testing.T) {
-	if codexPermsWanted(nil) {
-		t.Fatal("web-perms must be OFF by default (opt-in)")
-	}
-	t.Setenv("LIVE_CODEX_PERMS", "1")
 	if !codexPermsWanted(nil) {
-		t.Fatal("LIVE_CODEX_PERMS=1 must enable web-perms")
+		t.Fatal("web-perms must be ON by default (like live claude)")
 	}
 	if codexPermsWanted([]string{"-p", "x"}) {
 		t.Fatal("headless -p runs must never gate")
+	}
+	t.Setenv("LIVE_CODEX_PERMS", "0")
+	if codexPermsWanted(nil) {
+		t.Fatal("LIVE_CODEX_PERMS=0 must disable web-perms")
 	}
 }
 

@@ -38,10 +38,17 @@ type Sidecar struct {
 	SessionID string
 	WebURL    string
 
-	// OnComment, when set (PTY mode), is called for every viewer comment as
-	// it arrives. When nil (hooks mode) comments accumulate in a local queue
-	// and are injected into the agent at the next hook boundary.
+	// OnComment, when set (PTY mode), is the sole delivery for a viewer comment:
+	// it's shown to the operator and nothing else routes it (the agent can't be
+	// injected). When nil (hooks / channel modes) comments route to the channel
+	// subscriber and the hook-boundary queue instead.
 	OnComment func(api.Comment)
+
+	// DisplayComment, when set, is an ADDITIVE terminal echo — it's called for
+	// every viewer comment for visibility, and does NOT stop the comment from
+	// also routing to the agent (channel subscriber + hook queue). Used by
+	// rollout mode so a web comment shows in the CLI *and* reaches codex.
+	DisplayComment func(api.Comment)
 
 	// Broker, when set (tmux mode), races a CLI popup answer against the web
 	// verdict for each permission. When nil, web-only (awaitDecision).
@@ -200,6 +207,13 @@ func (s *Sidecar) drain() {
 	comments, err := s.Client.DrainPending(s.SessionID)
 	if err != nil || len(comments) == 0 {
 		return
+	}
+	// Additive terminal echo: show every comment in the CLI without consuming
+	// it — delivery to the agent still happens below.
+	if s.DisplayComment != nil {
+		for _, c := range comments {
+			s.DisplayComment(c)
+		}
 	}
 	if s.OnComment != nil {
 		for _, c := range comments {

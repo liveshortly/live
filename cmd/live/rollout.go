@@ -26,19 +26,17 @@ import (
 func runRolloutMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 	p := &adapter.PTY{}
 
-	// Viewer comments: when the channel is on we deliver them INTO codex as real
-	// turns via the session-scoped `live channel` MCP; drain() then routes to
-	// the channel subscriber. When it's off, fall back to an operator terminal
-	// overlay (same as pty mode) — set BEFORE Start so drain() sees it.
+	// Viewer comments always ECHO in the CLI (DisplayComment) so the operator
+	// sees them live; when the channel is on they ALSO route to codex via the
+	// session-scoped `live channel` MCP (the poll tool). Set before Start so
+	// drain() sees the echo hook.
 	channelOn := codexChannelWanted(userArgs)
-	if !channelOn {
-		sc.OnComment = func(c api.Comment) {
-			who := c.Username
-			if who == "" {
-				who = "viewer"
-			}
-			p.Notify("💬 " + who + ": " + c.Message)
+	sc.DisplayComment = func(c api.Comment) {
+		who := c.Username
+		if who == "" {
+			who = "viewer"
 		}
+		p.Notify("💬 " + who + ": " + c.Message)
 	}
 
 	sc.Start(context.Background())
@@ -63,7 +61,7 @@ func runRolloutMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int 
 					os.Setenv("LIVE_HOOK_TIMEOUT", "590")
 					sc.WebPermissions = true
 					userArgs = append(codexPermArgs(self), userArgs...)
-					fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m codex web-permissions ON (LIVE_CODEX_PERMS=1) — approve tool runs from the session page. Answer promptly: unanswered prompts deny after the grace window.\n\n")
+					fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m web-permissions ON — approve codex tool runs from the session page (LIVE_CODEX_PERMS=0 to disable). Unanswered prompts deny after the grace window.\n\n")
 				}
 			} else {
 				sc.Log.Printf("rollout: hook server failed, channel/perms off: %v", herr)
@@ -124,11 +122,12 @@ func codexChannelArgs(self, addr, token, sessionID string) []string {
 }
 
 // codexPermsWanted reports whether to gate codex tool execution through the
-// LiveShortly web-permission flow. EXPERIMENTAL, opt-in via LIVE_CODEX_PERMS=1
-// (the ephemeral hooks-loading path still needs interactive confirmation), and
-// never for headless -p runs.
+// LiveShortly web-permission flow. ON by default (like `live claude`): a
+// session-scoped PreToolUse hook sends approvals to the owner's browser and its
+// verdict is authoritative, so codex never shows a blocking native prompt.
+// Disable with LIVE_CODEX_PERMS=0; always off for headless -p runs.
 func codexPermsWanted(userArgs []string) bool {
-	return os.Getenv("LIVE_CODEX_PERMS") == "1" && !isPrintMode(userArgs)
+	return os.Getenv("LIVE_CODEX_PERMS") != "0" && !isPrintMode(userArgs)
 }
 
 // codexPermArgs returns the ephemeral launch overrides that gate codex tool use
