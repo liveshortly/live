@@ -76,7 +76,39 @@ window denies. The matcher uses Claude tool names
 by `EventStream` identically to Claude — schema is shared, so no viewer changes
 beyond the label.
 
+## Real-time mode — the app-server client (opt-in: `LIVE_CODEX_APPSERVER=1`)
+
+The default rollout mode is a *sidecar to the native codex TUI*: comments are
+pulled (`poll_viewer_messages`) and permissions are hook-gated. For true
+real-time — **push** comments and **browser-answered** permission prompts —
+`LIVE_CODEX_APPSERVER=1` switches to driving a **headless `codex app-server`**
+over its JSON-RPC protocol (`runAppServerMode`, `appserver*.go`):
+
+- **Handshake:** `initialize` → `thread/start` (cwd, `approvalPolicy:on-request`,
+  `sandbox:workspace-write`) → `turn/start` with the initial prompt / handoff
+  seed.
+- **Streaming → feed, live.** `item/completed` notifications map to feed events
+  by `item.type`: `userMessage`→`prompt`, `agentMessage`→`response`,
+  `commandExecution`→`tool_call`, `fileChange`→`file_write`; `turn/completed`→
+  `stream_end`. (Same rows the web already renders.)
+- **Permissions in the UI, real-time.** Codex's server→client approval requests
+  (`item/commandExecution/requestApproval`, `item/fileChange/requestApproval`)
+  are answered via `sidecar.RequestPermission` — the owner's browser allow/deny
+  becomes codex's `ReviewDecision` (`approved`/`denied`). No hook, no poll.
+- **Comments as push.** A viewer comment is injected as a real turn instantly —
+  `turn/steer` while a turn is running, `turn/start` when idle.
+
+Tradeoff: codex is **headless** here — no terminal TUI. The operator watches,
+steers, and approves entirely from the session page; the terminal just holds the
+process until Ctrl-C. Verified end-to-end against a real `codex app-server`
+(`TestCodexAppServerIntegration`, gated by `LIVE_CODEX_IT=1`); the notification
+mapping is hermetically unit-tested against captured 0.142.5 shapes.
+
+Default stays the native-TUI rollout mode; app-server is opt-in until the web
+gains a first-class "drive this session" input surface.
+
 ## Server
 
 Zero changes. Create/fork already take `framework`+`captureMode`; the handoff
-digest is agent-neutral.
+digest is agent-neutral. The app-server approval flow reuses the existing
+web-permission path (`sidecar.RequestPermission`).

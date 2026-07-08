@@ -288,6 +288,10 @@ func cmdRun(args []string) int {
 		exitCode = runHooksTmuxMode(sc, binPath, userArgs)
 	case hooks:
 		exitCode = runHooksMode(sc, binPath, userArgs)
+	case prof.captureMode == "rollout" && os.Getenv("LIVE_CODEX_APPSERVER") == "1":
+		// Real-time headless mode: codex driven over the app-server protocol,
+		// with browser-answered permissions and push viewer comments.
+		exitCode = runAppServerMode(sc, binPath, userArgs)
 	case prof.captureMode == "rollout":
 		exitCode = runRolloutMode(sc, binPath, userArgs)
 	default:

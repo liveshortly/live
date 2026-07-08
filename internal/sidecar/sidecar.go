@@ -346,6 +346,19 @@ func desktopNotify(comments []api.Comment) {
 	}
 }
 
+// RequestPermission surfaces a tool-permission prompt and returns the owner's
+// verdict ("allow", "deny", or "always") — the web/broker flow used by the
+// PreToolUse hook, exported for agents (e.g. the codex app-server client) that
+// gate tool execution themselves. Blocks until answered, cancelled, or the
+// grace window expires (→ "deny").
+func (s *Sidecar) RequestPermission(ctx context.Context, tool, desc string) string {
+	if s.Broker != nil {
+		v, _ := s.Broker.Request(ctx, tool, desc)
+		return v
+	}
+	return s.awaitDecision(ctx, tool, desc)
+}
+
 // permissionGrace bounds how long the channel waits for a UI verdict before
 // defaulting to deny (the local terminal prompt remains answerable meanwhile).
 const permissionGrace = 8 * time.Minute
