@@ -4,6 +4,34 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v0.6.0 — 2026-07-08
+
+- **`live codex` — full parity with `live claude`** (codex-cli 0.142.5). See
+  `CODEX.md`.
+  - **Structured capture.** New `rollout` capture mode tails codex's own
+    session file (`~/.codex/sessions/**/rollout-*.jsonl`) and maps its events
+    to the same feed rows Claude produces — prompts, replies, tool calls, and
+    file diffs — instead of scraping raw terminal text.
+  - **Handoff parity.** `live codex --handoff <code>` / `--session <id>` now
+    inject the orient prompt as codex's initial prompt automatically (no more
+    paste banner). Applies to any agent that takes an initial prompt.
+  - **Two-way viewer comments.** The `live channel` MCP loads into codex
+    per-session (ephemeral `-c mcp_servers.*` overrides, nothing persisted) and
+    exposes a standard `poll_viewer_messages` tool so codex can pull viewer
+    messages as real turns.
+  - **Web-gated permissions** (opt-in, `LIVE_CODEX_PERMS=1`). A session-scoped
+    codex `PreToolUse` hook gates tool runs through the same browser
+    allow/deny flow as Claude — codex's hook payload/decision format matches
+    Claude's, so the server side is reused unchanged.
+- **Prior context is shown in the terminal on fork.** A fork/handoff now prints
+  a compact, bounded view of the source session's digest (the most recent
+  turns) so you can see what you continued from without opening the file or the
+  web. `LIVE_NO_CONTEXT=1` suppresses it.
+- **Fix: `--handoff` no longer exits instantly.** The viewer-channel flags
+  ended on a variadic flag that swallowed the injected handoff prompt, so the
+  forked agent started with no prompt and quit. The channel flags now end on a
+  boolean so the prompt survives.
+
 ## v0.5.0 — 2026-07-07
 
 - **Session handoff / fork.** Continue any session you can read — live or
