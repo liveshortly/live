@@ -89,6 +89,14 @@ func TestInitialPrompt(t *testing.T) {
 	if initialPrompt([]string{"-p"}) != "" {
 		t.Fatal("no positional → empty")
 	}
+	// `-c key=value` overrides are injected by live (perm hooks, handoff digest).
+	// A trailing one must never be mistaken for the opening prompt.
+	if p := initialPrompt([]string{"-c", "developer_instructions=prior context"}); p != "" {
+		t.Fatalf("a -c value is not a prompt, got %q", p)
+	}
+	if p := initialPrompt([]string{"-c", "hooks.PreToolUse=[]", "real prompt"}); p != "real prompt" {
+		t.Fatalf("positional after a -c override, got %q", p)
+	}
 }
 
 func TestParseCodexFileChanges(t *testing.T) {

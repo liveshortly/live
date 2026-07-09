@@ -164,14 +164,21 @@ func threadIDOf(result json.RawMessage) string {
 }
 
 // initialPrompt picks the opening instruction out of the agent args: the LAST
-// non-flag token. That's the plain `live codex "task"` positional, or the
-// handoff seed prompt (appended last on a fork), and it dodges flag values like
-// `--model gpt` that a leading-scan would wrongly grab.
+// non-flag token. That's the plain `live codex "task"` positional, and it dodges
+// flag values like `--model gpt` that a leading-scan would wrongly grab.
+//
+// A `-c key=value` override is NOT a prompt: `live` injects those (permission
+// hooks, the handoff digest), and a trailing one would otherwise be submitted to
+// the model as the opening turn.
 func initialPrompt(args []string) string {
 	for i := len(args) - 1; i >= 0; i-- {
-		if !strings.HasPrefix(args[i], "-") {
-			return args[i]
+		if strings.HasPrefix(args[i], "-") {
+			continue
 		}
+		if i > 0 && (args[i-1] == "-c" || args[i-1] == "--config") {
+			continue // this is the flag's value, not a prompt
+		}
+		return args[i]
 	}
 	return ""
 }

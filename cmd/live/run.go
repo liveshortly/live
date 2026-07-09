@@ -578,10 +578,50 @@ func seedHandoff(b api.HandoffBundle, sessionID string, userArgs []string, preDi
 		return append(userArgs, "--append-system-prompt-file", path)
 	}
 
-	// Other agents (codex/pty): don't auto-submit either — the agent opens and
-	// waits; the prior context is shown above and saved at the digest path.
+	// Codex: same contract, different lever. `-c developer_instructions=<digest>`
+	// orients the agent without submitting a turn — codex has no
+	// --append-system-prompt-file. Prepended (not appended) so the operator's
+	// positional prompt stays the LAST token for initialPrompt.
+	//
+	// Pause for the same reason claude does: codex runs inside tmux, and
+	// attach-session repaints the whole screen, erasing the prior context we
+	// just printed. Without this the operator never sees it.
+	if filepath.Base(claudeBin) == "codex" {
+		waitForEnterBeforeAgent()
+		// app-server mode launches `codex app-server` and ignores userArgs, so a
+		// -c override there would be silently dropped; it seeds via thread/start.
+		if os.Getenv("LIVE_CODEX_APPSERVER") == "1" {
+			return userArgs
+		}
+		if instr := codexInstructions(b.Markdown); instr != "" {
+			return append([]string{"-c", "developer_instructions=" + instr}, userArgs...)
+		}
+		return userArgs
+	}
+
+	// Other agents (pty): don't auto-submit either — the agent opens and waits;
+	// the prior context is shown above and saved at the digest path.
 	fmt.Fprintf(os.Stderr, "\x1b[36m● live\x1b[0m your agent will wait — prior context is shown above and saved at %s\n\n", path)
 	return userArgs
+}
+
+// maxCodexInstructions bounds the digest we pass as a `-c` value. The whole
+// launch command must fit in ARG_MAX, and a fork of a long session can carry a
+// large digest; the full text always remains at the digest path.
+const maxCodexInstructions = 64 << 10
+
+// codexInstructions frames the digest as prior context and clips it to a size
+// that is safe to pass on the command line.
+func codexInstructions(markdown string) string {
+	md := strings.TrimSpace(markdown)
+	if md == "" {
+		return ""
+	}
+	if len(md) > maxCodexInstructions {
+		md = md[:maxCodexInstructions] + "\n\n[truncated — see the digest file for the full prior context]"
+	}
+	return "You are continuing a prior coding session. Here is its context.\n" +
+		"Do not act on it until the operator asks; use it to answer their first message.\n\n" + md
 }
 
 // waitForEnterBeforeAgent pauses so the operator can read the printed prior
