@@ -78,14 +78,14 @@ either link, verify, `chmod +x`, and move it onto your PATH.
 ### Homebrew, if that's your thing
 
 ```bash
-brew tap resapce/tap git@github.com:resapce/homebrew-tap.git
-brew install resapce/tap/live
+brew tap liveshortly/tap git@github.com:LiveShortly/homebrew-tap.git
+brew install liveshortly/tap/live
 live login
 ```
 
-Builds the latest tagged release. (Repo's private, so again your SSH key needs
-access — once it's public this is just `brew tap resapce/tap`.) Update later
-with `brew upgrade resapce/tap/live`.
+Installs the same prebuilt binary as the curl installer — no Go, no compile. (The
+tap repo is still private, so your SSH key needs access; once it's public this is
+just `brew tap liveshortly/tap`.) Update later with `brew upgrade liveshortly/tap/live`.
 
 ### Keeping it current
 

@@ -66,7 +66,7 @@ func cmdUpdate(args []string) {
 		os.Exit(1)
 	}
 	if strings.Contains(self, "/Cellar/") {
-		fmt.Fprintln(os.Stderr, "note: this copy is managed by Homebrew — `brew upgrade resapce/tap/live` is the cleaner path. Continuing anyway.")
+		fmt.Fprintln(os.Stderr, "note: this copy is managed by Homebrew — `brew upgrade liveshortly/tap/live` is the cleaner path. Continuing anyway.")
 	}
 
 	asset := fmt.Sprintf("live-%s-%s-%s", target, runtime.GOOS, runtime.GOARCH)
