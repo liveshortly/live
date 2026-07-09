@@ -39,9 +39,21 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # On workflow_dispatch, GITHUB_REF_NAME is the branch ("main"), not the
+      # tag — so the explicit input must win. Refuse anything that isn't a vX.Y.Z
+      # tag rather than publishing assets named after a branch.
       - name: Resolve version
         id: v
-        run: echo "version=${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.tag }}"
+          [ -n "$tag" ] || tag="$GITHUB_REF_NAME"
+          case "$tag" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::refusing to release '$tag' — expected a vX.Y.Z tag"; exit 1 ;;
+          esac
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+          echo "releasing $tag"
 
       - run: go vet ./...
       - run: go test ./...
