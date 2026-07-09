@@ -73,10 +73,14 @@ if ! command -v go >/dev/null 2>&1; then
               or 'brew install go' / your package manager), then rerun this script."
 fi
 
-# tmux is optional but recommended — it powers the clean in-terminal permission
-# popups (LIVE_TMUX=1). Without it, permission control still works from the web.
+# tmux is REQUIRED for `live codex` — codex runs inside a tmux session so viewer
+# comments can be typed into its composer, which is the only way a comment reaches
+# codex while it sits idle. It is merely recommended for `live claude`, where it
+# powers the clean in-terminal permission popups (LIVE_TMUX=1).
 if ! command -v tmux >/dev/null 2>&1; then
-  say "tip: install tmux for clean CLI permission popups (LIVE_TMUX=1) — 'brew install tmux' / your package manager. Optional."
+  say "warning: tmux not found. 'live codex' needs it to deliver viewer comments to an idle codex —"
+  say "         without it, comments from the web may never arrive. 'brew install tmux' / your package manager."
+  say "         ('live claude' works fine; tmux only adds its CLI permission popups.)"
 fi
 
 # ── 3. Pin the requested version, then build ─────────────────────────────────
@@ -129,5 +133,5 @@ else
   "$BIN_DIR/live" login
 fi
 
-say "done. Try:  live claude"
+say "done. Try:  live claude   (or: live codex)"
 say "permission control is on by default (tmux popup / session page) — disable with LIVE_WEB_PERMS=0"
