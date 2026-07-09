@@ -282,6 +282,14 @@ func cmdRun(args []string) int {
 		userArgs = seedHandoff(bundle, sessionID, userArgs, opts.preDigest, binPath)
 	}
 
+	// app-server mode ignores userArgs, so the digest cannot ride in on a `-c`
+	// override the way it does for the codex TUI. It is passed to thread/start as
+	// developerInstructions instead. Empty when this is not a fork.
+	var devInstructions string
+	if forked && filepath.Base(binPath) == "codex" {
+		devInstructions = codexInstructions(bundle.Markdown)
+	}
+
 	var exitCode int
 	switch {
 	case tmuxMode:
@@ -291,7 +299,7 @@ func cmdRun(args []string) int {
 	case prof.captureMode == "rollout" && os.Getenv("LIVE_CODEX_APPSERVER") == "1":
 		// Real-time headless mode: codex driven over the app-server protocol,
 		// with browser-answered permissions and push viewer comments.
-		exitCode = runAppServerMode(sc, binPath, userArgs)
+		exitCode = runAppServerMode(sc, binPath, userArgs, devInstructions)
 	case prof.captureMode == "rollout" && os.Getenv("LIVE_TMUX") != "0" && !isPrintMode(userArgs):
 		// Interactive codex TUI in tmux; viewer comments are typed into its
 		// composer, so they reach codex even while it is idle.
@@ -589,7 +597,8 @@ func seedHandoff(b api.HandoffBundle, sessionID string, userArgs []string, preDi
 	if filepath.Base(claudeBin) == "codex" {
 		waitForEnterBeforeAgent()
 		// app-server mode launches `codex app-server` and ignores userArgs, so a
-		// -c override there would be silently dropped; it seeds via thread/start.
+		// -c override there would be silently dropped. cmdRun passes the same
+		// digest to thread/start as developerInstructions instead.
 		if os.Getenv("LIVE_CODEX_APPSERVER") == "1" {
 			return userArgs
 		}

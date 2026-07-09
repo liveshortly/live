@@ -28,7 +28,11 @@ import (
 // Codex is headless here: there is no terminal TUI. The operator drives and
 // watches the session from the web; the terminal just shows status and holds
 // the process until Ctrl-C.
-func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
+// devInstructions carries the handoff digest on a fork. It orients the agent
+// without submitting a turn — the same contract as the codex TUI's
+// `-c developer_instructions=…` and claude's --append-system-prompt-file. Empty
+// on a normal (non-fork) run.
+func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, devInstructions string) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -54,11 +58,7 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		fmt.Fprintf(os.Stderr, "live: codex initialize failed: %v\n", err)
 		return 1
 	}
-	thread, err := c.request("thread/start", map[string]any{
-		"cwd":            cwd,
-		"approvalPolicy": "on-request",
-		"sandbox":        "workspace-write",
-	})
+	thread, err := c.request("thread/start", threadStartParams(cwd, devInstructions))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "live: codex thread/start failed: %v\n", err)
 		return 1
@@ -104,6 +104,23 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	cancel()
 	_ = c.cmd.Process.Signal(syscall.SIGTERM)
 	return 0
+}
+
+// threadStartParams builds the thread/start payload. on-request approval +
+// workspace-write sandbox make codex escalate risky actions as approval requests
+// we gate from the web. On a fork, developerInstructions carries the handoff
+// digest; the key is omitted entirely when there is none, since codex rejects a
+// null where it expects a string.
+func threadStartParams(cwd, devInstructions string) map[string]any {
+	p := map[string]any{
+		"cwd":            cwd,
+		"approvalPolicy": "on-request",
+		"sandbox":        "workspace-write",
+	}
+	if devInstructions != "" {
+		p["developerInstructions"] = devInstructions
+	}
+	return p
 }
 
 // ── the JSON-RPC client ───────────────────────────────────────────────────────

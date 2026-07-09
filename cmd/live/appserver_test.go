@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -96,6 +97,25 @@ func TestInitialPrompt(t *testing.T) {
 	}
 	if p := initialPrompt([]string{"-c", "hooks.PreToolUse=[]", "real prompt"}); p != "real prompt" {
 		t.Fatalf("positional after a -c override, got %q", p)
+	}
+}
+
+// A fork must orient the app-server agent the same way the TUI is oriented.
+// Without developerInstructions on thread/start, `LIVE_CODEX_APPSERVER=1
+// live --session <id> codex` starts with no prior context at all.
+func TestThreadStartParams(t *testing.T) {
+	plain := threadStartParams("/repo", "")
+	if _, ok := plain["developerInstructions"]; ok {
+		t.Fatal("non-fork runs must omit developerInstructions entirely, not send an empty string")
+	}
+	if plain["cwd"] != "/repo" || plain["approvalPolicy"] != "on-request" || plain["sandbox"] != "workspace-write" {
+		t.Fatalf("unexpected base params: %v", plain)
+	}
+
+	forked := threadStartParams("/repo", "prior context: we were fixing the parser")
+	got, ok := forked["developerInstructions"].(string)
+	if !ok || !strings.Contains(got, "fixing the parser") {
+		t.Fatalf("fork must carry the digest into thread/start, got %v", forked["developerInstructions"])
 	}
 }
 
