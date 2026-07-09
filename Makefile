@@ -9,7 +9,19 @@ INSTALL_DIR        = $(LIVESHORTLY_REPO)/web/public/install
 
 DIST_REPO ?= resapce/live-dist
 
-.PHONY: build install vet test clean release publish publish-gh
+.PHONY: build install vet test clean release publish publish-gh check-clean
+
+# `git describe --dirty` appends "-dirty" when the tree has uncommitted changes,
+# which would silently publish mislabeled assets (live-v1.0.1-dirty-*). Refuse.
+# Skipped when VERSION is passed explicitly on the command line.
+check-clean:
+ifneq ($(origin VERSION),command line)
+	@if git status --porcelain 2>/dev/null | grep -q .; then \
+		echo "refusing to release from a dirty tree — VERSION would be '$(VERSION)'."; \
+		echo "commit, stash, or pass it explicitly:  make $(MAKECMDGOALS) VERSION=vX.Y.Z"; \
+		exit 1; \
+	fi
+endif
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BIN) ./cmd/live
@@ -28,7 +40,7 @@ clean:
 
 # Cross-compile stripped release binaries for every platform into dist/,
 # each with a .sha256 (of the raw binary) and a .gz (what gets served).
-release:
+release: check-clean
 	rm -rf dist && mkdir -p dist
 	@for p in $(PLATFORMS); do \
 		GOOS=$${p%-*} GOARCH=$${p#*-} go build -trimpath \
