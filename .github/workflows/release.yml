@@ -1,68 +1,104 @@
 name: release
 
-# Cross-compiles `live` for every supported platform on a v* tag and publishes
-# the artifacts as a GitHub Release on the PUBLIC liveshortly/live-dist repo.
+# Releases on a push to main, gated by the VERSION file: if the tag vX.Y.Z named
+# in VERSION does not exist yet, this builds it, tags it, and publishes it.
+# Bumping VERSION *is* the release. Any other push to main is a no-op.
 #
-# Why a second repo: this repo is private, and release assets on a private repo
-# require an auth token to download — which would break `curl … | bash` for
+# What one release does, in order:
+#   1. tag       vX.Y.Z on this repo
+#   2. live-dist publish a GitHub Release with the four platform binaries
+#   3. mirror    commit the same binaries + latest.txt + the installer into
+#                liveshortly-server, whose own deploy workflow then serves them
+#                at liveshortly.com/install/ and liveshortly.com/i.sh
+#   4. tap       bump homebrew-tap's formula to the new urls + .gz checksums
+#
+# Why live-dist exists: this repo is private, and release assets on a private
+# repo require an auth token to download — which would break `curl … | bash` for
 # anyone outside the org. live-dist carries no source, only release assets.
 #
 # Requires one repo secret:
-#   LIVE_DIST_TOKEN — a fine-grained PAT with Contents: read+write on
-#                     liveshortly/live-dist, and nothing else.
+#   RELEASE_TOKEN — a fine-grained PAT owned by the `liveshortly` org, with
+#                   Contents: read+write on live-dist, liveshortly-server, and
+#                   homebrew-tap. A fine-grained PAT is scoped to a resource
+#                   OWNER, so a token issued against another org will not work.
+#
+# The tag is pushed with GITHUB_TOKEN, which deliberately does not trigger other
+# workflows. The mirror commit is pushed with RELEASE_TOKEN precisely so that it
+# DOES trigger liveshortly-server's deploy.
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Tag to build and publish (e.g. v1.0.1)"
-        required: true
+      force_version:
+        description: "Release this version even if VERSION says otherwise (e.g. 1.0.2)"
+        required: false
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  release:
+  gate:
     runs-on: ubuntu-latest
-    env:
-      DIST_REPO: liveshortly/live-dist
+    outputs:
+      version: ${{ steps.g.outputs.version }}
+      release: ${{ steps.g.outputs.release }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-          fetch-depth: 0 # tags, so `git describe` works
+        with: { fetch-depth: 0 }
+
+      - name: Decide whether this commit is a release
+        id: g
+        run: |
+          set -euo pipefail
+          version="${{ github.event.inputs.force_version }}"
+          [ -n "$version" ] || version="$(tr -d '[:space:]' < VERSION)"
+
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::VERSION must be bare X.Y.Z (no leading v), got '$version'"; exit 1 ;;
+          esac
+
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version already tagged — nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is new — releasing"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: v${{ needs.gate.outputs.version }}
+      BARE_VERSION: ${{ needs.gate.outputs.version }}
+      DIST_REPO: liveshortly/live-dist
+      SERVER_REPO: liveshortly/liveshortly-server
+      TAP_REPO: liveshortly/homebrew-tap
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
-      # On workflow_dispatch, GITHUB_REF_NAME is the branch ("main"), not the
-      # tag — so the explicit input must win. Refuse anything that isn't a vX.Y.Z
-      # tag rather than publishing assets named after a branch.
-      - name: Resolve version
-        id: v
-        run: |
-          set -euo pipefail
-          tag="${{ github.event.inputs.tag }}"
-          [ -n "$tag" ] || tag="$GITHUB_REF_NAME"
-          case "$tag" in
-            v[0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "::error::refusing to release '$tag' — expected a vX.Y.Z tag"; exit 1 ;;
-          esac
-          echo "version=$tag" >> "$GITHUB_OUTPUT"
-          echo "releasing $tag"
-
       - run: go vet ./...
       - run: go test ./...
 
       # Same artifact names, layout, and checksums as `make release`, so both
-      # `live update` and install.sh keep working unchanged.
+      # `live update` and install.sh keep working unchanged. The .sha256 covers
+      # the UNCOMPRESSED binary; the installer gunzips before verifying.
       - name: Build release artifacts
-        env:
-          VERSION: ${{ steps.v.outputs.version }}
         run: |
           set -euo pipefail
           rm -rf dist && mkdir -p dist
@@ -72,15 +108,23 @@ jobs:
               -o "dist/live-$VERSION-$p" ./cmd/live
             sha256sum "dist/live-$VERSION-$p" | awk '{print $1}' > "dist/live-$VERSION-$p.sha256"
             gzip -9 -f "dist/live-$VERSION-$p"
-            echo "built live-$VERSION-$p"
           done
           echo "$VERSION" > dist/latest.txt
           ls -l dist
 
+      # Tag only after vet/test/build pass, so a red commit never leaves a tag
+      # behind. GITHUB_TOKEN is fine here: nothing keys off this tag.
+      - name: Tag
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "live $VERSION"
+          git push origin "$VERSION"
+
       - name: Publish GitHub Release on live-dist
         env:
-          GH_TOKEN: ${{ secrets.LIVE_DIST_TOKEN }}
-          VERSION: ${{ steps.v.outputs.version }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
           gh release view "$VERSION" -R "$DIST_REPO" >/dev/null 2>&1 \
@@ -92,5 +136,55 @@ jobs:
 
               curl -fsSL https://liveshortly.com/i.sh | bash
 
-          Each binary has a matching \`.sha256\`; the installer verifies it before installing."
+          Each binary has a matching \`.sha256\` of the *uncompressed* binary; the installer verifies it before installing."
           gh release upload "$VERSION" -R "$DIST_REPO" --clobber dist/*.gz dist/*.sha256 dist/latest.txt
+
+      # The mirror is cumulative: old versions stay installable. Pushed with
+      # RELEASE_TOKEN so liveshortly-server's deploy workflow actually fires.
+      - name: Mirror to liveshortly-server
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/${SERVER_REPO}.git" server
+          install_dir=server/web/public/install
+          mkdir -p "$install_dir"
+          cp dist/*.gz dist/*.sha256 "$install_dir/"
+          echo "$VERSION" > "$install_dir/latest.txt"
+
+          # install.sh is the source of truth; /i.sh is served as a short alias
+          # and must stay byte-identical to it.
+          cp install.sh server/web/public/install.sh
+          cp install.sh server/web/public/i.sh
+
+          cd server
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "mirror already current — nothing to commit"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(install): publish live $VERSION to the mirror"
+          git push origin HEAD:main
+
+      - name: Bump the Homebrew formula
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/${TAP_REPO}.git" tap
+          python3 scripts/bump_formula.py tap/Formula/live.rb "$BARE_VERSION" dist
+
+          cd tap
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "formula already current — nothing to commit"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "live $VERSION"
+          git push origin HEAD:main

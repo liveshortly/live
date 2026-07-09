@@ -4,7 +4,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo 0.1.
 LDFLAGS := -X main.version=$(VERSION)
 
 PLATFORMS         := darwin-arm64 darwin-amd64 linux-amd64 linux-arm64
-LIVESHORTLY_REPO  ?= ../LiveShortly
+LIVESHORTLY_REPO  ?= ../liveshortly-server
 INSTALL_DIR        = $(LIVESHORTLY_REPO)/web/public/install
 
 DIST_REPO ?= liveshortly/live-dist
