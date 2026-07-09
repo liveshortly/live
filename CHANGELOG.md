@@ -4,6 +4,39 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v1.0.0 — 2026-07-09
+
+- **`live codex` is now interactive and real-time at the same time.** Codex runs
+  in an isolated tmux session (private `-L liveshortly` socket) — you drive the
+  real codex TUI as usual — and viewer comments are **typed straight into its
+  composer**. This closes the long-standing gap where a comment posted from the
+  web never reached an **idle** codex.
+
+  Why it was broken: codex is a standard MCP client, so it only saw viewer
+  comments when it chose to call the `poll_viewer_messages` tool — which an idle
+  agent never does. Delivery was pull; it needed to be push. tmux gives a
+  scriptable handle on the pane, so a comment lands the moment it arrives,
+  whether codex is idle or mid-turn (mid-turn comments queue and run next).
+
+  - Comments are delivered via a tmux **paste buffer** with bracketed paste, so
+    arbitrary text (`;`, leading `-`, embedded newlines) can't be misread as tmux
+    arguments or submit a turn early.
+  - A **modal guard** refuses to type when codex is showing a dialog (directory
+    trust, approval prompt), rather than silently answering the wrong question.
+  - Permission prompts keep the existing `display-popup` + web race.
+  - Feed events still come from the structured rollout tailer — the screen is
+    never scraped for content.
+  - Falls back to the previous PTY rollout mode when tmux is absent, and is
+    skipped for headless `-p` runs. `LIVE_TMUX=0` opts out.
+
+- **tmux is now required for the full `live codex` experience** (it was only
+  "nice to have", for Claude's permission popups). Without it, codex silently
+  falls back to the mode where idle comments never arrive.
+
+- Fixed: a viewer comment injected into codex was emitted to the feed **twice** —
+  once as `viewer_comment`, once as the `prompt` codex appeared to receive. The
+  rollout mapper now skips viewer-injected turns.
+
 ## v0.6.1 — 2026-07-08
 
 - **Real-time `live codex` via the app-server protocol** (opt-in,

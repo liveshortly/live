@@ -120,11 +120,18 @@ live whoami           # make sure it took
 Your login lives at `~/.liveshortly/credentials.json` (locked down to 0600)
 and refreshes on its own.
 
-### Nice to have: tmux 🪄
+### tmux 🪄
 
-Not required, but **install tmux for the best experience** — it powers the
-clean CLI permission popups (`LIVE_TMUX=1`, below). Without it, permission
-control still works from the web. `brew install tmux` / `apt install tmux`.
+`brew install tmux` / `apt install tmux`.
+
+**Required for `live codex`.** Codex runs inside a tmux session so viewer
+comments can be typed into its composer — that is the only way a comment reaches
+codex while it sits idle. Without tmux, `live codex` falls back to a mode where
+web comments are delivered only if codex happens to poll for them.
+
+**Recommended for `live claude`**, where it powers the clean CLI permission
+popups (`LIVE_TMUX=1`, below). Without it, permission control still works from
+the web.
 
 ## Answering Claude's permission prompts
 

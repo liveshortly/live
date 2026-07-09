@@ -292,6 +292,10 @@ func cmdRun(args []string) int {
 		// Real-time headless mode: codex driven over the app-server protocol,
 		// with browser-answered permissions and push viewer comments.
 		exitCode = runAppServerMode(sc, binPath, userArgs)
+	case prof.captureMode == "rollout" && os.Getenv("LIVE_TMUX") != "0" && !isPrintMode(userArgs):
+		// Interactive codex TUI in tmux; viewer comments are typed into its
+		// composer, so they reach codex even while it is idle.
+		exitCode = runCodexTmuxMode(sc, binPath, userArgs)
 	case prof.captureMode == "rollout":
 		exitCode = runRolloutMode(sc, binPath, userArgs)
 	default:

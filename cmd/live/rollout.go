@@ -387,9 +387,10 @@ func (m *rolloutMapper) handleResponseItem(raw json.RawMessage) {
 		}
 		switch p.Role {
 		case "user":
-			// Skip codex's injected preambles and any channel-wrapped viewer
-			// comment (already shown cleanly as a viewer_comment event).
-			if isCodexPreamble(text) || looksLikeChannelTurn(text) {
+			// Skip codex's injected preambles and any viewer comment we routed
+			// into codex — via the channel MCP (<channel …>) or typed into the
+			// composer in tmux mode. Both already show as viewer_comment events.
+			if isCodexPreamble(text) || looksLikeChannelTurn(text) || looksLikeViewerInput(text) {
 				return
 			}
 			m.emit("prompt", map[string]any{"content": clip(text, 4000), "ts": isoNow()})
