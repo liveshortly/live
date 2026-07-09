@@ -375,18 +375,22 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	}
 	claudeArgs = append(claudeArgs, userArgs...)
 
+	// On a fork, print the prior context inside the pane (it lands in scrollback)
+	// rather than outside it, where attach-session would repaint over it.
+	agent := handoffShimArgs(self, sc.SessionID, append([]string{binPath}, claudeArgs...))
+
 	newArgs := []string{"new-session", "-d", "-s", sess,
 		"-e", "LIVE_SIDECAR=" + addr, "-e", "LIVE_TOKEN=" + token, "-e", "LIVE_SESSION_ID=" + sc.SessionID,
 		// The PreToolUse relay blocks on the broker (popup or web); its HTTP
 		// client must outlast the 8m decision grace, under the 10m hook.
-		"-e", "LIVE_HOOK_TIMEOUT=590",
-		binPath}
-	newArgs = append(newArgs, claudeArgs...)
+		"-e", "LIVE_HOOK_TIMEOUT=590"}
+	newArgs = append(newArgs, agent...)
 	if out, err := tmux(newArgs...).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "live: tmux new-session failed: %v: %s\n", err, out)
 		return 1
 	}
 	_ = tmux("set-option", "-t", sess, "status", "off").Run()
+	bindContextPopup(func(a ...string) error { return tmux(a...).Run() }, self, sc.SessionID)
 
 	// popup driver: raise a display-popup whenever a permission is pending
 	popupCmd := fmt.Sprintf("%q perm-prompt %q %q", self, addr, token)

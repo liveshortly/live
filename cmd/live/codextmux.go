@@ -87,13 +87,16 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		tailNewRollout(tctx, sc, before, cwd)
 	}()
 
+	// On a fork, print the prior context inside the pane (it lands in scrollback)
+	// rather than outside it, where attach-session would repaint over it.
+	agent := handoffShimArgs(self, sc.SessionID, append([]string{binPath}, codexArgs...))
+
 	newArgs := []string{"new-session", "-d", "-s", sess,
 		"-e", "LIVE_SIDECAR=" + addr,
 		"-e", "LIVE_TOKEN=" + token,
 		"-e", "LIVE_SESSION_ID=" + sc.SessionID,
-		"-e", "LIVE_HOOK_TIMEOUT=590",
-		binPath}
-	newArgs = append(newArgs, codexArgs...)
+		"-e", "LIVE_HOOK_TIMEOUT=590"}
+	newArgs = append(newArgs, agent...)
 	if out, err := t.output(newArgs...); err != nil {
 		stopTail()
 		<-tailDone
@@ -101,6 +104,7 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		return 1
 	}
 	_ = t.run("set-option", "-t", sess, "status", "off")
+	bindContextPopup(t.run, self, sc.SessionID)
 
 	// popup driver: raise a display-popup whenever a permission is pending
 	popupCmd := fmt.Sprintf("%q perm-prompt %q %q", self, addr, token)

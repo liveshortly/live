@@ -32,6 +32,7 @@ Usage:
   live <command> [args...]   Run any agent/CLI, captured via PTY recording
   live -- <command> [...]    Same, unambiguous form
   live handoff <session-id>  Print the copyable command to continue a session
+  live context [<id>]        Reprint a fork's prior-context digest
 
 Continue (fork) an existing session as a NEW session you own:
   live claude --session <id>       Continue from a session's latest state
@@ -40,6 +41,8 @@ Continue (fork) an existing session as a NEW session you own:
   and your agent orients itself from the prior context on launch. Works with
   any agent (live gemini --session <id>, …). --session/--handoff need read
   access to the source (a private, unshared session returns "no access").
+  The history is printed in the agent's own terminal — scroll up to re-read it,
+  press Ctrl-B h for a popup, or run "live context" from another shell.
 
 Permission control (always ON for live claude):
   You approve Claude's tool runs from a tmux popup (if tmux is installed) or
@@ -90,6 +93,10 @@ func main() {
 		cmdChannel()
 	case "handoff":
 		os.Exit(cmdHandoff(os.Args[2:]))
+	case "context":
+		os.Exit(cmdContext(os.Args[2:]))
+	case "handoff-shim": // internal: prints prior context, then execs the agent
+		os.Exit(cmdHandoffShim(os.Args[2:]))
 	default:
 		os.Exit(cmdRun(os.Args[1:]))
 	}
