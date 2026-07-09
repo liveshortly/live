@@ -4,6 +4,27 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v1.1.0 — 2026-07-09
+
+- **Forking a session into `codex` now carries the prior context.** codex has no
+  `--append-system-prompt-file`, so a fork printed the digest and then tmux
+  repainted over it. The digest is now passed as `-c developer_instructions=…`,
+  which orients the agent without submitting an opening turn. Clipped to 64 KiB
+  so a long fork's launch command stays under `ARG_MAX`; the full text always
+  remains at the digest path.
+- Fixed: a trailing `-c key=value` was mistaken for the opening prompt and
+  submitted to the model. `live` injects those itself, so the scan that looks
+  backwards for the positional prompt now skips `-c`/`--config` values.
+- **Releases are cut by CI from a push to `main`,** gated by the new `VERSION`
+  file: a push releases only if the tag it names does not exist yet. One run
+  tags the repo, publishes the binaries to `live-dist`, mirrors them (and the
+  installer) to `liveshortly.com`, and bumps the Homebrew formula.
+- The Homebrew formula installs the prebuilt binary instead of compiling from
+  source, so `brew install` no longer needs Go or access to the private repo.
+- Everything moved to the `liveshortly` GitHub org. The Go module path is now
+  `github.com/liveshortly/live`. Old URLs redirect, so nothing you have pinned
+  breaks.
+
 ## v1.0.1 — 2026-07-09
 
 - **`live` now installs as a prebuilt binary.** `curl -fsSL https://liveshortly.com/i.sh | bash`
