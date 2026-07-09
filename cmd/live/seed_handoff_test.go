@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/resapce/live/internal/api"
+	"github.com/LiveShortly/live/internal/api"
 )
 
 // On a fork the operator reads the history and drives — seedHandoff must NOT

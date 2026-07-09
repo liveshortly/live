@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/resapce/live/internal/api"
+	"github.com/LiveShortly/live/internal/api"
 )
 
 func testSidecar(pending ...api.Comment) *Sidecar {

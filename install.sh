@@ -20,7 +20,7 @@ set -euo pipefail
 # Where release assets are served from. GitHub Releases is the origin; the
 # LiveShortly web app mirrors the same filenames and is the fallback. The
 # version pointer always comes from the mirror (no API rate limit).
-GH_BASE="${LIVE_GH_BASE:-https://github.com/resapce/live-dist/releases/download}"
+GH_BASE="${LIVE_GH_BASE:-https://github.com/LiveShortly/live-dist/releases/download}"
 MIRROR_BASE="${LIVE_INSTALL_BASE:-https://liveshortly.com/install}"
 
 say()  { printf '\033[32m[live-install]\033[0m %s\n' "$*"; }
@@ -209,7 +209,7 @@ build_from_source() {
 
   local src="${LIVE_SRC_DIR:-$HOME/.liveshortly/src/live}"
   local script_dir; script_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
-  if [ -n "$script_dir" ] && grep -qs '^module github.com/resapce/live$' "$script_dir/go.mod" 2>/dev/null; then
+  if [ -n "$script_dir" ] && grep -qs '^module github.com/LiveShortly/live$' "$script_dir/go.mod" 2>/dev/null; then
     src="$script_dir"
     say "using existing checkout: $src"
   elif [ -d "$src/.git" ]; then
@@ -218,9 +218,9 @@ build_from_source() {
     if [ -z "$req" ]; then git -C "$src" pull --ff-only --quiet 2>/dev/null || true; fi
   else
     mkdir -p "$(dirname "$src")"
-    say "cloning resapce/live → $src"
-    git clone --quiet git@github.com:resapce/live.git "$src" \
-      || fail "clone failed — resapce/live is private; check your GitHub SSH key."
+    say "cloning LiveShortly/live → $src"
+    git clone --quiet git@github.com:LiveShortly/live.git "$src" \
+      || fail "clone failed — LiveShortly/live is private; check your GitHub SSH key."
   fi
   [ -n "$req" ] && git -C "$src" checkout --quiet "$req"
 

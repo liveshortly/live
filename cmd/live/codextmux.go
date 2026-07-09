@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/resapce/live/internal/api"
-	"github.com/resapce/live/internal/perm"
-	"github.com/resapce/live/internal/sidecar"
+	"github.com/LiveShortly/live/internal/api"
+	"github.com/LiveShortly/live/internal/perm"
+	"github.com/LiveShortly/live/internal/sidecar"
 )
 
 // runCodexTmuxMode runs the real codex TUI inside an isolated tmux session and

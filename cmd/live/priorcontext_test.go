@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/resapce/live/internal/api"
+	"github.com/LiveShortly/live/internal/api"
 )
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)

@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/resapce/live/internal/api"
-	"github.com/resapce/live/internal/auth"
-	"github.com/resapce/live/internal/hostcfg"
+	"github.com/LiveShortly/live/internal/api"
+	"github.com/LiveShortly/live/internal/auth"
+	"github.com/LiveShortly/live/internal/hostcfg"
 )
 
 var version = "1.0.1" // overridden via -ldflags "-X main.version=..."

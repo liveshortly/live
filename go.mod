@@ -1,4 +1,4 @@
-module github.com/resapce/live
+module github.com/LiveShortly/live
 
 go 1.26.4
 

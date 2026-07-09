@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/resapce/live/internal/auth"
-	"github.com/resapce/live/internal/hostcfg"
+	"github.com/LiveShortly/live/internal/auth"
+	"github.com/LiveShortly/live/internal/hostcfg"
 )
 
 // Client is a bearer-authenticated LiveShortly API client with automatic

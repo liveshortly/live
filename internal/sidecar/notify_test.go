@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/resapce/live/internal/api"
+	"github.com/LiveShortly/live/internal/api"
 )
 
 func TestIconWrites(t *testing.T) {

@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/resapce/live/internal/api"
-	"github.com/resapce/live/internal/perm"
+	"github.com/LiveShortly/live/internal/api"
+	"github.com/LiveShortly/live/internal/perm"
 )
 
 type event struct {

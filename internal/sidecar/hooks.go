@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/resapce/live/internal/api"
+	"github.com/LiveShortly/live/internal/api"
 )
 
 // handleHook maps a Claude Code hook payload (relayed by `live hook`) to feed
