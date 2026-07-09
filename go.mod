@@ -1,4 +1,4 @@
-module github.com/LiveShortly/live
+module github.com/liveshortly/live
 
 go 1.26.4
 

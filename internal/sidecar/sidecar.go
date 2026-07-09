@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LiveShortly/live/internal/api"
-	"github.com/LiveShortly/live/internal/perm"
+	"github.com/liveshortly/live/internal/api"
+	"github.com/liveshortly/live/internal/perm"
 )
 
 type event struct {

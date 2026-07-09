@@ -11,8 +11,8 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/LiveShortly/live/internal/api"
-	"github.com/LiveShortly/live/internal/sidecar"
+	"github.com/liveshortly/live/internal/api"
+	"github.com/liveshortly/live/internal/sidecar"
 )
 
 // runAppServerMode drives a HEADLESS `codex app-server` over newline-delimited

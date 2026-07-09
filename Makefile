@@ -7,7 +7,7 @@ PLATFORMS         := darwin-arm64 darwin-amd64 linux-amd64 linux-arm64
 LIVESHORTLY_REPO  ?= ../LiveShortly
 INSTALL_DIR        = $(LIVESHORTLY_REPO)/web/public/install
 
-DIST_REPO ?= LiveShortly/live-dist
+DIST_REPO ?= liveshortly/live-dist
 
 .PHONY: build install vet test clean release publish publish-gh check-clean
 

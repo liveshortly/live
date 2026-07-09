@@ -5,18 +5,18 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/stars/LiveShortly/live?style=flat-square&labelColor=1a1a1a&color=1f7a4d&label=stars" alt="Stars">
+  <img src="https://img.shields.io/github/stars/liveshortly/live?style=flat-square&labelColor=1a1a1a&color=1f7a4d&label=stars" alt="Stars">
   <img src="https://img.shields.io/badge/works_with-claude_%C2%B7_gemini_%C2%B7_codex_%C2%B7_anything-1f7a4d?style=flat-square&labelColor=1a1a1a" alt="Works with any agent">
   <img src="https://img.shields.io/badge/built_with-Go-1f7a4d?style=flat-square&labelColor=1a1a1a&logo=go&logoColor=white" alt="Built with Go">
   <a href="https://liveshortly.com"><img src="https://img.shields.io/badge/watch-liveshortly.com-1f7a4d?style=flat-square&labelColor=1a1a1a" alt="liveshortly.com"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/LiveShortly/live/raw/main/docs/demo.mp4">
+  <a href="https://github.com/liveshortly/live/raw/main/docs/demo.mp4">
     <img src="docs/demo.gif" width="100%" alt="live demo — run `live claude`, a shareable URL is generated, open it in the browser to watch the session stream live, and viewers talk back into the running session" />
   </a>
 </p>
-<p align="center"><sub><a href="https://github.com/LiveShortly/live/raw/main/docs/demo.mp4">▶ watch in HD (mp4)</a></sub></p>
+<p align="center"><sub><a href="https://github.com/liveshortly/live/raw/main/docs/demo.mp4">▶ watch in HD (mp4)</a></sub></p>
 
 <p align="center">
   <strong>Any agent &middot; live in one word &middot; watch it, replay it, talk back to it.</strong><br>
@@ -69,7 +69,7 @@ again whenever you want to update. **No Go toolchain, no source checkout, no
 build** — it's one static binary.
 
 Binaries are published on every release for macOS and Linux, amd64 and arm64:
-[LiveShortly/live-dist releases](https://github.com/LiveShortly/live-dist/releases),
+[liveshortly/live-dist releases](https://github.com/liveshortly/live-dist/releases),
 mirrored at [liveshortly.com/install/](https://liveshortly.com/install/).
 
 If you'd rather not pipe curl into bash, grab the binary and its `.sha256` from
@@ -78,7 +78,7 @@ either link, verify, `chmod +x`, and move it onto your PATH.
 ### Homebrew, if that's your thing
 
 ```bash
-brew tap liveshortly/tap git@github.com:LiveShortly/homebrew-tap.git
+brew tap liveshortly/tap git@github.com:liveshortly/homebrew-tap.git
 brew install liveshortly/tap/live
 live login
 ```
@@ -110,7 +110,7 @@ curl -fsSL https://liveshortly.com/i.sh | bash -s -- --version v1.0.1
 The source repo is private; this needs access.
 
 ```bash
-git clone git@github.com:LiveShortly/live.git && cd live
+git clone git@github.com:liveshortly/live.git && cd live
 make install          # → /usr/local/bin/live
 live login            # browser sign-in
 live whoami           # make sure it took

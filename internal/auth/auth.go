@@ -15,7 +15,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/LiveShortly/live/internal/hostcfg"
+	"github.com/liveshortly/live/internal/hostcfg"
 )
 
 // User is the signed-in identity as returned by the device poll.

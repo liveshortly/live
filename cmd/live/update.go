@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LiveShortly/live/internal/hostcfg"
+	"github.com/liveshortly/live/internal/hostcfg"
 )
 
 // cmdUpdate implements `live update [--version vX.Y.Z]`: self-update from the

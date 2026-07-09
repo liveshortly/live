@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/LiveShortly/live/internal/auth"
+	"github.com/liveshortly/live/internal/auth"
 )
 
 // cmdUninstall removes the installed live binary and signs you out. With

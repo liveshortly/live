@@ -17,12 +17,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/LiveShortly/live/internal/adapter"
-	"github.com/LiveShortly/live/internal/api"
-	"github.com/LiveShortly/live/internal/auth"
-	"github.com/LiveShortly/live/internal/hostcfg"
-	"github.com/LiveShortly/live/internal/perm"
-	"github.com/LiveShortly/live/internal/sidecar"
+	"github.com/liveshortly/live/internal/adapter"
+	"github.com/liveshortly/live/internal/api"
+	"github.com/liveshortly/live/internal/auth"
+	"github.com/liveshortly/live/internal/hostcfg"
+	"github.com/liveshortly/live/internal/perm"
+	"github.com/liveshortly/live/internal/sidecar"
 )
 
 // agentProfile maps a command name to how we capture it.

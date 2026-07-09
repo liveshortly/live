@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/LiveShortly/live/internal/api"
-	"github.com/LiveShortly/live/internal/auth"
-	"github.com/LiveShortly/live/internal/hostcfg"
+	"github.com/liveshortly/live/internal/api"
+	"github.com/liveshortly/live/internal/auth"
+	"github.com/liveshortly/live/internal/hostcfg"
 )
 
 var version = "1.0.1" // overridden via -ldflags "-X main.version=..."

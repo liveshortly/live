@@ -1,7 +1,7 @@
 name: release
 
 # Cross-compiles `live` for every supported platform on a v* tag and publishes
-# the artifacts as a GitHub Release on the PUBLIC LiveShortly/live-dist repo.
+# the artifacts as a GitHub Release on the PUBLIC liveshortly/live-dist repo.
 #
 # Why a second repo: this repo is private, and release assets on a private repo
 # require an auth token to download — which would break `curl … | bash` for
@@ -9,7 +9,7 @@ name: release
 #
 # Requires one repo secret:
 #   LIVE_DIST_TOKEN — a fine-grained PAT with Contents: read+write on
-#                     LiveShortly/live-dist, and nothing else.
+#                     liveshortly/live-dist, and nothing else.
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      DIST_REPO: LiveShortly/live-dist
+      DIST_REPO: liveshortly/live-dist
     steps:
       - uses: actions/checkout@v4
         with:

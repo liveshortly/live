@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LiveShortly/live/internal/adapter"
-	"github.com/LiveShortly/live/internal/api"
-	"github.com/LiveShortly/live/internal/sidecar"
+	"github.com/liveshortly/live/internal/adapter"
+	"github.com/liveshortly/live/internal/api"
+	"github.com/liveshortly/live/internal/sidecar"
 )
 
 // runRolloutMode runs codex interactively in a PTY (so the operator drives it
