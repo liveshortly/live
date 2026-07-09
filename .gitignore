@@ -2,3 +2,6 @@ bin/
 dist/
 *.out
 .DS_Store
+
+# stray local build
+/live

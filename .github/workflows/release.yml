@@ -1,0 +1,84 @@
+name: release
+
+# Cross-compiles `live` for every supported platform on a v* tag and publishes
+# the artifacts as a GitHub Release on the PUBLIC resapce/live-dist repo.
+#
+# Why a second repo: this repo is private, and release assets on a private repo
+# require an auth token to download — which would break `curl … | bash` for
+# anyone outside the org. live-dist carries no source, only release assets.
+#
+# Requires one repo secret:
+#   LIVE_DIST_TOKEN — a fine-grained PAT with Contents: read+write on
+#                     resapce/live-dist, and nothing else.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (e.g. v1.0.1)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      DIST_REPO: resapce/live-dist
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0 # tags, so `git describe` works
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Resolve version
+        id: v
+        run: echo "version=${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}" >> "$GITHUB_OUTPUT"
+
+      - run: go vet ./...
+      - run: go test ./...
+
+      # Same artifact names, layout, and checksums as `make release`, so both
+      # `live update` and install.sh keep working unchanged.
+      - name: Build release artifacts
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          rm -rf dist && mkdir -p dist
+          for p in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
+            GOOS="${p%-*}" GOARCH="${p#*-}" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w -X main.version=$VERSION" \
+              -o "dist/live-$VERSION-$p" ./cmd/live
+            sha256sum "dist/live-$VERSION-$p" | awk '{print $1}' > "dist/live-$VERSION-$p.sha256"
+            gzip -9 -f "dist/live-$VERSION-$p"
+            echo "built live-$VERSION-$p"
+          done
+          echo "$VERSION" > dist/latest.txt
+          ls -l dist
+
+      - name: Publish GitHub Release on live-dist
+        env:
+          GH_TOKEN: ${{ secrets.LIVE_DIST_TOKEN }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release view "$VERSION" -R "$DIST_REPO" >/dev/null 2>&1 \
+            || gh release create "$VERSION" -R "$DIST_REPO" \
+                 --title "live $VERSION" \
+                 --notes "Prebuilt \`live\` binaries for macOS and Linux (amd64/arm64).
+
+          Install:
+
+              curl -fsSL https://liveshortly.com/i.sh | bash
+
+          Each binary has a matching \`.sha256\`; the installer verifies it before installing."
+          gh release upload "$VERSION" -R "$DIST_REPO" --clobber dist/*.gz dist/*.sha256 dist/latest.txt

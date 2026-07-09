@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <code>curl -fsSL https://liveshortly.com/install.sh | bash</code>
+  <code>curl -fsSL https://liveshortly.com/i.sh | bash</code>
 </p>
 
 ---
@@ -60,23 +60,20 @@ cool if…" and turned out to be pretty cool. 🙂
 ### The easy way
 
 ```bash
-curl -fsSL https://liveshortly.com/install.sh | bash
+curl -fsSL https://liveshortly.com/i.sh | bash
 ```
 
-Fetches the source, builds it, drops `live` on your PATH, and pops open the
-browser to sign in. Run it again whenever you want to update. You'll need
-Go 1.21+ ([go.dev/dl](https://go.dev/dl/) or `brew install go`) — the script
-won't touch your Go setup, it just checks it's there and tells you if it
-isn't.
+Downloads a prebuilt binary for your platform, checks it against its published
+SHA-256, drops `live` on your PATH, and pops open the browser to sign in. Run it
+again whenever you want to update. **No Go toolchain, no source checkout, no
+build** — it's one static binary.
 
-Heads up: the source repo is private for now, so the clone step wants your
-GitHub SSH key (or `gh` auth). If you'd rather not pipe curl into bash:
+Binaries are published on every release for macOS and Linux, amd64 and arm64:
+[resapce/live-dist releases](https://github.com/resapce/live-dist/releases),
+mirrored at [liveshortly.com/install/](https://liveshortly.com/install/).
 
-```bash
-git clone git@github.com:resapce/live.git ~/.liveshortly/src/live && bash ~/.liveshortly/src/live/install.sh
-# or, with the GitHub CLI:
-gh api -H "Accept: application/vnd.github.raw" repos/resapce/live/contents/install.sh | bash
-```
+If you'd rather not pipe curl into bash, grab the binary and its `.sha256` from
+either link, verify, `chmod +x`, and move it onto your PATH.
 
 ### Homebrew, if that's your thing
 
@@ -105,10 +102,12 @@ Every release stays up there, so nothing you've pinned ever disappears. The
 installer takes the same pin if you prefer:
 
 ```bash
-curl -fsSL https://liveshortly.com/install.sh | bash -s -- --version v0.1.1
+curl -fsSL https://liveshortly.com/i.sh | bash -s -- --version v1.0.1
 ```
 
-### Or just build it yourself
+### Or build it yourself
+
+The source repo is private; this needs access.
 
 ```bash
 git clone git@github.com:resapce/live.git && cd live

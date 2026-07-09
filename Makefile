@@ -7,7 +7,9 @@ PLATFORMS         := darwin-arm64 darwin-amd64 linux-amd64 linux-arm64
 LIVESHORTLY_REPO  ?= ../LiveShortly
 INSTALL_DIR        = $(LIVESHORTLY_REPO)/web/public/install
 
-.PHONY: build install vet test clean release publish
+DIST_REPO ?= resapce/live-dist
+
+.PHONY: build install vet test clean release publish publish-gh
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/$(BIN) ./cmd/live
@@ -45,3 +47,14 @@ publish: release
 	cp dist/*.gz dist/*.sha256 $(INSTALL_DIR)/
 	echo $(VERSION) > $(INSTALL_DIR)/latest.txt
 	@echo "published $(VERSION) → $(INSTALL_DIR) (commit + deploy LiveShortly to serve it)"
+
+# Publish the same artifacts as a GitHub Release on the public dist repo. This
+# is the origin install.sh pulls from; $(INSTALL_DIR) is the fallback mirror.
+# Run AFTER `git tag` so VERSION is the exact tag. Needs `gh auth login`.
+publish-gh: release
+	@gh release view $(VERSION) -R $(DIST_REPO) >/dev/null 2>&1 \
+		|| gh release create $(VERSION) -R $(DIST_REPO) --title "live $(VERSION)" \
+			--notes "Prebuilt \`live\` binaries for macOS and Linux (amd64/arm64). Install: curl -fsSL https://liveshortly.com/i.sh | bash"
+	echo $(VERSION) > dist/latest.txt
+	gh release upload $(VERSION) -R $(DIST_REPO) --clobber dist/*.gz dist/*.sha256 dist/latest.txt
+	@echo "published $(VERSION) → https://github.com/$(DIST_REPO)/releases/tag/$(VERSION)"

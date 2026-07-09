@@ -4,6 +4,29 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v1.0.1 — 2026-07-09
+
+- **`live` now installs as a prebuilt binary.** `curl -fsSL https://liveshortly.com/i.sh | bash`
+  downloads a signed-off, checksum-verified static binary for your platform and
+  puts it on your PATH. No Go toolchain, no source checkout, no build step, and
+  no repo access required. Installs went from ~30 s to ~2 s.
+- Release artifacts are published on every `v*` tag to the public
+  [resapce/live-dist](https://github.com/resapce/live-dist/releases) repo by CI,
+  and mirrored at `https://liveshortly.com/install/`. The installer prefers
+  GitHub and falls back to the mirror; `live update` is unchanged.
+- The installer verifies the SHA-256 **and** runs the staged binary to confirm it
+  reports the expected version before replacing anything. The final move is an
+  atomic rename, so a failed install can never leave a partial binary on PATH,
+  and a running `live` is never truncated under itself.
+- The whole script is wrapped in `main()`, invoked on the last line: a truncated
+  download now runs nothing at all instead of half an installer.
+- Rerunning the installer upgrades `live` in place wherever it already lives,
+  rather than dropping a second copy that shadows the first on PATH.
+- New installer flags: `--bin-dir`, `--no-login`, `--no-modify-path`,
+  `--from-source`. Non-interactive installs (piped, no TTY) no longer hang on the
+  device-flow sign-in — they print `live login` and exit cleanly.
+- `install.sh` still works and is byte-identical to `i.sh`.
+
 ## v1.0.0 — 2026-07-09
 
 - **`live codex` is now interactive and real-time at the same time.** Codex runs
