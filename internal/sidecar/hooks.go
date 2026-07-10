@@ -65,7 +65,7 @@ func (s *Sidecar) hookUserPromptSubmit(p map[string]any) map[string]any {
 	}
 	if prompt != "" {
 		s.Emit("prompt", map[string]any{
-			"content": truncate(prompt, 4000),
+			"content": truncate(prompt, maxCaptureBytes),
 			"ts":      nowISO(),
 		})
 	}
@@ -258,9 +258,9 @@ func (s *Sidecar) hookPostToolUse(p map[string]any) map[string]any {
 		out := ""
 		switch tr := p["tool_response"].(type) {
 		case map[string]any:
-			out = truncate(str(tr, "stdout"), 300)
+			out = truncate(str(tr, "stdout"), maxCaptureBytes)
 		case string:
-			out = truncate(tr, 300)
+			out = truncate(tr, maxCaptureBytes)
 		}
 		s.Emit("tool_call", map[string]any{
 			"tool":    "Bash",
@@ -328,7 +328,7 @@ func (s *Sidecar) hookStop(p map[string]any) map[string]any {
 
 	if last := str(p, "last_assistant_message"); last != "" {
 		s.Emit("response", map[string]any{
-			"content": truncate(last, 8000),
+			"content": truncate(last, maxCaptureBytes),
 			"ts":      nowISO(),
 		})
 	}
