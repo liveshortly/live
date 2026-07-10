@@ -68,6 +68,7 @@ type Sidecar struct {
 	mu            sync.Mutex
 	pending       []api.Comment
 	modelReported bool
+	quotaEnded    bool
 	httpSrv       *http.Server
 
 	subMu sync.Mutex
@@ -147,16 +148,42 @@ func (s *Sidecar) uploadWorker() {
 	defer s.wg.Done()
 	for ev := range s.events {
 		var err error
+		var res api.EmitResult
 		for attempt := 0; attempt < 3; attempt++ {
-			if err = s.Client.EmitEvent(s.SessionID, ev.Type, ev.Payload); err == nil {
+			if res, err = s.Client.EmitEvent(s.SessionID, ev.Type, ev.Payload); err == nil {
 				break
 			}
 			time.Sleep(time.Duration(attempt+1) * 400 * time.Millisecond)
 		}
 		if err != nil {
 			s.Log.Printf("emit %s failed: %v", ev.Type, err)
+			continue
+		}
+		// The owner just crossed their storage quota: the server archived the
+		// session. Tell the operator how to continue and stop capturing.
+		if res.QuotaEnded() {
+			s.onQuotaEnded(res)
 		}
 	}
+}
+
+// quotaEnded latches once so a burst of in-flight events prints the notice only
+// once. Guarded by mu (shared with pending/modelReported).
+func (s *Sidecar) onQuotaEnded(res api.EmitResult) {
+	s.mu.Lock()
+	first := !s.quotaEnded
+	s.quotaEnded = true
+	s.mu.Unlock()
+	if !first {
+		return
+	}
+	summary := res.SummaryURL
+	if summary != "" && !strings.HasPrefix(summary, "http") {
+		summary = strings.TrimRight(s.Client.Base, "/") + summary
+	}
+	// A blank-line-wrapped notice so it stands out in the operator's terminal.
+	s.Log.Printf("\n⚠ Storage full — session archived.\n   Summary:  %s\n   Continue: %s\n",
+		summary, res.HandoffCommand)
 }
 
 // ── Viewer comments ───────────────────────────────────────────────────────────
@@ -574,3 +601,9 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "…"
 }
+
+// maxCaptureBytes bounds a single captured content field (prompt, assistant
+// reply, tool output). Truncation is a display concern the web handles when
+// fanning out; capture stays lossless up to this ceiling, which matches the
+// server's per-event belt cap so we never send a payload the server discards.
+const maxCaptureBytes = 256 * 1024

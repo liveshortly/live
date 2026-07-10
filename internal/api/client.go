@@ -223,13 +223,27 @@ func (c *Client) ReportModel(id, model string) error {
 }
 
 // EmitEvent appends one event to the session feed.
-func (c *Client) EmitEvent(id, eventType string, payload map[string]any) error {
+// EmitResult carries the server's response to an emitted event. It is empty for
+// a normal event; when the event tipped the owner over their storage quota the
+// server auto-ends the session and returns the continuation details here.
+type EmitResult struct {
+	Ended          bool   `json:"ended"`
+	Reason         string `json:"reason"`
+	SummaryURL     string `json:"summary_url"`
+	HandoffCommand string `json:"handoff_command"`
+}
+
+// QuotaEnded reports whether this event ended the session for hitting the quota.
+func (r EmitResult) QuotaEnded() bool { return r.Ended && r.Reason == "quota" }
+
+func (c *Client) EmitEvent(id, eventType string, payload map[string]any) (EmitResult, error) {
+	var res EmitResult
 	_, err := c.do("POST", "/api/sessions/"+id+"/events", map[string]any{
 		"event_type": eventType,
 		"payload":    payload,
 		"actor":      "agent",
-	}, nil)
-	return err
+	}, &res)
+	return res, err
 }
 
 // Stop ends the session and returns the shareable replay URL.
