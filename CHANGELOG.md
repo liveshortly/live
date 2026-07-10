@@ -4,6 +4,18 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v1.2.0 — 2026-07-10
+
+- **Storage-quota aware.** When the server auto-ends a session because its owner
+  hit their storage quota, `live` now reacts to the crossing signal on the
+  event-emit response: it stops capturing and prints where to pick up — the
+  downloadable session summary and the `live claude --handoff <code>` command to
+  continue after freeing space.
+- **Capture is lossless up to 256 KB per event.** Prompt, assistant-reply and
+  tool-output caps were raised to match the server's per-event belt cap;
+  truncation is now purely a display concern handled when fanning out to
+  viewers, so the stored feed (which the storage quota meters) is complete.
+
 ## v1.1.0 — 2026-07-09
 
 - **Forking a session into `codex` now carries the prior context.** codex has no
