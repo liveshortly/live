@@ -1,0 +1,85 @@
+name: CI
+
+# Runs on every PR and on main. `release.yml` cuts a release when a push to main
+# carries a new VERSION — this workflow is the gate in front of it. Make it a
+# required status check on main: release.yml tags only after vet/test pass, but
+# a red PR should never reach main in the first place.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: vet + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go vet ./...
+      - run: go test ./...
+
+  build:
+    name: cross-compile all release targets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Same matrix release.yml ships. A PR that breaks a GOOS-specific file
+      # (syscall, tty handling) only surfaces here, never on the release run.
+      - name: Build every platform
+        run: |
+          set -euo pipefail
+          for p in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
+            echo "==> $p"
+            GOOS="${p%-*}" GOARCH="${p#*-}" CGO_ENABLED=0 \
+              go build -trimpath -o /dev/null ./cmd/live
+          done
+
+  installer:
+    name: installer + VERSION sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      # install.sh is piped straight into bash on strangers' machines. A syntax
+      # error here is a broken install for everyone, and nothing else tests it.
+      - run: shellcheck -S error install.sh
+      - run: bash -n install.sh
+
+      # release.yml hard-fails on a malformed VERSION *after* main has already
+      # moved. Catch it on the PR instead.
+      - name: VERSION is bare X.Y.Z
+        run: |
+          set -euo pipefail
+          v="$(tr -d '[:space:]' < VERSION)"
+          case "$v" in
+            [0-9]*.[0-9]*.[0-9]*) echo "VERSION=$v" ;;
+            *) echo "::error::VERSION must be bare X.Y.Z (no leading v), got '$v'"; exit 1 ;;
+          esac
+
+      # A PR that bumps VERSION to an already-released tag would make release.yml
+      # silently no-op. Say so on the PR.
+      - name: VERSION is not already tagged
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          v="$(tr -d '[:space:]' < VERSION)"
+          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+            echo "::notice::v$v is already tagged — merging this will NOT cut a release"
+          else
+            echo "::notice::v$v is new — merging this WILL cut a release"
+          fi

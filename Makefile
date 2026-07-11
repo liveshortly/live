@@ -9,7 +9,27 @@ INSTALL_DIR        = $(LIVESHORTLY_REPO)/web/public/install
 
 DIST_REPO ?= liveshortly/live-dist
 
-.PHONY: build install vet test clean release publish publish-gh check-clean
+.PHONY: build install vet test clean release publish publish-gh check-clean use-local use-prod
+
+# Point the installed `live` at the LOCAL stack (docker-compose.local.yml in
+# liveshortly-server, single origin http://localhost:8080). Writes host.json;
+# `live login` afterwards runs the device flow against your local server.
+# Env-var alternative (no file): LIVESHORTLY_API_URL=http://localhost:8080 live …
+LOCAL_ORIGIN ?= http://localhost:8080
+PROD_ORIGIN  ?= https://liveshortly.com
+use-local:
+	@mkdir -p $$HOME/.liveshortly
+	@printf '{"api_url":"%s","web_url":"%s"}\n' "$(LOCAL_ORIGIN)" "$(LOCAL_ORIGIN)" \
+		> $$HOME/.liveshortly/host.json
+	@echo "live → $(LOCAL_ORIGIN)  (run: live login)"
+
+# Flip back to production. Writes the origin explicitly (the built-in default is
+# localhost, so removing host.json would NOT point at prod).
+use-prod:
+	@mkdir -p $$HOME/.liveshortly
+	@printf '{"api_url":"%s","web_url":"%s"}\n' "$(PROD_ORIGIN)" "$(PROD_ORIGIN)" \
+		> $$HOME/.liveshortly/host.json
+	@echo "live → $(PROD_ORIGIN)  (run: live login)"
 
 # `git describe --dirty` appends "-dirty" when the tree has uncommitted changes,
 # which would silently publish mislabeled assets (live-v1.0.1-dirty-*). Refuse.
