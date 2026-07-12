@@ -119,6 +119,21 @@ live whoami           # make sure it took
 Your login lives at `~/.liveshortly/credentials.json` (locked down to 0600)
 and refreshes on its own.
 
+### Point `live` at a local server
+
+`live` reads its endpoint from `~/.liveshortly/host.json`. Two make targets flip
+it:
+
+```bash
+make use-local        # → http://localhost:8080  (then: live login)
+make use-prod         # → https://liveshortly.com (then: live login)
+```
+
+`use-local` targets the **single-origin nginx** stack (`docker-compose.local.yml`
+in liveshortly-server, `:8080`) — not the base `:3000`/`:8000` split, whose
+Next.js proxy buffers SSE and never streams live events. Override the origin with
+`make use-local LOCAL_ORIGIN=http://host:port` if needed.
+
 ### tmux 🪄
 
 `brew install tmux` / `apt install tmux`.

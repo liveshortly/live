@@ -11,9 +11,11 @@ DIST_REPO ?= liveshortly/live-dist
 
 .PHONY: build install vet test clean release publish publish-gh check-clean use-local use-prod
 
-# Point the installed `live` at the LOCAL stack (docker-compose.local.yml in
-# liveshortly-server, single origin http://localhost:8080). Writes host.json;
-# `live login` afterwards runs the device flow against your local server.
+# Point the installed `live` at the LOCAL stack. Use docker-compose.local.yml
+# in liveshortly-server: an nginx front serves web + api under ONE origin
+# (http://localhost:8080) with SSE buffering OFF — required for live streaming.
+# The base docker-compose.yml (web :3000, api :8000) proxies /api through
+# Next.js rewrites, which BUFFER SSE, so live events never reach the browser.
 # Env-var alternative (no file): LIVESHORTLY_API_URL=http://localhost:8080 live …
 LOCAL_ORIGIN ?= http://localhost:8080
 PROD_ORIGIN  ?= https://liveshortly.com
