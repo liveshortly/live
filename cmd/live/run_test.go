@@ -162,3 +162,38 @@ func indexOf(ss []string, want string) int {
 	}
 	return -1
 }
+
+// TestHasSkipPermissions guards that --dangerously-skip-permissions is detected
+// (so live's permission broker stands down) AND still survives parseRunFlags as
+// a passthrough arg (so the flag actually reaches Claude). Both must hold: if
+// live kept gating, the flag would look ignored; if the flag were dropped,
+// Claude would still prompt.
+func TestHasSkipPermissions(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"present", []string{"--dangerously-skip-permissions"}, true},
+		{"present with others", []string{"-p", "hi", "--dangerously-skip-permissions"}, true},
+		{"absent", []string{"-p", "hi"}, false},
+		{"not a prefix match", []string{"--dangerously-skip-permissions-extra"}, false},
+		{"nil", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasSkipPermissions(tc.args); got != tc.want {
+				t.Fatalf("hasSkipPermissions(%v) = %v, want %v", tc.args, got, tc.want)
+			}
+		})
+	}
+
+	// Passthrough: the flag must reach the agent args untouched.
+	_, rest, err := parseRunFlags([]string{"claude", "--dangerously-skip-permissions"})
+	if err != nil {
+		t.Fatalf("parseRunFlags: %v", err)
+	}
+	if indexOf(rest, "--dangerously-skip-permissions") < 0 {
+		t.Fatalf("flag dropped by parseRunFlags; rest = %v", rest)
+	}
+}
