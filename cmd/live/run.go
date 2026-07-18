@@ -237,9 +237,12 @@ func cmdRun(args []string) int {
 	}
 
 	hooks := prof.captureMode == "hooks"
-	// Headless -p/--print runs are non-interactive automation — no human is
-	// there to answer a permission, so never gate them.
-	if isPrintMode(userArgs) {
+	// Stand live's permission broker down when the run has opted out of gating:
+	// headless -p/--print (non-interactive automation, no human to answer), or an
+	// explicit --dangerously-skip-permissions (the operator has said "don't ask").
+	// Otherwise live's PreToolUse hook would re-gate every tool from the web/popup
+	// even though Claude itself was told to skip — so the flag looks ignored.
+	if isPrintMode(userArgs) || hasSkipPermissions(userArgs) {
 		webPerms = false
 	}
 	hasTmux := false
@@ -530,6 +533,19 @@ func channelArgs(self string, userArgs []string) (args []string, cleanup func())
 func isPrintMode(args []string) bool {
 	for _, a := range args {
 		if a == "-p" || a == "--print" {
+			return true
+		}
+	}
+	return false
+}
+
+// hasSkipPermissions reports whether the agent args carry Claude's
+// --dangerously-skip-permissions. When set, the operator has explicitly opted
+// out of permission prompts, so live's own web/tmux broker stands down and lets
+// the flag through to Claude unopposed.
+func hasSkipPermissions(args []string) bool {
+	for _, a := range args {
+		if a == "--dangerously-skip-permissions" {
 			return true
 		}
 	}
