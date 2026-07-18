@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# live-docker — run a live-streamed agent session in a hardened sandbox container.
+#
+#   live-docker            # claude (default)
+#   live-docker claude
+#
+# Trust-boundary hardening (container is treated as UNtrusted vs the host):
+#   * No host bind of ~/.liveshortly — the container filesystem is fully
+#     ephemeral (tmpfs home + read-only rootfs), so a container process cannot
+#     write to the host FS.
+#   * Credentials are staged READ-ONLY and stripped of long-lived refresh tokens
+#     (only the short-lived access token crosses the boundary). Session ends when
+#     that token expires — by design; no renewable secret lives in the container.
+#   * Kernel hardening preserved: cap-drop ALL, non-root uid 1000,
+#     no-new-privileges, default seccomp, no docker.sock, pid/mem/cpu caps.
+#
+# NOT yet covered (deferred): default-deny egress allowlist. Outbound is still
+# open — do not run fully untrusted agent instructions until that lands.
+set -euo pipefail
+
+AGENT="${1:-claude}"
+IMAGE="${LIVE_SANDBOX_IMAGE:-ghcr.io/liveshortly/agent-sandbox:latest}"
+
+creds="$HOME/.liveshortly/credentials.json"
+[[ -f "$creds" ]] || { echo "error: not signed in — run 'live login' first." >&2; exit 1; }
+
+stage="$(mktemp -d)"
+chmod 700 "$stage"
+trap 'rm -rf "$stage"' EXIT
+
+# liveshortly: keep access_token + api_url + user; DROP refresh_token.
+api_url="$(python3 -c "import json;print(json.load(open('$creds')).get('api_url',''))")"
+python3 - "$creds" "$stage/live-credentials.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d.pop("refresh_token", None)
+json.dump(d, open(sys.argv[2], "w"))
+PY
+
+if [[ "$AGENT" == "claude" ]]; then
+  raw="$stage/.raw"
+  if ! security find-generic-password -s "Claude Code-credentials" -w > "$raw" 2>/dev/null; then
+    echo "error: Claude not signed in on this Mac (Keychain 'Claude Code-credentials')." >&2
+    exit 1
+  fi
+  # claude: keep accessToken; DROP refreshToken.
+  python3 - "$raw" "$stage/claude-credentials.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+o = d.get("claudeAiOauth", {})
+o.pop("refreshToken", None)
+json.dump({"claudeAiOauth": o}, open(sys.argv[2], "w"))
+PY
+  rm -f "$raw"
+  # minimal account/onboarding state so interactive claude doesn't re-prompt login.
+  if [[ -f "$HOME/.claude.json" ]]; then
+    python3 - "$HOME/.claude.json" "$stage/claude.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+keep = {k: d[k] for k in
+        ("userID", "oauthAccount", "hasCompletedOnboarding",
+         "lastOnboardingVersion", "theme") if k in d}
+json.dump(keep, open(sys.argv[2], "w"))
+PY
+  fi
+fi
+chmod -R go-rwx "$stage"
+
+# tmpfs home is noexec (can't drop+run a native binary there); agents/live run
+# from /usr/local/bin, and node-script MCP servers still work (node reads the .js).
+exec docker run --rm -it \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --read-only \
+  --mount type=tmpfs,dst=/home/node,tmpfs-mode=1777 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m \
+  --pids-limit 512 \
+  --memory 2g \
+  --cpus 2 \
+  -v "$stage:/inject:ro" \
+  -e "LIVESHORTLY_API_URL=$api_url" \
+  "$IMAGE" "$AGENT"
