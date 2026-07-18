@@ -295,15 +295,26 @@ func (s *Sidecar) hookStop(p map[string]any) map[string]any {
 	// otherwise sit invisible until the next user prompt. Block the stop
 	// once so Claude addresses them before the turn ends.
 	if comments := s.takePending(); len(comments) > 0 {
+		// Flush the just-finished turn to the feed BEFORE blocking. Otherwise a
+		// turn whose Stop coincides with a pending comment never reaches the web
+		// UI — the block returns here, before the response emit below.
+		if last := str(p, "last_assistant_message"); last != "" {
+			s.Emit("response", map[string]any{
+				"content": truncate(last, maxCaptureBytes),
+				"ts":      nowISO(),
+			})
+		}
 		lines := make([]string, 0, len(comments))
 		for _, c := range comments {
-			lines = append(lines, "  • "+username(c)+": "+c.Message)
+			lines = append(lines, username(c)+": "+c.Message)
 		}
 		s.Log.Printf("blocked stop to deliver %d viewer comment(s)", len(comments))
+		// Plain chat form as the block reason so it reads like a viewer message,
+		// not a hook error. (Claude Code still frames any decision:block hook with
+		// its own "Stop hook" label — that styling isn't ours to change.)
 		return map[string]any{
-			"decision": "block",
-			"reason": "[live] Viewer message(s) arrived during this turn — respond to them now, then finish:\n" +
-				strings.Join(lines, "\n"),
+			"decision":      "block",
+			"reason":        strings.Join(lines, "\n"),
 			"systemMessage": "[live] 💬 " + deliveredSummary(comments),
 		}
 	}
