@@ -238,11 +238,12 @@ func cmdRun(args []string) int {
 
 	hooks := prof.captureMode == "hooks"
 	// Stand live's permission broker down when the run has opted out of gating:
-	// headless -p/--print (non-interactive automation, no human to answer), or an
-	// explicit --dangerously-skip-permissions (the operator has said "don't ask").
-	// Otherwise live's PreToolUse hook would re-gate every tool from the web/popup
-	// even though Claude itself was told to skip — so the flag looks ignored.
-	if isPrintMode(userArgs) || hasSkipPermissions(userArgs) {
+	// headless -p/--print (non-interactive automation, no human to answer), or any
+	// of the agent's own "don't ask" flags (--dangerously-skip-permissions,
+	// --permission-mode bypassPermissions). Otherwise live's PreToolUse hook would
+	// re-gate every tool from the web/popup even though the agent was told to skip,
+	// so the flag looks ignored.
+	if isPrintMode(userArgs) || permissionsBypassed(userArgs) {
 		webPerms = false
 	}
 	hasTmux := false
@@ -539,13 +540,19 @@ func isPrintMode(args []string) bool {
 	return false
 }
 
-// hasSkipPermissions reports whether the agent args carry Claude's
-// --dangerously-skip-permissions. When set, the operator has explicitly opted
-// out of permission prompts, so live's own web/tmux broker stands down and lets
-// the flag through to Claude unopposed.
-func hasSkipPermissions(args []string) bool {
-	for _, a := range args {
-		if a == "--dangerously-skip-permissions" {
+// permissionsBypassed reports whether the agent args opt out of permission
+// prompts by any means the agent offers: --dangerously-skip-permissions, or
+// --permission-mode bypassPermissions (space- or =-separated). When set, the
+// operator has explicitly said "don't ask", so live's own web/tmux broker stands
+// down and lets the flags through to the agent unopposed.
+func permissionsBypassed(args []string) bool {
+	for i, a := range args {
+		switch {
+		case a == "--dangerously-skip-permissions":
+			return true
+		case a == "--permission-mode=bypassPermissions":
+			return true
+		case a == "--permission-mode" && i+1 < len(args) && args[i+1] == "bypassPermissions":
 			return true
 		}
 	}
