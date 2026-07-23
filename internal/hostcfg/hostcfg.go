@@ -34,8 +34,13 @@ func loadHost() hostFile {
 	return h
 }
 
-// APIURL returns the API base URL. Order matches the plugin: host.json,
-// then LIVESHORTLY_API_URL, then localhost.
+// DefaultAPIURL is the hosted service. `live` is a consumer deliverable, so it
+// must reach production by default; devs target a local stack with a host.json
+// or LIVESHORTLY_API_URL.
+const DefaultAPIURL = "https://liveshortly.com"
+
+// APIURL returns the API base URL. Order: host.json, then LIVESHORTLY_API_URL,
+// then the hosted default.
 func APIURL() string {
 	if h := loadHost(); h.APIURL != "" {
 		return strings.TrimRight(h.APIURL, "/")
@@ -43,7 +48,7 @@ func APIURL() string {
 	if v := strings.TrimSpace(os.Getenv("LIVESHORTLY_API_URL")); v != "" {
 		return strings.TrimRight(v, "/")
 	}
-	return "http://localhost:8000"
+	return DefaultAPIURL
 }
 
 // WebURL returns the base URL for shareable session links. Falls back to the
