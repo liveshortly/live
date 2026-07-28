@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/liveshortly/live/internal/adapter"
 	"github.com/liveshortly/live/internal/api"
 	"github.com/liveshortly/live/internal/auth"
@@ -55,6 +57,10 @@ type runOpts struct {
 	handoffCode string // --handoff <code>  → fork from a pinned handoff snapshot
 	sessionID   string // --session <id>    → fork from a session's latest state
 	preDigest   bool   // --pre-digest      → pre-compress the digest with claude -p
+	// attachID is set by `live daemon` when the web already created the session:
+	// capture attaches to that id instead of creating one. Internal — a human
+	// never types it, so it is leading-position only.
+	attachID string // --attach <id>
 }
 
 // parseRunFlags pulls the live-specific options out of the argument list and
@@ -116,6 +122,12 @@ leading:
 			}
 			o.title = args[i+1]
 			i += 2
+		case "--attach":
+			if i+1 >= len(args) {
+				return o, nil, fmt.Errorf("--attach needs a value")
+			}
+			o.attachID = args[i+1]
+			i += 2
 		case "--web-permissions":
 			o.webPerms = true
 			i++
@@ -153,6 +165,11 @@ leading:
 
 	if o.handoffCode != "" && o.sessionID != "" {
 		return o, nil, fmt.Errorf("--handoff and --session are mutually exclusive")
+	}
+	// Attaching means the session already exists; forking means creating a new
+	// one from an old one. Asking for both is a caller bug, not a fallback.
+	if o.attachID != "" && (o.handoffCode != "" || o.sessionID != "") {
+		return o, nil, fmt.Errorf("--attach cannot be combined with --handoff or --session")
 	}
 	return o, rest, nil
 }
@@ -206,7 +223,12 @@ func cmdRun(args []string) int {
 		bundle    api.HandoffBundle
 		forked    bool
 	)
-	if opts.handoffCode != "" || opts.sessionID != "" {
+	if opts.attachID != "" {
+		// Web-spawned run (`live daemon`): the server created the session before
+		// telling this machine about it, so capture attaches to that id. Nothing
+		// downstream changes — the session is a normal live session.
+		sessionID = opts.attachID
+	} else if opts.handoffCode != "" || opts.sessionID != "" {
 		ref := api.ForkRef{HandoffCode: opts.handoffCode, SessionID: opts.sessionID}
 		sessionID, bundle, err = client.CreateSessionForked(title, prof.framework, prof.framework, prof.captureMode, ref)
 		if err != nil {
@@ -405,14 +427,39 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	}()
 
 	// attach the user (foreground; returns when Claude exits and the session ends)
-	att := tmux("attach-session", "-t", sess)
-	att.Stdin, att.Stdout, att.Stderr = os.Stdin, os.Stdout, os.Stderr
-	signal.Ignore(os.Interrupt, syscall.SIGQUIT)
-	defer signal.Reset(os.Interrupt, syscall.SIGQUIT)
-	_ = att.Run()
+	attachOrWait(tmux, sess)
 
 	_ = tmux("kill-session", "-t", sess).Run()
 	return 0
+}
+
+// attachOrWait hands the tmux session to the operator when there is a terminal
+// to attach to, and otherwise just waits for the agent to finish.
+//
+// The headless branch is what makes a web-started session possible: `live
+// daemon` launches this process with no controlling terminal, where
+// attach-session fails with "open terminal failed: not a terminal". Returning
+// on that error would kill the pane the instant it started, so instead we hold
+// the session open and let the browser drive it. The operator can still take it
+// over at any time with `tmux -L liveshortly attach -t <sess>`.
+//
+// Ceiling: the wait ends when the agent exits. Ending the session from the web
+// archives the feed but leaves the pane running until the agent itself stops.
+func attachOrWait(tmux func(args ...string) *exec.Cmd, sess string) {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		att := tmux("attach-session", "-t", sess)
+		att.Stdin, att.Stdout, att.Stderr = os.Stdin, os.Stdout, os.Stderr
+		signal.Ignore(os.Interrupt, syscall.SIGQUIT)
+		defer signal.Reset(os.Interrupt, syscall.SIGQUIT)
+		_ = att.Run()
+		return
+	}
+	for {
+		if err := tmux("has-session", "-t", sess).Run(); err != nil {
+			return // the pane's process exited
+		}
+		time.Sleep(2 * time.Second)
+	}
 }
 
 // envWithout returns env minus the named keys.

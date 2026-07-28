@@ -92,3 +92,11 @@ func LogPath() string {
 func HandoffDir() string {
 	return filepath.Join(home(), ".liveshortly", "handoffs")
 }
+
+// HostIDPath holds this machine's stable daemon id, so restarting `live daemon`
+// re-registers the same host instead of accumulating duplicates in the picker.
+// The id is only meaningful inside the owning account (server keys are
+// namespaced by user), so it is an identifier, not a secret.
+func HostIDPath() string {
+	return filepath.Join(home(), ".liveshortly", "host_id")
+}
