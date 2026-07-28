@@ -94,6 +94,7 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		"-e", "LIVE_TOKEN=" + token,
 		"-e", "LIVE_SESSION_ID=" + sc.SessionID,
 		"-e", "LIVE_HOOK_TIMEOUT=590"}
+	newArgs = append(newArgs, pinnedEnvArgs()...)
 	newArgs = append(newArgs, agent...)
 	if out, err := t.output(newArgs...); err != nil {
 		stopTail()

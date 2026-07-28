@@ -410,6 +410,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		// The PreToolUse relay blocks on the broker (popup or web); its HTTP
 		// client must outlast the 8m decision grace, under the 10m hook.
 		"-e", "LIVE_HOOK_TIMEOUT=590"}
+	newArgs = append(newArgs, pinnedEnvArgs()...)
 	newArgs = append(newArgs, agent...)
 	if out, err := tmux(newArgs...).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "live: tmux new-session failed: %v: %s\n", err, out)
@@ -417,6 +418,12 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	}
 	_ = tmux("set-option", "-t", sess, "status", "off").Run()
 	bindContextPopup(func(a ...string) error { return tmux(a...).Run() }, self, sc.SessionID)
+
+	// Web-started run: nobody can answer the channel warning, so do it here.
+	// An operator at a real terminal answers it themselves.
+	if headless() {
+		go confirmChannelPrompt(tmux, sess)
+	}
 
 	// popup driver: raise a display-popup whenever a permission is pending
 	popupCmd := fmt.Sprintf("%q perm-prompt %q %q", self, addr, token)
@@ -433,6 +440,48 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	return 0
 }
 
+// headless reports that no operator is at this terminal — the state `live
+// daemon` starts a web-requested session in. It is the single discriminator
+// between "the human drives the pane" and "the browser drives the pane".
+func headless() bool { return !term.IsTerminal(int(os.Stdin.Fd())) }
+
+// confirmChannelPrompt answers Claude's development-channels warning for a
+// web-started session.
+//
+// That warning appears on EVERY launch under
+// --dangerously-load-development-channels (it is not remembered) and blocks the
+// session behind a keypress. With nobody at the terminal there is no one to
+// press it, and simply dropping the channel is not an alternative: the channel
+// is the only path that reaches an IDLE agent, which is exactly the state a
+// browser-driven session sits in between viewer messages.
+//
+// Deliberately narrow. It fires only in the headless path, only while the pane
+// is showing THIS warning naming OUR channel, and only once. What it approves
+// is a channel live wrote itself moments earlier, in a temp file, pointing at
+// live's own binary — for a session the operator asked for by registering this
+// machine. It will never answer any other prompt: an unrecognized screen is
+// left alone for the operator to handle over tmux attach.
+func confirmChannelPrompt(tmux func(args ...string) *exec.Cmd, sess string) {
+	const (
+		marker   = "WARNING: Loading development channels"
+		ourChan  = "liveshortly-channel"
+		deadline = 45 * time.Second
+	)
+	stop := time.Now().Add(deadline)
+	for time.Now().Before(stop) {
+		out, err := tmux("capture-pane", "-t", sess, "-p").Output()
+		if err != nil {
+			return // pane gone
+		}
+		pane := string(out)
+		if strings.Contains(pane, marker) && strings.Contains(pane, ourChan) {
+			_ = tmux("send-keys", "-t", sess, "Enter").Run()
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
 // attachOrWait hands the tmux session to the operator when there is a terminal
 // to attach to, and otherwise just waits for the agent to finish.
 //
@@ -446,7 +495,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 // Ceiling: the wait ends when the agent exits. Ending the session from the web
 // archives the feed but leaves the pane running until the agent itself stops.
 func attachOrWait(tmux func(args ...string) *exec.Cmd, sess string) {
-	if term.IsTerminal(int(os.Stdin.Fd())) {
+	if !headless() {
 		att := tmux("attach-session", "-t", sess)
 		att.Stdin, att.Stdout, att.Stderr = os.Stdin, os.Stdout, os.Stderr
 		signal.Ignore(os.Interrupt, syscall.SIGQUIT)
@@ -460,6 +509,36 @@ func attachOrWait(tmux func(args ...string) *exec.Cmd, sess string) {
 		}
 		time.Sleep(2 * time.Second)
 	}
+}
+
+// pinnedEnvKeys are the variables a captured tmux session must carry from THIS
+// process rather than inherit from the tmux server. HOME decides which
+// ~/.claude the agent reads; PATH decides which binaries it finds; the
+// LIVESHORTLY_* vars decide which API `live hook` posts to from inside the pane.
+var pinnedEnvKeys = []string{
+	"HOME", "PATH", "USER", "SHELL", "LANG",
+	"LIVESHORTLY_API_URL", "LIVESHORTLY_WEB_URL", "LIVESHORTLY_FRONTEND_URL",
+	"LIVESHORTLY_CRED_PATH",
+}
+
+// pinnedEnvArgs returns the `-e KEY=VALUE` pairs that pin those variables onto
+// a new tmux session.
+//
+// Our tmux server (socket "liveshortly") outlives any single session, and tmux
+// seeds each new session from the SERVER's environment for every variable
+// outside `update-environment` — a default list that includes neither HOME nor
+// PATH nor anything of ours. So without this, the second session on a
+// long-lived server silently runs with the FIRST session's environment: the
+// agent reads a different HOME, finds no config, and restarts its first-run
+// wizard, while hooks post to whatever API URL the server was born with.
+func pinnedEnvArgs() []string {
+	var out []string
+	for _, k := range pinnedEnvKeys {
+		if v, ok := os.LookupEnv(k); ok {
+			out = append(out, "-e", k+"="+v)
+		}
+	}
+	return out
 }
 
 // envWithout returns env minus the named keys.
@@ -543,8 +622,10 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 // channelArgs returns the Claude Code flags that load the viewer "channel" —
 // the MCP-backed path that delivers viewer comments into Claude even while it
 // sits idle. Loading it needs --dangerously-load-development-channels, which
-// pops a one-time "Loading development channels" confirmation (remembered after
-// you accept it once). Returns nil (channels off) in -p/--print mode, when
+// pops a "Loading development channels" confirmation on EVERY launch — it is
+// not remembered, and --channels (the approved-channel flag) rejects `server:`
+// entries like ours. A web-started session answers it via confirmChannelPrompt,
+// since no operator is there to. Returns nil (channels off) in -p/--print mode, when
 // LIVE_CHANNEL=0, or if the temp MCP config can't be written — and logs WHY on
 // stderr, so a missing prompt is diagnosable instead of a silent no-op. cleanup
 // removes the temp MCP config (nil when no args). Shared by both interactive
@@ -563,7 +644,7 @@ func channelArgs(self string, userArgs []string) (args []string, cleanup func())
 		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m viewer channel could not load (%v) — comments arrive at hook boundaries\n\n", err)
 		return nil, nil
 	}
-	fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m loading viewer channel — accept Claude's \"Loading development channels\" prompt on first launch (one-time)\n\n")
+	fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m loading viewer channel — accept Claude's \"Loading development channels\" prompt each launch\n\n")
 	// Order matters: --dangerously-load-development-channels is VARIADIC — it eats
 	// every following non-flag token as a channel name. The callers append the
 	// user's args (and, on a fork/handoff, the seeded opening prompt) AFTER these,

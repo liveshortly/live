@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +97,54 @@ func TestParseRunFlagsAttach(t *testing.T) {
 	// Attaching to an existing session and forking a new one are contradictory.
 	if _, _, err := parseRunFlags([]string{"--attach", "a", "--session", "b", "claude"}); err == nil {
 		t.Error("--attach with --session should error")
+	}
+}
+
+// A tmux server on our socket outlives any single session and seeds new
+// sessions from its OWN environment for anything outside update-environment
+// (which lists neither HOME nor PATH). Pinning these per-session is what stops
+// session #2 from silently running with session #1's HOME — the failure that
+// drops the agent back into its first-run wizard.
+func TestPinnedEnvArgs(t *testing.T) {
+	t.Setenv("HOME", "/tmp/pinned-home")
+	t.Setenv("LIVESHORTLY_API_URL", "http://localhost:8080")
+	t.Setenv("LIVESHORTLY_CRED_PATH", "/tmp/creds.json")
+
+	args := pinnedEnvArgs()
+
+	// Every entry must be a well-formed `-e KEY=VALUE` pair.
+	if len(args)%2 != 0 {
+		t.Fatalf("odd argument count %d: %v", len(args), args)
+	}
+	got := map[string]string{}
+	for i := 0; i < len(args); i += 2 {
+		if args[i] != "-e" {
+			t.Fatalf("args[%d] = %q, want -e", i, args[i])
+		}
+		k, v, ok := strings.Cut(args[i+1], "=")
+		if !ok {
+			t.Fatalf("malformed pair %q", args[i+1])
+		}
+		got[k] = v
+	}
+
+	for k, want := range map[string]string{
+		"HOME":                  "/tmp/pinned-home",
+		"LIVESHORTLY_API_URL":   "http://localhost:8080",
+		"LIVESHORTLY_CRED_PATH": "/tmp/creds.json",
+	} {
+		if got[k] != want {
+			t.Errorf("%s pinned as %q, want %q", k, got[k], want)
+		}
+	}
+
+	// An unset variable must be omitted, not pinned to "" — an empty PATH or
+	// HOME in the pane is worse than inheriting one.
+	t.Setenv("LIVESHORTLY_WEB_URL", "")
+	os.Unsetenv("LIVESHORTLY_WEB_URL")
+	for _, a := range pinnedEnvArgs() {
+		if strings.HasPrefix(a, "LIVESHORTLY_WEB_URL=") {
+			t.Errorf("unset variable was pinned: %q", a)
+		}
 	}
 }
