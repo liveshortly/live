@@ -4,6 +4,47 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v1.3.0 — 2026-07-29
+
+- **Start a session from the browser: `live daemon`.** Running `live <agent>` in
+  a terminal was the only way to open a session, so every session cost a context
+  switch to a shell. `live daemon` registers this machine with the server, holds
+  a command stream open, and starts the ordinary capture path when the web asks
+  for a session — same hooks, same permission gating, same feed. Take one over
+  locally at any time with `tmux -L liveshortly attach -t live-<id8>`.
+  A spawn command is remote code execution on your machine, so the daemon trusts
+  the server for nothing: the server sends an agent NAME, never a command line,
+  and the daemon re-checks it against its own allowlist and the directory
+  against the list passed to `--dir`. Nothing reaches a shell. Needs a server
+  with the hosts API.
+- **Fixed: `curl … | bash` now really does install onto your PATH and sign you
+  in.** Both interactivity checks tested `[ -t 0 ]`, but under the documented
+  one-liner stdin *is* the script pipe — so for everyone who followed the README
+  it was false, and the installer quietly skipped `/usr/local/bin` (landing in
+  `~/.local/bin`, off PATH) and skipped sign-in. It now tests the controlling
+  terminal, which also keeps CI and cron from hanging on a device flow nobody
+  can approve.
+- **Fixed: a viewer comment was answered twice.** Every comment was pushed to
+  the channel *and* unconditionally queued for hook-boundary injection, on the
+  reasoning that a buffered send is not proof the agent consumed it. Nothing
+  ever acked, so with a healthy channel the duplicate was not rare — it was
+  every message. Comments now route to the channel first and fall back to hooks
+  only when no subscriber took them; delivery stays at-least-once, acked per
+  hop.
+- **Fixed: the second session on a long-lived tmux server inherited the first
+  one's environment.** tmux seeds a new session from the *server's* environment
+  for anything outside `update-environment`, which lists neither `HOME` nor
+  `PATH`. The agent could therefore read a different `HOME`, find no config and
+  restart its first-run wizard, while hooks posted to whatever API URL the tmux
+  server was born with. The load-bearing variables are now pinned per session.
+- **Fixed: `LIVESHORTLY_API_URL` now wins over `~/.liveshortly/host.json`.**
+  With the file taking precedence, pointing `live` at a local stack meant
+  overriding `HOME` — which relocates `~/.claude` and caused exactly the
+  first-run wizard above.
+- The "Loading development channels" confirmation fires on *every* launch, not
+  once as the message claimed. A web-started session answers it, since no
+  operator is there to.
+
 ## v1.2.0 — 2026-07-10
 
 - **Storage-quota aware.** When the server auto-ends a session because its owner
