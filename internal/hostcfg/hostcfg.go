@@ -39,34 +39,37 @@ func loadHost() hostFile {
 // or LIVESHORTLY_API_URL.
 const DefaultAPIURL = "https://liveshortly.com"
 
-// APIURL returns the API base URL. Order: LIVESHORTLY_API_URL, then host.json,
+// APIURL returns the API base URL. Order: host.json, then LIVESHORTLY_API_URL,
 // then the hosted default.
 //
-// The env var wins over the file so a single command can be pointed at a local
-// stack without touching the installed config — the alternative (overriding
-// HOME to get a different host.json) also moves ~/.claude and ~/.codex, which
-// drops the agent into its first-run wizard.
+// host.json deliberately wins. It is the explicit, tool-managed switch — `make
+// use-local` / `make use-prod` write it — whereas LIVESHORTLY_API_URL is
+// commonly left exported in a shell profile from some earlier debugging
+// session. v1.3.0 inverted this, and a stale `export
+// LIVESHORTLY_API_URL=http://localhost:8000` in a .zshrc silently redirected
+// every `live` command away from the production host.json the user had chosen —
+// including token refresh, which then 401'd against the wrong server.
 func APIURL() string {
-	if v := strings.TrimSpace(os.Getenv("LIVESHORTLY_API_URL")); v != "" {
-		return strings.TrimRight(v, "/")
-	}
 	if h := loadHost(); h.APIURL != "" {
 		return strings.TrimRight(h.APIURL, "/")
+	}
+	if v := strings.TrimSpace(os.Getenv("LIVESHORTLY_API_URL")); v != "" {
+		return strings.TrimRight(v, "/")
 	}
 	return DefaultAPIURL
 }
 
 // WebURL returns the base URL for shareable session links. Falls back to the
 // API origin when nothing names a web URL and the API isn't localhost
-// (production serves both on one domain). Env wins over host.json, as in APIURL.
+// (production serves both on one domain). host.json wins, as in APIURL.
 func WebURL() string {
+	if h := loadHost(); h.WebURL != "" {
+		return strings.TrimRight(h.WebURL, "/")
+	}
 	for _, k := range []string{"LIVESHORTLY_WEB_URL", "LIVESHORTLY_FRONTEND_URL"} {
 		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
 			return strings.TrimRight(v, "/")
 		}
-	}
-	if h := loadHost(); h.WebURL != "" {
-		return strings.TrimRight(h.WebURL, "/")
 	}
 	api := APIURL()
 	if u, err := url.Parse(api); err == nil && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" {

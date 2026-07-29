@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/liveshortly/live/internal/hostcfg"
@@ -88,8 +89,10 @@ func AccessToken() (string, error) {
 }
 
 // Refresh mints a fresh access token from the stored refresh token and
-// rewrites the credential file. A 401 (revoked/expired refresh token) deletes
-// the file, matching the plugin's behavior.
+// rewrites the credential file. A 401 from the issuing host (revoked/expired
+// refresh token) deletes the file, matching the plugin's behavior; a 401 from
+// any OTHER host is reported as the misconfiguration it is and leaves the
+// credentials alone.
 func Refresh() (string, error) {
 	c := Load()
 	if c == nil || c.RefreshToken == "" {
@@ -99,12 +102,23 @@ func Refresh() (string, error) {
 		"grant_type":    "refresh_token",
 		"refresh_token": c.RefreshToken,
 	})
-	resp, err := httpc.Post(hostcfg.APIURL()+"/auth/token", "application/json", bytes.NewReader(body))
+	api := hostcfg.APIURL()
+	resp, err := httpc.Post(api+"/auth/token", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("token refresh: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized {
+		// A 401 means "this server revoked the token" ONLY if it is the server
+		// that issued it. Refreshing against a DIFFERENT host — a stale
+		// LIVESHORTLY_API_URL, a host.json edited between runs — also 401s,
+		// and deleting the credential file there destroys a perfectly good
+		// login for the real host. Misconfiguration must not look like
+		// revocation.
+		if c.APIURL != "" && strings.TrimRight(c.APIURL, "/") != api {
+			return "", fmt.Errorf("token refresh: credentials were issued for %s but the configured host is %s — "+
+				"check ~/.liveshortly/host.json and LIVESHORTLY_API_URL", c.APIURL, api)
+		}
 		Delete()
 		return "", ErrNotLoggedIn
 	}
