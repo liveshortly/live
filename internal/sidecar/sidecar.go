@@ -248,40 +248,67 @@ func (s *Sidecar) drain() {
 		}
 		return
 	}
-	// A connected channel subscriber (`live channel` MCP) can deliver into the
-	// agent even while it is idle. We push to it AND always keep the comment in
-	// the hook-boundary queue: a buffered send to the subscriber is not proof
-	// Claude actually consumed it — the experimental channels path can silently
-	// drop, in which case the comment (already popped from the server queue)
-	// would be lost forever. The hook fallback (UserPromptSubmit/PostToolUse/
-	// Stop) guarantees delivery. A rare duplicate when the channel *is* healthy
-	// is acceptable; a silently-lost viewer message is not.
-	routed := 0
-	s.subMu.Lock()
-	for _, c := range comments {
-		for ch := range s.subs {
-			select {
-			case ch <- c:
-				routed++
-			default:
-			}
-		}
+	// A connected channel subscriber (`live channel` MCP) delivers into the agent
+	// even while it is idle. Route there first; only what no subscriber accepted
+	// falls back to hook-boundary injection.
+	//
+	// This used to queue EVERY comment for hooks as well, on the reasoning that a
+	// buffered send is not proof Claude consumed it and a rare duplicate beats a
+	// lost message. But nothing ever acked, so with a healthy channel the
+	// duplicate was not rare — it was every single message: the channel delivered
+	// the comment, then hookStop drained the same comment and blocked the turn to
+	// re-deliver it, and Claude answered twice.
+	//
+	// Delivery is still at-least-once, just acked at each hop instead of assumed
+	// failed: a comment handed to a subscriber is requeued for hooks if the SSE
+	// write fails (see the /comments/subscribe handler) or if the subscriber
+	// disconnects with it still buffered (see subscribe's unsubscribe func).
+	undelivered := s.routeToChannel(comments)
+	if len(undelivered) > 0 {
+		s.queueForHooks(undelivered)
 	}
-	s.subMu.Unlock()
-
-	// Always queue for hook-boundary injection (guaranteed-delivery backbone).
-	s.mu.Lock()
-	s.pending = append(s.pending, comments...)
-	s.mu.Unlock()
-
-	if routed > 0 {
+	if routed := len(comments) - len(undelivered); routed > 0 {
 		s.Log.Printf("%d viewer comment(s) pushed to channel", routed)
 	}
-	s.Log.Printf("%d viewer comment(s) queued for hook injection", len(comments))
+	if len(undelivered) > 0 {
+		s.Log.Printf("%d viewer comment(s) queued for hook injection", len(undelivered))
+	}
 
 	// The agent may be idle (no hook boundary coming) — surface arrival
 	// out-of-band so the operator knows a message is waiting.
 	go desktopNotify(comments)
+}
+
+// routeToChannel hands each comment to any connected channel subscriber and
+// returns the ones nobody accepted (no subscriber, or every subscriber's buffer
+// full). Those are the caller's problem — they must reach the agent some other
+// way, which today means the hook-boundary queue.
+func (s *Sidecar) routeToChannel(comments []api.Comment) []api.Comment {
+	var undelivered []api.Comment
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	for _, c := range comments {
+		accepted := false
+		for ch := range s.subs {
+			select {
+			case ch <- c:
+				accepted = true
+			default:
+			}
+		}
+		if !accepted {
+			undelivered = append(undelivered, c)
+		}
+	}
+	return undelivered
+}
+
+// queueForHooks adds comments to the hook-boundary injection queue — the
+// guaranteed-delivery backbone for anything the channel could not take.
+func (s *Sidecar) queueForHooks(comments []api.Comment) {
+	s.mu.Lock()
+	s.pending = append(s.pending, comments...)
+	s.mu.Unlock()
 }
 
 // subscribe registers a channel-delivery consumer; anything already queued
@@ -572,7 +599,16 @@ func (s *Sidecar) StartHookServer() (addr, token string, err error) {
 			select {
 			case c := <-ch:
 				b, _ := json.Marshal(c)
-				fmt.Fprintf(w, "data: %s\n\n", b)
+				// A failed write means these bytes never reached `live channel`,
+				// so this comment was NOT delivered — put it back on the hook
+				// queue instead of dropping it. drain() no longer double-queues,
+				// so this is the only thing standing between a broken pipe and a
+				// lost viewer message.
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", b); err != nil {
+					s.queueForHooks([]api.Comment{c})
+					s.Log.Printf("channel write failed (%v) — comment requeued for hook injection", err)
+					return
+				}
 				fl.Flush()
 			case <-hb.C:
 				fmt.Fprint(w, ": hb\n\n")
