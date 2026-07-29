@@ -30,6 +30,7 @@ Usage:
 
   live claude [args...]      Run Claude Code, captured via lifecycle hooks
   live <command> [args...]   Run any agent/CLI, captured via PTY recording
+  live daemon [--dir <p>]    Let this machine start sessions from the web
   live -- <command> [...]    Same, unambiguous form
   live handoff <session-id>  Print the copyable command to continue a session
   live context [<id>]        Reprint a fork's prior-context digest
@@ -43,6 +44,16 @@ Continue (fork) an existing session as a NEW session you own:
   access to the source (a private, unshared session returns "no access").
   The history is printed in the agent's own terminal — scroll up to re-read it,
   press Ctrl-B h for a popup, or run "live context" from another shell.
+
+Start sessions from the browser (no terminal needed):
+  live daemon                      Register this machine and wait for requests
+  live daemon --dir ~/code/api     Offer one specific directory (repeatable)
+  Leave it running, then hit "+ New session" on the site and pick the machine,
+  the agent and the directory. A web-started session is a normal session: same
+  hooks, same permission gating. Take one over locally any time with
+  "tmux -L liveshortly attach -t live-<first 8 chars of the session id>".
+  Only the directories you pass to --dir (default: the current one) can ever be
+  used, and only claude / codex / gemini can ever be started.
 
 Permission control (always ON for live claude):
   You approve Claude's tool runs from a tmux popup (if tmux is installed) or
@@ -91,6 +102,8 @@ func main() {
 		cmdPermPrompt(os.Args[2:])
 	case "channel":
 		cmdChannel()
+	case "daemon":
+		os.Exit(cmdDaemon(os.Args[2:]))
 	case "handoff":
 		os.Exit(cmdHandoff(os.Args[2:]))
 	case "context":

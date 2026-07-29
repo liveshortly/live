@@ -358,3 +358,91 @@ func (c *Client) AgentStream(ctx context.Context, id string, wake func(msgType s
 	}
 	return sc.Err()
 }
+
+// ── Hosts: web-spawned sessions ───────────────────────────────────────────────
+
+// HostRegistration is what `live daemon` tells the server about this machine.
+// Dirs is the spawn allowlist: the server will not accept a session request for
+// any other directory, and the daemon checks it again before spawning.
+type HostRegistration struct {
+	HostID   string   `json:"host_id"`
+	Name     string   `json:"name,omitempty"`
+	Hostname string   `json:"hostname,omitempty"`
+	OS       string   `json:"os,omitempty"`
+	Arch     string   `json:"arch,omitempty"`
+	Dirs     []string `json:"dirs"`
+	Agents   []string `json:"agents"`
+}
+
+// SpawnCommand is a request from the web to start a session on this machine.
+// It carries an agent NAME, never a command line — the daemon builds that.
+type SpawnCommand struct {
+	Type      string `json:"type"`
+	SessionID string `json:"session_id"`
+	Agent     string `json:"agent"`
+	Cwd       string `json:"cwd"`
+	Title     string `json:"title"`
+}
+
+// ErrHostStreamUnsupported means the server predates GET /api/hosts/{id}/stream.
+var ErrHostStreamUnsupported = fmt.Errorf("host stream not supported by server")
+
+// RegisterHost registers (or refreshes) this machine as spawnable.
+func (c *Client) RegisterHost(reg HostRegistration) error {
+	_, err := c.do("POST", "/api/hosts/register", reg, nil)
+	return err
+}
+
+// HostStream connects to the daemon-facing SSE command channel and invokes
+// onSpawn for every spawn command. Blocks until the stream closes or ctx is
+// done. A registration that has lapsed server-side surfaces as a 404, which the
+// caller handles by re-registering.
+func (c *Client) HostStream(ctx context.Context, hostID string, onSpawn func(SpawnCommand)) error {
+	tok, err := auth.AccessToken()
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", c.Base+"/api/hosts/"+hostID+"/stream", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Accept", "text/event-stream")
+
+	hc := &http.Client{} // no timeout: long-lived stream
+	resp, err := hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound:
+		return ErrHostRegistrationLapsed
+	case http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		return ErrHostStreamUnsupported
+	default:
+		return fmt.Errorf("host stream: HTTP %d", resp.StatusCode)
+	}
+
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := sc.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		var cmd SpawnCommand
+		if json.Unmarshal([]byte(strings.TrimSpace(line[5:])), &cmd) != nil {
+			continue
+		}
+		if cmd.Type == "spawn" {
+			onSpawn(cmd)
+		}
+	}
+	return sc.Err()
+}
+
+// ErrHostRegistrationLapsed means the server has no record of this host (the
+// TTL expired while the daemon was disconnected); re-register and reconnect.
+var ErrHostRegistrationLapsed = fmt.Errorf("host registration lapsed")

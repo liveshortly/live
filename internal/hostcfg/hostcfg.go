@@ -39,29 +39,34 @@ func loadHost() hostFile {
 // or LIVESHORTLY_API_URL.
 const DefaultAPIURL = "https://liveshortly.com"
 
-// APIURL returns the API base URL. Order: host.json, then LIVESHORTLY_API_URL,
+// APIURL returns the API base URL. Order: LIVESHORTLY_API_URL, then host.json,
 // then the hosted default.
+//
+// The env var wins over the file so a single command can be pointed at a local
+// stack without touching the installed config — the alternative (overriding
+// HOME to get a different host.json) also moves ~/.claude and ~/.codex, which
+// drops the agent into its first-run wizard.
 func APIURL() string {
-	if h := loadHost(); h.APIURL != "" {
-		return strings.TrimRight(h.APIURL, "/")
-	}
 	if v := strings.TrimSpace(os.Getenv("LIVESHORTLY_API_URL")); v != "" {
 		return strings.TrimRight(v, "/")
+	}
+	if h := loadHost(); h.APIURL != "" {
+		return strings.TrimRight(h.APIURL, "/")
 	}
 	return DefaultAPIURL
 }
 
 // WebURL returns the base URL for shareable session links. Falls back to the
-// API origin when host.json has no web_url and the API isn't localhost
-// (production serves both on one domain).
+// API origin when nothing names a web URL and the API isn't localhost
+// (production serves both on one domain). Env wins over host.json, as in APIURL.
 func WebURL() string {
-	if h := loadHost(); h.WebURL != "" {
-		return strings.TrimRight(h.WebURL, "/")
-	}
 	for _, k := range []string{"LIVESHORTLY_WEB_URL", "LIVESHORTLY_FRONTEND_URL"} {
 		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
 			return strings.TrimRight(v, "/")
 		}
+	}
+	if h := loadHost(); h.WebURL != "" {
+		return strings.TrimRight(h.WebURL, "/")
 	}
 	api := APIURL()
 	if u, err := url.Parse(api); err == nil && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" {
@@ -91,4 +96,12 @@ func LogPath() string {
 // forked session) that get handed to the new agent as opening context.
 func HandoffDir() string {
 	return filepath.Join(home(), ".liveshortly", "handoffs")
+}
+
+// HostIDPath holds this machine's stable daemon id, so restarting `live daemon`
+// re-registers the same host instead of accumulating duplicates in the picker.
+// The id is only meaningful inside the owning account (server keys are
+// namespaced by user), so it is an identifier, not a secret.
+func HostIDPath() string {
+	return filepath.Join(home(), ".liveshortly", "host_id")
 }

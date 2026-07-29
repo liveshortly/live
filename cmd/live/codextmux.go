@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/liveshortly/live/internal/api"
@@ -96,6 +94,7 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		"-e", "LIVE_TOKEN=" + token,
 		"-e", "LIVE_SESSION_ID=" + sc.SessionID,
 		"-e", "LIVE_HOOK_TIMEOUT=590"}
+	newArgs = append(newArgs, pinnedEnvArgs()...)
 	newArgs = append(newArgs, agent...)
 	if out, err := t.output(newArgs...); err != nil {
 		stopTail()
@@ -116,11 +115,9 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 
 	fmt.Fprint(os.Stderr, "\x1b[32m● live\x1b[0m codex in tmux — viewer messages type straight into the composer.\n")
 
-	att := t.cmd("attach-session", "-t", sess)
-	att.Stdin, att.Stdout, att.Stderr = os.Stdin, os.Stdout, os.Stderr
-	signal.Ignore(os.Interrupt, syscall.SIGQUIT)
-	defer signal.Reset(os.Interrupt, syscall.SIGQUIT)
-	_ = att.Run()
+	// Same as the claude path: attach when there is a terminal, otherwise hold
+	// the session open for a web-started (daemon-spawned) run.
+	attachOrWait(t.cmd, sess)
 
 	_ = t.run("kill-session", "-t", sess)
 	stopTail()
