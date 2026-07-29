@@ -20,13 +20,28 @@ func writeHostFile(t *testing.T, body string) {
 	t.Setenv("HOME", home)
 }
 
-// The env var must win over host.json. Overriding HOME to get a different
-// host.json is not an equivalent workaround: it also relocates ~/.claude and
-// ~/.codex, which drops the agent into its first-run wizard — invisible and
-// unanswerable for a session started from the web.
-func TestEnvOverridesHostFile(t *testing.T) {
+// host.json must win over the environment. It is the explicit, tool-managed
+// switch (`make use-local` / `use-prod`); LIVESHORTLY_API_URL is routinely left
+// exported in a shell profile from old debugging. v1.3.0 had this inverted, and
+// a stale export in a .zshrc silently redirected every command — including token
+// refresh — away from the production host the user had configured.
+func TestHostFileOverridesEnv(t *testing.T) {
 	writeHostFile(t, `{"api_url":"https://liveshortly.com","web_url":"https://liveshortly.com"}`)
 
+	t.Setenv("LIVESHORTLY_API_URL", "http://localhost:8000/")
+	t.Setenv("LIVESHORTLY_WEB_URL", "http://localhost:3000/")
+
+	if got := APIURL(); got != "https://liveshortly.com" {
+		t.Errorf("APIURL = %q, want the host.json value — a stale env export must not hijack it", got)
+	}
+	if got := WebURL(); got != "https://liveshortly.com" {
+		t.Errorf("WebURL = %q, want the host.json value", got)
+	}
+}
+
+// With no host.json the env var is still the way to point at a stack.
+func TestEnvUsedWhenNoHostFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LIVESHORTLY_API_URL", "http://localhost:8080/")
 	t.Setenv("LIVESHORTLY_WEB_URL", "http://localhost:8080/")
 

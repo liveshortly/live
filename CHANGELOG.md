@@ -4,6 +4,23 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v1.3.1 — 2026-07-29
+
+- **Fixed: `~/.liveshortly/host.json` wins over `LIVESHORTLY_API_URL` again.**
+  v1.3.0 inverted this. `LIVESHORTLY_API_URL` is routinely left exported in a
+  shell profile from earlier debugging, so a stale
+  `export LIVESHORTLY_API_URL=http://localhost:8000` silently redirected every
+  `live` command away from the production host the user had configured with
+  `make use-prod` — sessions, login, and token refresh alike. host.json is the
+  explicit, tool-managed switch and is authoritative; the env var remains the
+  way to point at a stack when no host.json exists.
+- **Fixed: a token refresh against the wrong host no longer deletes your
+  credentials.** `Refresh` treated any 401 as "this token was revoked" and
+  removed `credentials.json`. Refreshing against a host that never issued the
+  token also 401s, so the combination above could destroy a perfectly good
+  production login. A 401 now only deletes when it comes from the issuing host;
+  otherwise it reports the mismatch and leaves the file alone.
+
 ## v1.3.0 — 2026-07-29
 
 - **Start a session from the browser: `live daemon`.** Running `live <agent>` in
