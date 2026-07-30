@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -168,6 +169,7 @@ func cmdDaemon(args []string) int {
 		Agents:   agents,
 	}
 	client := api.New()
+	reapOrphanSessions(client)
 
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m daemon ready as \x1b[1m%s\x1b[0m — start sessions from %s\n", name, hostcfg.WebURL())
 	fmt.Fprintf(os.Stderr, "        agents: %s\n", strings.Join(agents, ", "))
@@ -291,6 +293,90 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cmd
 // tmuxSocket is the dedicated tmux server the shim uses, so live sessions never
 // mix with the operator's own tmux. Mirrors the socket name in run.go.
 const tmuxSocket = "liveshortly"
+
+// reapOrphanSessions archives sessions whose capture process is gone.
+//
+// A spawned `live --attach` child runs in its own process group so a session
+// outlives the daemon that started it (see spawnSession). The flip side: kill
+// that child — reboot, kill -9, OOM — and its tmux pane survives with no sidecar
+// behind it. The hook relay then fails silently (`live hook` exits 0 on a
+// connection error, by design), so nothing is captured and nobody ever calls
+// Stop: the session sits "live" on the web forever, waiting on an agent that no
+// longer reports to anyone.
+//
+// So at startup, for every live-* pane on our socket, probe the sidecar address
+// recorded in that pane's environment. Nothing listening means the capture
+// process is gone, and the session is archived server-side.
+//
+// The pane itself is deliberately left running. This socket also carries plain
+// `live claude` runs the operator started by hand, and killing someone's agent
+// mid-task to tidy up a feed is not a trade we get to make for them — the pane
+// stays attachable, it just stops pretending to be captured.
+//
+// ponytail: startup-only sweep. A child that dies while the daemon is up is not
+// noticed until the next restart (the server-side reaper still covers it); make
+// it periodic if that gap ever matters.
+func reapOrphanSessions(client *api.Client) {
+	tmux := func(args ...string) *exec.Cmd {
+		c := exec.Command("tmux", append([]string{"-L", tmuxSocket}, args...)...)
+		// nested-tmux guard: our isolated socket must not inherit $TMUX.
+		c.Env = envWithout(os.Environ(), "TMUX", "TMUX_PANE")
+		return c
+	}
+	out, err := tmux("list-sessions", "-F", "#{session_name}").Output()
+	if err != nil {
+		return // no tmux server on our socket: nothing was left behind
+	}
+	for _, sess := range strings.Fields(string(out)) {
+		if !strings.HasPrefix(sess, "live-") {
+			continue
+		}
+		id := paneEnv(tmux, sess, "LIVE_SESSION_ID")
+		addr := paneEnv(tmux, sess, "LIVE_SIDECAR")
+		if id == "" || addr == "" || sidecarAlive(addr) {
+			continue
+		}
+		if _, err := client.Stop(id); err != nil {
+			fmt.Fprintf(os.Stderr, "live: could not archive orphaned session %s: %v\n", id, err)
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m archived orphaned session %s — its capture process is gone (tmux pane %s left running: tmux -L %s attach -t %s)\n",
+			id, sess, tmuxSocket, sess)
+	}
+}
+
+// paneEnv reads one variable out of a tmux session's environment.
+func paneEnv(tmux func(...string) *exec.Cmd, sess, key string) string {
+	out, err := tmux("show-environment", "-t", sess, key).Output()
+	if err != nil {
+		return ""
+	}
+	return parseShowEnv(string(out))
+}
+
+// parseShowEnv pulls the value out of `tmux show-environment` output, which is
+// "KEY=value" when set and "-KEY" when explicitly unset.
+func parseShowEnv(out string) string {
+	_, val, ok := strings.Cut(strings.TrimSpace(out), "=")
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+// sidecarAlive reports whether anything is still listening on a session's hook
+// address. Any HTTP answer counts — an unauthenticated probe earns a 403, and a
+// 403 is proof something is home. Wrong in one direction only: a recycled port
+// reads as alive and its session is left untouched, which is the harmless way to
+// be wrong. Archiving a session whose agent is still working is not.
+func sidecarAlive(addr string) bool {
+	resp, err := (&http.Client{Timeout: 2 * time.Second}).Get(addr + "/perm/pending")
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return true
+}
 
 // availableAgents reports which spawnable agents are actually installed here.
 func availableAgents() []string {
