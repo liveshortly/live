@@ -127,6 +127,33 @@ func TestSidecarAlive(t *testing.T) {
 	if !sidecarAlive(srv.URL) {
 		t.Error("403 from a live sidecar must count as alive — else a running session gets archived")
 	}
+
+	// One flaky probe must not condemn a session: a listener that fails the
+	// first attempt and answers the second still counts as alive.
+	var hits int
+	flaky := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if hits == 1 {
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("test server does not support hijacking")
+				return
+			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			conn.Close() // drop the connection mid-request
+			return
+		}
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer flaky.Close()
+	if !sidecarAlive(flaky.URL) {
+		t.Error("a single failed probe must not read as dead")
+	}
+
 	srv.Close()
 	if sidecarAlive(srv.URL) {
 		t.Error("a closed listener must read as dead")

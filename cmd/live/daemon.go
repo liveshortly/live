@@ -169,7 +169,6 @@ func cmdDaemon(args []string) int {
 		Agents:   agents,
 	}
 	client := api.New()
-	reapOrphanSessions(client)
 
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m daemon ready as \x1b[1m%s\x1b[0m — start sessions from %s\n", name, hostcfg.WebURL())
 	fmt.Fprintf(os.Stderr, "        agents: %s\n", strings.Join(agents, ", "))
@@ -180,6 +179,8 @@ func cmdDaemon(args []string) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	go reapLoop(ctx, client)
 
 	// Reconnect loop. The stream is the heartbeat: while it is up the server
 	// keeps this machine listed, so a dropped connection must be re-established
@@ -313,9 +314,10 @@ const tmuxSocket = "liveshortly"
 // mid-task to tidy up a feed is not a trade we get to make for them — the pane
 // stays attachable, it just stops pretending to be captured.
 //
-// ponytail: startup-only sweep. A child that dies while the daemon is up is not
-// noticed until the next restart (the server-side reaper still covers it); make
-// it periodic if that gap ever matters.
+// Safe to run alongside spawnSession: a live-* pane only comes into existence
+// after StartHookServer has bound (its address is passed to tmux new-session as
+// `-e LIVE_SIDECAR`), so a session being spawned right now can never be seen
+// half-built and mistaken for an orphan.
 func reapOrphanSessions(client *api.Client) {
 	tmux := func(args ...string) *exec.Cmd {
 		c := exec.Command("tmux", append([]string{"-L", tmuxSocket}, args...)...)
@@ -345,6 +347,27 @@ func reapOrphanSessions(client *api.Client) {
 	}
 }
 
+// reapInterval is how often the daemon re-checks for orphaned sessions. Cheap
+// enough to be invisible (a couple of tmux calls, plus one localhost probe per
+// live pane) and short enough that a capture process killed mid-afternoon does
+// not leave its session showing "live" until the next daemon restart.
+const reapInterval = 5 * time.Minute
+
+// reapLoop sweeps at startup and then on an interval, until ctx is done.
+func reapLoop(ctx context.Context, client *api.Client) {
+	reapOrphanSessions(client)
+	t := time.NewTicker(reapInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			reapOrphanSessions(client)
+		}
+	}
+}
+
 // paneEnv reads one variable out of a tmux session's environment.
 func paneEnv(tmux func(...string) *exec.Cmd, sess, key string) string {
 	out, err := tmux("show-environment", "-t", sess, key).Output()
@@ -369,13 +392,22 @@ func parseShowEnv(out string) string {
 // 403 is proof something is home. Wrong in one direction only: a recycled port
 // reads as alive and its session is left untouched, which is the harmless way to
 // be wrong. Archiving a session whose agent is still working is not.
+//
+// Hence two attempts. This now runs on a timer rather than once per daemon
+// start, so a single localhost probe timing out under load must not be enough to
+// archive a session whose agent is very much alive.
 func sidecarAlive(addr string) bool {
-	resp, err := (&http.Client{Timeout: 2 * time.Second}).Get(addr + "/perm/pending")
-	if err != nil {
-		return false
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+		resp, err := (&http.Client{Timeout: 2 * time.Second}).Get(addr + "/perm/pending")
+		if err == nil {
+			resp.Body.Close()
+			return true
+		}
 	}
-	resp.Body.Close()
-	return true
+	return false
 }
 
 // availableAgents reports which spawnable agents are actually installed here.
