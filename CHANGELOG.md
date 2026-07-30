@@ -4,6 +4,22 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## Unreleased
+
+- **Fixed: a session whose capture process died no longer sits "live" forever.**
+  A spawned `live --attach` child runs in its own process group so a session
+  outlives the daemon that started it. The flip side went unhandled: kill that
+  child — reboot, `kill -9`, OOM — and its tmux pane survives with no sidecar
+  behind it. The hook relay fails silently by design (`live hook` exits 0 on a
+  connection error, so a dead sidecar can never wedge the agent), so nothing is
+  captured and nobody ever calls stop. `live daemon` now sweeps at startup and
+  every 5 minutes: for each `live-*` pane on its tmux socket it probes the
+  sidecar address recorded in that pane's environment, and archives the session
+  when nothing answers. The pane is deliberately left running — that socket also
+  carries `live claude` runs you started by hand, and killing an agent mid-task
+  to tidy a feed is not a trade the daemon gets to make for you; it stays
+  attachable, it just stops pretending to be captured.
+
 ## v1.3.1 — 2026-07-29
 
 - **Fixed: `~/.liveshortly/host.json` wins over `LIVESHORTLY_API_URL` again.**
