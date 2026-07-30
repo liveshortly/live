@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,6 +99,37 @@ func TestParseRunFlagsAttach(t *testing.T) {
 	// Attaching to an existing session and forking a new one are contradictory.
 	if _, _, err := parseRunFlags([]string{"--attach", "a", "--session", "b", "claude"}); err == nil {
 		t.Error("--attach with --session should error")
+	}
+}
+
+// The orphan sweep decides whether to archive somebody's session, so both of
+// its inputs are worth pinning: how a pane's environment is read, and what
+// counts as "the sidecar is still there".
+
+func TestParseShowEnv(t *testing.T) {
+	if got := parseShowEnv("LIVE_SIDECAR=http://127.0.0.1:51234\n"); got != "http://127.0.0.1:51234" {
+		t.Errorf("set variable parsed as %q", got)
+	}
+	// tmux reports an unset variable as "-KEY" — that must not read as a value.
+	for _, out := range []string{"-LIVE_SIDECAR\n", "", "   "} {
+		if got := parseShowEnv(out); got != "" {
+			t.Errorf("parseShowEnv(%q) = %q, want empty", out, got)
+		}
+	}
+}
+
+func TestSidecarAlive(t *testing.T) {
+	// The probe is unauthenticated, so a live sidecar answers 403 — which is
+	// still proof it is there. Only a refused connection means gone.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	if !sidecarAlive(srv.URL) {
+		t.Error("403 from a live sidecar must count as alive — else a running session gets archived")
+	}
+	srv.Close()
+	if sidecarAlive(srv.URL) {
+		t.Error("a closed listener must read as dead")
 	}
 }
 
