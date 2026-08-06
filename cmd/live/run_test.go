@@ -208,3 +208,48 @@ func TestPermissionsBypassed(t *testing.T) {
 		}
 	}
 }
+
+// These are verbatim captures from a web-spawned session. They exist so that a
+// wording change in Claude's startup prompts fails here instead of silently
+// parking every daemon-started session on an unanswered dialog — which is
+// exactly how this regressed once already.
+func TestPromptOnScreen(t *testing.T) {
+	trust := ` Accessing workspace:
+ /Users/rohit
+ Quick safety check: Is this a project you created or one you trust? (Like your
+ own code, a well-known open source project, or work from your team).
+ Claude Code'll be able to read, edit, and execute files here.
+ ❯ 1. Yes, I trust this folder
+   2. No, exit
+ Enter to confirm · Esc to cancel`
+
+	channels := `WARNING: Loading development channels
+
+--dangerously-load-development-channels is for local channel development only.
+
+Channels: server:liveshortly-channel
+
+❯ 1. I am using this for local development
+  2. Exit
+
+Enter to confirm · Esc to cancel`
+
+	if got := promptOnScreen(trust); got != 0 {
+		t.Errorf("trust prompt: promptOnScreen = %d, want 0", got)
+	}
+	if got := promptOnScreen(channels); got != 1 {
+		t.Errorf("channel prompt: promptOnScreen = %d, want 1", got)
+	}
+
+	// A running agent, and an unrelated confirmation, must both be left alone —
+	// answering an unrecognized prompt on the operator's behalf is not this
+	// function's job.
+	running := "❯ \n─────\n …/Users/rohit | Haiku 4.5 | manual mode on"
+	if got := promptOnScreen(running); got != -1 {
+		t.Errorf("running pane: promptOnScreen = %d, want -1", got)
+	}
+	unrelated := "Do you want to delete 400 files?\n❯ 1. Yes\n  2. No\nEnter to confirm · Esc to cancel"
+	if got := promptOnScreen(unrelated); got != -1 {
+		t.Errorf("unrelated prompt: promptOnScreen = %d, want -1 (must not auto-answer)", got)
+	}
+}
