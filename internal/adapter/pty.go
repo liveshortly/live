@@ -50,6 +50,26 @@ func (p *PTY) Submit(text string) error {
 	return err
 }
 
+// headlessSize is the terminal geometry used when there is no real terminal to
+// copy from. Wide enough that an agent's own wrapping does not shred the
+// captured output into fragments.
+var headlessSize = &pty.Winsize{Rows: 40, Cols: 120}
+
+// resizePTY keeps the child's window size sensible.
+//
+// InheritSize fails when stdin is not a terminal, which is exactly the case for
+// a session started by `live daemon`. Ignoring that failure leaves the pty at
+// its default 0x0, and an agent asked to render into zero columns wraps every
+// few characters — the web feed then shows a reply shredded into 4-character
+// shards. Headless runs get an explicit size instead.
+func resizePTY(ptmx *os.File) {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		_ = pty.InheritSize(os.Stdin, ptmx)
+		return
+	}
+	_ = pty.Setsize(ptmx, headlessSize)
+}
+
 // Run starts the command and blocks until it exits. onChunk receives every
 // raw output chunk (called from the copy goroutine).
 func (p *PTY) Run(bin string, args []string, onChunk func([]byte)) (int, error) {
@@ -71,7 +91,7 @@ func (p *PTY) Run(bin string, args []string, onChunk func([]byte)) (int, error) 
 	defer signal.Stop(winch)
 	go func() {
 		for range winch {
-			_ = pty.InheritSize(os.Stdin, ptmx)
+			resizePTY(ptmx)
 		}
 	}()
 	winch <- syscall.SIGWINCH
@@ -120,7 +140,51 @@ var (
 	ansiOSC  = regexp.MustCompile(`\x1b\][^\x07\x1b]*(\x07|\x1b\\)`)
 	ansiMisc = regexp.MustCompile(`\x1b[@-_]`)
 	ctrl     = regexp.MustCompile(`[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]`)
+	// Braille-pattern glyphs are what CLI spinners animate with (ollama's
+	// "thinking" ticker is ⠙⠹⠸⠼…). They are pure animation frames, so a capture
+	// keeps a trail of them where the terminal showed one spinning character.
+	// The trade: a session that legitimately prints Braille loses it. That is
+	// vanishingly rare in an agent transcript, and unreadable output is the
+	// certain cost of not doing this.
+	spinner = regexp.MustCompile(`[\x{2800}-\x{28FF}][\x{2800}-\x{28FF} \t]*`)
 )
+
+// applyOverwrite replays a single line's cursor motion the way a terminal does,
+// so the captured text is what a human SAW rather than every keystroke that
+// produced it:
+//
+//   - \r returns to column 0; what follows OVERWRITES what was there
+//   - \b steps back one column; the next character replaces it
+//
+// Both were previously discarded — \r became a line break and \b was stripped
+// as a control character — which kept every intermediate frame of an in-place
+// redraw. That is why the feed showed "proces processing" and "as if th they"
+// where the terminal showed "processing" and "as if they".
+func applyOverwrite(line string) string {
+	if !strings.ContainsAny(line, "\r\b") {
+		return line
+	}
+	var buf []rune
+	col := 0
+	for _, r := range line {
+		switch r {
+		case '\r':
+			col = 0
+		case '\b':
+			if col > 0 {
+				col--
+			}
+		default:
+			if col < len(buf) {
+				buf[col] = r
+			} else {
+				buf = append(buf, r)
+			}
+			col++
+		}
+	}
+	return string(buf)
+}
 
 // StripANSI removes escape sequences and control characters so captured
 // terminal output is readable in the web feed.
@@ -130,11 +194,15 @@ func StripANSI(b []byte) string {
 	s = ansiCSI.ReplaceAllString(s, "")
 	s = ansiMisc.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\r", "\n")
-	s = ctrl.ReplaceAllString(s, "")
 
-	// Collapse redraw noise: drop runs of blank lines.
+	// Resolve redraws BEFORE stripping control characters — \b has to be
+	// applied as a cursor motion, and the ctrl pass below would delete it.
 	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		l = applyOverwrite(l)
+		l = spinner.ReplaceAllString(l, "")
+		lines[i] = strings.TrimRight(ctrl.ReplaceAllString(l, ""), " \t")
+	}
 	out := lines[:0]
 	blank := 0
 	for _, l := range lines {
