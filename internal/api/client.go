@@ -372,6 +372,10 @@ type HostRegistration struct {
 	Arch     string   `json:"arch,omitempty"`
 	Dirs     []string `json:"dirs"`
 	Agents   []string `json:"agents"`
+	// Models are the ollama models pulled on this machine. Empty unless ollama
+	// is offered. This list is what the spawn path validates against, so it is
+	// enumerated locally and never accepted from the server.
+	Models []string `json:"models,omitempty"`
 }
 
 // SpawnCommand is a request from the web to start a session on this machine.
@@ -382,6 +386,10 @@ type SpawnCommand struct {
 	Agent     string `json:"agent"`
 	Cwd       string `json:"cwd"`
 	Title     string `json:"title"`
+	// Model names the ollama model to run. Ignored for other agents. It is a
+	// choice from the list this machine registered, not a free-form argument —
+	// the daemon re-checks it against a fresh `ollama list`.
+	Model string `json:"model,omitempty"`
 }
 
 // ErrHostStreamUnsupported means the server predates GET /api/hosts/{id}/stream.
