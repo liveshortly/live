@@ -45,6 +45,13 @@ func profileFor(bin string) agentProfile {
 		return agentProfile{framework: "gemini-cli", captureMode: "pty"}
 	case "codex":
 		return agentProfile{framework: "codex", captureMode: "rollout", acceptsInitialPrompt: true}
+	case "ollama":
+		// `ollama run <model>` is an interactive REPL with no hook system and no
+		// rollout log, so pty is the only capture available — same as gemini.
+		// acceptsInitialPrompt stays false: ollama's positional prompt is only
+		// valid for `run`, and `live ollama <anything-else>` (list, pull, ps)
+		// must not have a digest appended to it.
+		return agentProfile{framework: "ollama", captureMode: "pty"}
 	default:
 		return agentProfile{framework: "terminal", captureMode: "pty"}
 	}

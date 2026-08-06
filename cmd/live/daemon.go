@@ -34,14 +34,20 @@ import (
 //     outside spawnableAgents is dropped.
 //   - The directory must be one THIS process registered at startup. The server
 //     checks too, but that check is a courtesy — this one is the defense.
+//   - ollama additionally carries a MODEL name, because `ollama run` is
+//     meaningless without one. It is treated exactly like the directory: it
+//     must be one THIS process enumerated from the local `ollama list`. It is
+//     never a free-form argument, so the server still cannot compose a command
+//     line — it can only choose from what this machine already has.
 //   - Nothing from the command is ever passed to a shell.
 //
-// The blast radius is therefore exactly: run one of three known agents, in one
-// of the directories the operator named on the command line.
+// The blast radius is therefore exactly: run one of four known agents, in one
+// of the directories the operator named on the command line, and for ollama
+// against a model already pulled on this machine.
 
 // spawnableAgents is the closed set of agents a spawn command may name. Keep in
 // step with the server's allowlist in handlers/hosts.go.
-var spawnableAgents = []string{"claude", "codex", "gemini"}
+var spawnableAgents = []string{"claude", "codex", "gemini", "ollama"}
 
 const daemonUsage = `live daemon — let this machine start sessions from the web
 
@@ -127,6 +133,12 @@ func cmdDaemon(args []string) int {
 	}
 
 	agents := availableAgents()
+	// ollama with no models pulled cannot be spawned — `ollama run` needs one —
+	// so drop it rather than advertise a target that would fail on click.
+	models := availableModels()
+	if len(models) == 0 {
+		agents = without(agents, "ollama")
+	}
 	if len(agents) == 0 {
 		fmt.Fprintf(os.Stderr, "live: none of %s are installed — nothing to spawn\n",
 			strings.Join(spawnableAgents, ", "))
@@ -167,11 +179,15 @@ func cmdDaemon(args []string) int {
 		Arch:     runtime.GOARCH,
 		Dirs:     opts.dirs,
 		Agents:   agents,
+		Models:   models,
 	}
 	client := api.New()
 
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m daemon ready as \x1b[1m%s\x1b[0m — start sessions from %s\n", name, hostcfg.WebURL())
 	fmt.Fprintf(os.Stderr, "        agents: %s\n", strings.Join(agents, ", "))
+	if contains(agents, "ollama") {
+		fmt.Fprintf(os.Stderr, "        models: %s\n", strings.Join(models, ", "))
+	}
 	for _, d := range opts.dirs {
 		fmt.Fprintf(os.Stderr, "        dir:    %s\n", d)
 	}
@@ -266,7 +282,26 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cmd
 	//
 	// This is exec with an argv, not a shell: nothing from the command is ever
 	// interpolated into a string a shell would parse.
-	child := exec.Command(self, "--attach", cmd.SessionID, bin)
+	// ollama needs a model on the command line. Re-enumerate rather than trust
+	// the registration we sent (or anything the server echoed back): this is
+	// the same trust boundary the directory check enforces, and a model can be
+	// removed while the daemon is running.
+	agentArgs := []string{}
+	if cmd.Agent == "ollama" {
+		model := strings.TrimSpace(cmd.Model)
+		if model == "" {
+			return fail("ollama spawn carried no model")
+		}
+		if !validModelName(model) {
+			return fail("model %q is not a valid ollama model name", model)
+		}
+		if !contains(availableModels(), model) {
+			return fail("model %q is not pulled on this machine", model)
+		}
+		agentArgs = []string{"run", model}
+	}
+
+	child := exec.Command(self, append([]string{"--attach", cmd.SessionID, bin}, agentArgs...)...)
 	child.Dir = cwd
 	child.Env = os.Environ()
 	child.Stdin = nil // no tty — this is what selects the headless path
@@ -421,6 +456,67 @@ func availableAgents() []string {
 	return out
 }
 
+// maxSpawnableModels bounds what a machine advertises, so a host with a large
+// model library cannot bloat the registration payload.
+const maxSpawnableModels = 50
+
+// availableModels lists the ollama models pulled on this machine, by parsing
+// `ollama list`. Returns nil when ollama is absent or reports nothing, in which
+// case ollama is simply not offered as a spawn target.
+//
+// This list IS the allowlist the spawn path validates against, so it is built
+// here and never accepted from the server.
+func availableModels() []string {
+	if _, err := exec.LookPath("ollama"); err != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "ollama", "list").Output()
+	if err != nil {
+		return nil
+	}
+	var models []string
+	seen := map[string]bool{}
+	for i, line := range strings.Split(string(out), "\n") {
+		if i == 0 {
+			continue // header: NAME  ID  SIZE  MODIFIED
+		}
+		name, _, found := strings.Cut(strings.TrimSpace(line), " ")
+		if !found && name == "" {
+			continue
+		}
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] || !validModelName(name) {
+			continue
+		}
+		seen[name] = true
+		models = append(models, name)
+		if len(models) == maxSpawnableModels {
+			break
+		}
+	}
+	return models
+}
+
+// validModelName bounds a model tag to the characters ollama actually uses
+// (namespace/model:tag). Belt-and-braces: the name is never shell-interpolated,
+// but a name is also a spawn argument, so keep the alphabet closed.
+func validModelName(s string) bool {
+	if s == "" || len(s) > 128 {
+		return false
+	}
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '.', c == '-', c == '_', c == ':', c == '/':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // loadOrCreateHostID returns this machine's stable daemon id, minting one on
 // first run. Server keys are namespaced by user, so the id identifies a machine
 // within one account and is not a secret.
@@ -460,6 +556,17 @@ func sanitizeHostID(s string) string {
 		}
 	}
 	return s
+}
+
+// without returns list minus want, preserving order.
+func without(list []string, want string) []string {
+	out := list[:0:0]
+	for _, s := range list {
+		if s != want {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func contains(list []string, want string) bool {

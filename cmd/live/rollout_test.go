@@ -204,3 +204,37 @@ func TestProfileForCodex(t *testing.T) {
 		t.Fatalf("codex seed not injected: %v", got)
 	}
 }
+
+// live ollama <args> must be captured as ollama, not as a generic terminal
+// session — that labelling is the whole point of the profile entry.
+func TestProfileForOllama(t *testing.T) {
+	p := profileFor("ollama")
+	if p.framework != "ollama" || p.captureMode != "pty" {
+		t.Errorf("profileFor(ollama) = %+v, want framework=ollama captureMode=pty", p)
+	}
+	// ollama's positional prompt is only valid for `run`, so a handoff digest
+	// must never be appended to an arbitrary `live ollama <subcommand>`.
+	if p.acceptsInitialPrompt {
+		t.Error("ollama must not accept an injected initial prompt")
+	}
+	// A full path still resolves by base name, the way the other agents do.
+	if got := profileFor("/opt/homebrew/bin/ollama"); got.framework != "ollama" {
+		t.Errorf("profileFor(abs path) = %q, want ollama", got.framework)
+	}
+}
+
+// The model name reaches the daemon as an argv element. It is never passed to a
+// shell, but the alphabet stays closed so a name can never be anything but a
+// name.
+func TestValidModelName(t *testing.T) {
+	for _, ok := range []string{"llama3.2:1b", "qwen2.5:0.5b", "library/mistral:latest", "gemma2"} {
+		if !validModelName(ok) {
+			t.Errorf("validModelName(%q) = false, want true", ok)
+		}
+	}
+	for _, bad := range []string{"", "llama3 && rm -rf /", "llama3;reboot", "a b", "$(id)", "`id`", "model\nname", strings.Repeat("x", 129)} {
+		if validModelName(bad) {
+			t.Errorf("validModelName(%q) = true, want false", bad)
+		}
+	}
+}
