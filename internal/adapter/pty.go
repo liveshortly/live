@@ -31,6 +31,25 @@ func (p *PTY) Notify(msg string) {
 	os.Stdout.WriteString("\r\n\x1b[33m[live] " + msg + "\x1b[0m\r\n")
 }
 
+// Submit writes one line to the agent's stdin, as if it had been typed, and
+// presses Enter. Serialized against Notify so an overlay cannot land mid-write.
+//
+// Callers must have decided that THIS agent accepts a typed line. Doing it for
+// an arbitrary pty agent would be a command-injection hole: the pane may be a
+// shell, and text arriving from a viewer would run on the operator's machine.
+// Only known REPLs qualify — see canSubmitComments in the run path.
+//
+// text must already be a single sanitized line; a CR is appended here.
+func (p *PTY) Submit(text string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.ptmx == nil || p.done {
+		return nil // agent gone; nothing to type into
+	}
+	_, err := p.ptmx.WriteString(text + "\r")
+	return err
+}
+
 // Run starts the command and blocks until it exits. onChunk receives every
 // raw output chunk (called from the copy goroutine).
 func (p *PTY) Run(bin string, args []string, onChunk func([]byte)) (int, error) {
