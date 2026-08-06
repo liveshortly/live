@@ -1065,9 +1065,30 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 	}
 	sc.Start(context.Background())
 
-	// Batch output: flush at 2s or 8KB, ANSI-stripped, into `output` events.
+	// Batch output into `output` events, ANSI-stripped.
+	//
+	// The boundary is IDLE, not a clock. A fixed interval cuts wherever the tick
+	// lands, which for a token-streaming agent is mid-word: one reply arrived as
+	// ten events reading "checking are you co" / "nnected to the cli". Waiting
+	// for the stream to go quiet puts the boundary where the agent actually
+	// stopped talking, so a reply becomes one block.
+	const (
+		// Long enough to bridge the gaps between tokens, short enough that the
+		// feed still feels live.
+		idleGap = 600 * time.Millisecond
+		// A reply that never pauses still has to reach viewers, so emit at least
+		// this often regardless.
+		maxHold = 10 * time.Second
+		// Memory guard only. Deliberately far above the old 8KB, which was small
+		// enough to cut a normal reply in half.
+		hardCap = 64 * 1024
+		// One event is now a whole turn rather than a 2s slice, so the cap has to
+		// fit a real answer instead of truncating it.
+		maxText = 8000
+	)
 	var mu sync.Mutex
 	var buf []byte
+	var firstWrite, lastWrite time.Time
 	flush := func() {
 		mu.Lock()
 		chunk := buf
@@ -1080,19 +1101,26 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		if text == "" {
 			return
 		}
-		if len(text) > 2000 {
-			text = text[:2000] + "…"
+		if len(text) > maxText {
+			text = text[:maxText] + "…"
 		}
 		sc.Emit("output", map[string]any{"text": text, "ts": time.Now().UTC().Format(time.RFC3339)})
 	}
 	stopFlusher := make(chan struct{})
 	go func() {
-		t := time.NewTicker(2 * time.Second)
+		t := time.NewTicker(100 * time.Millisecond)
 		defer t.Stop()
 		for {
 			select {
 			case <-t.C:
-				flush()
+				mu.Lock()
+				pending := len(buf) > 0
+				idle := time.Since(lastWrite)
+				held := time.Since(firstWrite)
+				mu.Unlock()
+				if pending && (idle >= idleGap || held >= maxHold) {
+					flush()
+				}
 			case <-stopFlusher:
 				return
 			}
@@ -1101,8 +1129,13 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 
 	code, err := p.Run(binPath, userArgs, func(chunk []byte) {
 		mu.Lock()
+		now := time.Now()
+		if len(buf) == 0 {
+			firstWrite = now
+		}
+		lastWrite = now
 		buf = append(buf, chunk...)
-		full := len(buf) >= 8192
+		full := len(buf) >= hardCap
 		mu.Unlock()
 		if full {
 			flush()
