@@ -1010,17 +1010,58 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// runPTYMode captures raw terminal output for agents without hooks. Viewer
-// comments are shown to the operator as an overlay (they cannot be injected
-// into an arbitrary agent).
+// canSubmitComments reports whether a viewer comment may be TYPED INTO this
+// agent rather than only painted over its output.
+//
+// pty mode is the universal fallback: it also runs `live <anything>`, where the
+// pane may be a shell. Typing viewer-supplied text into that would execute a
+// stranger's input on the operator's machine. So this is an allowlist of known
+// REPLs that read a line of prose, never a default.
+func canSubmitComments(binPath string) bool {
+	return profileFor(binPath).framework == "ollama"
+}
+
+// viewerLine flattens a comment into something safe to type into a REPL.
+//
+// Two hazards, both real for ollama. A newline would submit everything after it
+// as a SECOND turn, so a comment can carry a hidden follow-up. And a leading
+// slash is an ollama REPL command — an unprefixed "/bye" from any commenter
+// would end the session, "/set" would silently retune the model. The
+// "(live viewer):" prefix (shared with codex) removes the leading-slash case by
+// construction, and collapsing whitespace removes the other.
+func viewerLine(who, message string) string {
+	flat := strings.Join(strings.Fields(message), " ")
+	if flat == "" {
+		return ""
+	}
+	const maxViewerLine = 2000
+	if len(flat) > maxViewerLine {
+		flat = flat[:maxViewerLine] + "…"
+	}
+	return viewerTurn(who, flat)
+}
+
+// runPTYMode captures raw terminal output for agents without hooks. A viewer
+// comment is always shown to the operator as an overlay; for agents that are a
+// known REPL it is also typed in as a turn, so the model actually answers it
+// the way a hooks-mode agent does.
 func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 	p := &adapter.PTY{}
+	submit := canSubmitComments(binPath)
 	sc.OnComment = func(c api.Comment) {
 		who := c.Username
 		if who == "" {
 			who = "viewer"
 		}
 		p.Notify("💬 " + who + ": " + c.Message)
+		if !submit {
+			return
+		}
+		if line := viewerLine(who, c.Message); line != "" {
+			if err := p.Submit(line); err != nil {
+				p.Notify("could not deliver that message to the agent: " + err.Error())
+			}
+		}
 	}
 	sc.Start(context.Background())
 
