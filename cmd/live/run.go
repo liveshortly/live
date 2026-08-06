@@ -452,6 +452,39 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 // between "the human drives the pane" and "the browser drives the pane".
 func headless() bool { return !term.IsTerminal(int(os.Stdin.Fd())) }
 
+// startupPrompts are the blocking prompts Claude shows before it will accept
+// input, each identified by markers that must ALL appear on screen. Claude asks
+// about the folder first and the channel second, so both must be answered or the
+// session parks on whichever comes next.
+//
+// These match the OPTION line, not the question. The question wording has
+// already changed once ("Do you trust the files in this folder?" became "Quick
+// safety check: Is this a project you created or one you trust?"); the option a
+// user would pick has stayed put. Pairing it with the confirm footer keeps the
+// match specific to a genuinely blocking prompt.
+var startupPrompts = [][]string{
+	{"Yes, I trust this folder", "Enter to confirm"},
+	{"WARNING: Loading development channels", "liveshortly-channel"},
+}
+
+// promptOnScreen returns the index of the startup prompt visible in screen, or
+// -1 when the screen is not one we recognize (left alone for the operator).
+func promptOnScreen(screen string) int {
+	for i, markers := range startupPrompts {
+		hit := true
+		for _, m := range markers {
+			if !strings.Contains(screen, m) {
+				hit = false
+				break
+			}
+		}
+		if hit {
+			return i
+		}
+	}
+	return -1
+}
+
 // confirmChannelPrompt answers Claude's development-channels warning for a
 // web-started session.
 //
@@ -469,23 +502,81 @@ func headless() bool { return !term.IsTerminal(int(os.Stdin.Fd())) }
 // machine. It will never answer any other prompt: an unrecognized screen is
 // left alone for the operator to handle over tmux attach.
 func confirmChannelPrompt(tmux func(args ...string) *exec.Cmd, sess string) {
-	const (
-		marker   = "WARNING: Loading development channels"
-		ourChan  = "liveshortly-channel"
-		deadline = 45 * time.Second
-	)
-	stop := time.Now().Add(deadline)
-	for time.Now().Before(stop) {
+	const deadline = 45 * time.Second
+
+	// The blocking prompts, and what identifies each one unambiguously. Claude
+	// asks about the folder FIRST and the channel second, so both have to be
+	// answered or the session parks on whichever comes next.
+	//
+	// Trusting the folder is a real decision, not a nuisance dialog. It is
+	// answered here only because the operator already made it: `live daemon`
+	// spawns exclusively in directories they registered on the command line and
+	// refuses every other path, so the directory on screen is by definition one
+	// they nominated. This does not widen that — it stops re-asking a question
+	// with nobody there to answer.
+	prompts := startupPrompts
+
+	pane := func() string {
 		out, err := tmux("capture-pane", "-t", sess, "-p").Output()
 		if err != nil {
-			return // pane gone
+			return "" // pane gone
 		}
-		pane := string(out)
-		if strings.Contains(pane, marker) && strings.Contains(pane, ourChan) {
-			_ = tmux("send-keys", "-t", sess, "Enter").Run()
+		return string(out)
+	}
+
+	// isUp reports whether ONE specific prompt is still on screen.
+	isUp := func(screen string, markers []string) bool {
+		for _, m := range markers {
+			if !strings.Contains(screen, m) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// which prompt, if any, is currently blocking.
+	which := func() int { return promptOnScreen(pane()) }
+
+	stop := time.Now().Add(deadline)
+	for time.Now().Before(stop) {
+		i := which()
+		if i < 0 {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		// Send C-m, NOT "Enter". They are not interchangeable here: tmux encodes
+		// the Enter *key* according to the pane's negotiated keyboard protocol,
+		// and Claude's TUI silently ignores the form it gets, leaving the
+		// session parked forever. C-m puts a literal CR on the pty, which it
+		// does accept. This is why the original fix worked when written and then
+		// quietly stopped: nothing here changed, the TUI's key handling did.
+		//
+		// Wait for THIS prompt to clear, not for "no prompt at all" — these
+		// arrive back to back, so the next one is already on screen by the time
+		// the first is answered, and a generic check reads that as a failure.
+		answered := false
+		for _, key := range []string{"C-m", "Enter"} {
+			_ = tmux("send-keys", "-t", sess, key).Run()
+			for n := 0; n < 8; n++ {
+				time.Sleep(250 * time.Millisecond)
+				if !isUp(pane(), prompts[i]) {
+					answered = true
+					break
+				}
+			}
+			if answered {
+				break
+			}
+		}
+		if !answered {
+			fmt.Fprintf(os.Stderr,
+				"live: could not answer a startup prompt in %s — attach with `tmux -L liveshortly attach -t %s` and answer it\n",
+				sess, sess)
 			return
 		}
-		time.Sleep(500 * time.Millisecond)
+		// Keep looping: the folder-trust prompt is followed by the channel
+		// warning, and returning after the first is what parks the session.
 	}
 }
 
