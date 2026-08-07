@@ -1076,9 +1076,10 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		// Long enough to bridge the gaps between tokens, short enough that the
 		// feed still feels live.
 		idleGap = 600 * time.Millisecond
-		// A reply that never pauses still has to reach viewers, so emit at least
-		// this often regardless.
-		maxHold = 10 * time.Second
+		// Safety valve for a reply that never pauses. Generous because the
+		// working heartbeat below tells viewers the agent is mid-answer — without
+		// that signal this had to be short, which split long replies in half.
+		maxHold = 45 * time.Second
 		// Memory guard only. Deliberately far above the old 8KB, which was small
 		// enough to cut a normal reply in half.
 		hardCap = 64 * 1024
@@ -1106,6 +1107,14 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		}
 		sc.Emit("output", map[string]any{"text": text, "ts": time.Now().UTC().Format(time.RFC3339)})
 	}
+	// While output is buffered the session emits nothing, so the viewer sees a
+	// dead page for the whole generation and only then a blob. Heartbeat
+	// `stream_start` — a content-free boundary marker the web already hides from
+	// the log — so the "<agent> IS WORKING" badge stays lit until the answer
+	// lands. Re-emitting rather than sending one is deliberate: the badge clears
+	// on silence, so a crashed agent stops claiming to be working by itself.
+	const workingPing = 2 * time.Second
+	var lastPing time.Time
 	stopFlusher := make(chan struct{})
 	go func() {
 		t := time.NewTicker(100 * time.Millisecond)
@@ -1117,9 +1126,17 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 				pending := len(buf) > 0
 				idle := time.Since(lastWrite)
 				held := time.Since(firstWrite)
+				ping := pending && time.Since(lastPing) >= workingPing
+				if ping {
+					lastPing = time.Now()
+				}
 				mu.Unlock()
 				if pending && (idle >= idleGap || held >= maxHold) {
 					flush()
+					continue
+				}
+				if ping {
+					sc.Emit("stream_start", map[string]any{"ts": time.Now().UTC().Format(time.RFC3339)})
 				}
 			case <-stopFlusher:
 				return
