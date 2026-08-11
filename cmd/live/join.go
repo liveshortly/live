@@ -1,0 +1,414 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"strings"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"github.com/liveshortly/live/internal/api"
+	"github.com/liveshortly/live/internal/auth"
+)
+
+// cmdJoin attaches this terminal to another (or your own) live session: the
+// session's events stream in, and anything you type is delivered to the running
+// agent as a viewer message — the same channel the web composer uses. That
+// makes it a CLI↔CLI conversation between two people through one agent.
+//
+// `live watch` is the same thing with the input half turned off.
+func cmdJoin(args []string, readOnly bool) int {
+	verb := "join"
+	if readOnly {
+		verb = "watch"
+	}
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "usage: live %s <session-id>\n", verb)
+		fmt.Fprintln(os.Stderr, "       live ls --live      # find one")
+		return 2
+	}
+	history := 20
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--read-only", "--watch":
+			readOnly = true
+		case "--full":
+			history = 1 << 30
+		case "-n", "--history":
+			if i+1 < len(args) {
+				i++
+				fmt.Sscanf(args[i], "%d", &history)
+			}
+		}
+	}
+
+	c := api.New()
+	id, err := resolveID(c, args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "live:", err)
+		return 1
+	}
+	s, err := c.GetSession(id)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "live:", err)
+		return 1
+	}
+	me := signedInName()
+
+	w := termWidth()
+	printSessionHeader(s, w)
+
+	// Prior context: the events we already hold. Everything at or below this seq
+	// is replay, so the stream's catch-up frames get dropped instead of printed
+	// twice.
+	baseSeq := 0
+	shown := visibleEvents(s.Events)
+	if len(s.Events) > 0 {
+		baseSeq = s.Events[len(s.Events)-1].Seq
+	}
+	if len(shown) > history {
+		fmt.Printf("%s\n\n", paint(fmt.Sprintf("   ⋮ %d earlier events hidden — live %s %s --full for all of them",
+			len(shown)-history, verb, short(id)), cDim))
+		shown = shown[len(shown)-history:]
+	}
+	if len(shown) == 0 {
+		fmt.Printf(" %s\n\n", paint("nothing captured yet — this session has not produced an event", cDim))
+	}
+	printBlocks(shown, s, me, w)
+
+	if !s.Live() {
+		fmt.Println(paint(strings.Repeat("─", w), cDim))
+		fmt.Printf(" %s\n", paint("this session has ended — nothing more will arrive", cDim))
+		fmt.Printf(" %s\n\n", paint("continue it as your own:  live claude --session "+short(id), cDim))
+		return 0
+	}
+
+	fmt.Println(paint(strings.Repeat("─", w), cDim))
+	if readOnly {
+		fmt.Printf(" %s\n\n", paint("watching — Ctrl-C to leave", cDim))
+	} else {
+		fmt.Printf(" %s\n\n", paint("joined — type to talk to the agent · /help for commands · Ctrl-C to leave", cDim))
+		if pendingPermission(s.Events) {
+			fmt.Printf(" %s\n\n", paint("⏸ this session is waiting on a permission — /allow, /deny, or /always", cAmber, cBold))
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() { <-sig; cancel() }()
+
+	// Live status for the prompt chip: watchers come from the stream's own
+	// heartbeat frames, uptime from the session's start.
+	var watchers atomic.Int64
+	watchers.Store(int64(s.WatcherCount))
+	// blocked is set while the agent is waiting on a permission nobody has
+	// answered. It drives the prompt chip, so a stalled session is visible even
+	// when the request has scrolled away. Seeded from the history: joining a
+	// session that is ALREADY stuck is the case this exists for.
+	var blocked atomic.Bool
+	blocked.Store(pendingPermission(s.Events))
+	started := s.CreatedAt
+	status := func() string {
+		if blocked.Load() {
+			return paint("[BLOCKED — /allow or /deny]", cAmber, cBold)
+		}
+		parts := []string{humanDur(time.Since(started))}
+		if n := watchers.Load(); n > 0 {
+			parts = append(parts, fmt.Sprintf("%d◉", n))
+		}
+		return "[" + strings.Join(parts, " · ") + "]"
+	}
+
+	// In watch mode nothing is typed, so the editor stays in its passive form and
+	// serves only as the printer.
+	ed := &editor{}
+	if !readOnly {
+		ed = newEditor(status)
+		defer ed.Close()
+	}
+
+	ended := make(chan struct{})
+	go func() {
+		defer close(ended)
+		backoff := time.Second
+		for ctx.Err() == nil {
+			err := c.ViewerStream(ctx, id, func(f api.StreamFrame) {
+				switch {
+				case f.RawEvent:
+					if f.Event.Seq <= baseSeq {
+						return // catch-up replay we already printed
+					}
+					baseSeq = f.Event.Seq
+					switch f.Event.EventType {
+					case "input_requested":
+						if f.Event.Str("kind") == "permission" {
+							blocked.Store(true)
+						}
+					case "viewer_decision", "tool_call", "pre_tool", "response", "file_write":
+						// Answered here, answered elsewhere, or the agent moved on.
+						blocked.Store(false)
+					}
+					ed.Print(renderBlock(f.Event, s, me, termWidth())...)
+					if blocked.Load() && !readOnly {
+						ed.Print(paint("   ⏸ the agent is waiting — /allow, /deny or /always answers it from here", cAmber))
+					}
+				case f.Type == "watchers":
+					watchers.Store(int64(f.Count))
+					ed.redraw()
+				case f.Type == "session_ended":
+					ed.Print("", paint(" ── session ended ──", cAmber), "")
+				}
+			})
+			if ctx.Err() != nil || err == nil || err == api.ErrNoAccess {
+				return
+			}
+			ed.Print(paint(fmt.Sprintf(" · stream dropped (%v) — reconnecting in %s", err, backoff), cDim))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			if backoff < 15*time.Second {
+				backoff *= 2
+			}
+		}
+	}()
+
+	if readOnly {
+		<-ended
+		fmt.Println()
+		return 0
+	}
+
+	// The stream ending should end the join too, rather than leave a prompt
+	// attached to a dead session. Nothing can unblock a terminal read in place —
+	// and with the session gone there is nothing left to send or flush — so the
+	// terminal is restored and the process exits here.
+	go func() {
+		<-ended
+		ed.Print(paint("  session closed — leaving", cDim), "")
+		time.Sleep(300 * time.Millisecond)
+		ed.Close()
+		os.Exit(0)
+	}()
+
+	in := bufio.NewReader(os.Stdin)
+	for {
+		line, stop := ed.ReadLine(in)
+		if stop != stopNone || ctx.Err() != nil {
+			break
+		}
+		if strings.HasPrefix(line, "/") {
+			if quit := joinCommand(c, id, line, ed.Print); quit {
+				break
+			}
+			continue
+		}
+		if err := c.PostComment(id, line); err != nil {
+			ed.Print(paint("  ✗ not sent: "+err.Error(), cRed))
+		}
+	}
+	ed.Close()
+	cancel()
+	fmt.Println()
+	return 0
+}
+
+// pendingPermission reports whether the last thing that happened in a session
+// was a permission request nobody answered — i.e. the agent is stuck waiting.
+// Anything that could only have happened after a verdict clears it.
+func pendingPermission(events []api.Event) bool {
+	for i := len(events) - 1; i >= 0; i-- {
+		switch events[i].EventType {
+		case "input_requested":
+			if events[i].Str("kind") == "permission" {
+				return true
+			}
+		case "viewer_decision", "tool_call", "pre_tool", "response", "file_write":
+			return false
+		}
+	}
+	return false
+}
+
+// signedInName is the display name of the signed-in account, used to mark the
+// session owner's own turns as "you". Empty when not resolvable.
+func signedInName() string {
+	c := auth.Load()
+	if c == nil || c.User == nil {
+		return ""
+	}
+	if c.User.Name != "" {
+		return c.User.Name
+	}
+	return c.User.Email
+}
+
+// printSessionHeader frames a session above its transcript.
+func printSessionHeader(s api.Session, w int) {
+	fmt.Println()
+	fmt.Println(paint(strings.Repeat("─", w), cDim))
+	printSession(s)
+	fmt.Println(paint(strings.Repeat("─", w), cDim))
+	fmt.Println()
+}
+
+// joinCommand handles a /slash line typed during a join. Returns true to leave.
+func joinCommand(c *api.Client, id, line string, say func(...string)) bool {
+	fields := strings.Fields(line)
+	switch fields[0] {
+	case "/q", "/quit", "/exit", "/leave":
+		return true
+	case "/url", "/link":
+		say("  " + sessionURL(id))
+	case "/info":
+		s, err := c.GetSession(id)
+		if err != nil {
+			say(paint("  ✗ "+err.Error(), cRed))
+			break
+		}
+		say(paint(fmt.Sprintf("  %s · %s · %s · %s · %d watching · agent %s",
+			s.Title, s.Status, s.Agent, plural(s.EventCount, "event"),
+			s.WatcherCount, yesNo(s.AgentConnected)), cDim))
+	case "/who":
+		s, err := c.GetSession(id)
+		if err != nil {
+			say(paint("  ✗ "+err.Error(), cRed))
+			break
+		}
+		say(paint(fmt.Sprintf("  owner %s · %d watching · %s",
+			s.OwnerHandle, s.WatcherCount, plural(s.ShareCount, "grant")), cDim))
+	case "/tail":
+		s, err := c.GetSession(id)
+		if err != nil {
+			say(paint("  ✗ "+err.Error(), cRed))
+			break
+		}
+		ev := visibleEvents(s.Events)
+		if n := 5; len(ev) > n {
+			ev = ev[len(ev)-n:]
+		}
+		for _, e := range ev {
+			say(renderBlock(e, s, signedInName(), termWidth())...)
+		}
+	case "/allow", "/deny", "/always":
+		// Answering a permission is comment-level authorization server-side: the
+		// same right that lets you talk to the session lets you unblock it, which
+		// is the point — the owner is not always looking at their terminal.
+		verdict := strings.TrimPrefix(fields[0], "/")
+		if err := c.PostDecision(id, verdict); err != nil {
+			say(paint("  ✗ "+err.Error(), cRed))
+			break
+		}
+		note := "  ✓ " + verdict + " sent — the agent resumes within a second"
+		if verdict == "always" {
+			note = "  ✓ always sent — this tool will not ask again for the rest of the session"
+		}
+		say(paint(note, cGreen))
+	case "/fork":
+		say(paint("  live claude --session "+short(id), cBold))
+	case "/stop":
+		if _, err := c.Stop(id); err != nil {
+			say(paint("  ✗ "+err.Error(), cRed))
+			break
+		}
+		say(paint("  session stopped", cAmber))
+		return true
+	case "/help", "/?":
+		say(
+			paint("  /allow  let the waiting tool run  /deny   refuse it", cDim),
+			paint("  /always allow this tool from now on", cDim),
+			paint("  /info   session status           /who    owner, watchers, grants", cDim),
+			paint("  /tail   reprint the last turns   /url    web link", cDim),
+			paint("  /fork   continue it locally      /stop   end it (owner)", cDim),
+			paint("  /quit   leave", cDim),
+			paint("  anything else you type is delivered to the agent", cDim),
+			paint("  ↑/↓ recall what you sent · Ctrl-U clear · Ctrl-W delete word", cDim),
+		)
+	default:
+		say(paint("  ? unknown command — /help", cDim))
+	}
+	return false
+}
+
+// ── event glyphs ──────────────────────────────────────────────────────────────
+
+// eventMark is the glyph + colour per event type, mirroring the web viewer so
+// the terminal and the browser read the same.
+func eventMark(t string) (string, string) {
+	switch t {
+	case "prompt":
+		return "›", cAmber
+	case "response":
+		return "◆", cGreen
+	case "tool_call":
+		return "▸", cAmber
+	case "pre_tool":
+		return "⟳", cDim
+	case "file_write":
+		return "✎", cRed
+	case "output":
+		return "·", cDim
+	case "viewer_comment":
+		return "✉", cViolet
+	case "input_requested":
+		return "⌐", cAmber
+	case "viewer_decision":
+		return "⏎", cGreen
+	case "quota_exceeded":
+		return "⚠", cRed
+	default:
+		return "•", cDim
+	}
+}
+
+// hidden events are internal stream boundaries with no content — the web viewer
+// drops them too, and in a terminal they are pure noise between real turns.
+var hiddenEvents = map[string]bool{"stream_start": true, "stream_end": true}
+
+// renderEvent formats one event as a single terminal line, for the compact
+// contexts where a full block would drown the surrounding summary:
+// "14:02:11 ▸ tool_call  Bash — git status".
+func renderEvent(e api.Event, width int) string {
+	glyph, color := eventMark(e.EventType)
+	ts := paint(e.TS.Local().Format("15:04:05"), cDim)
+	label := paint(fit(e.EventType, 15), color)
+	if width < 40 {
+		width = 40
+	}
+	return fmt.Sprintf("%s %s %s %s", ts, paint(glyph, color), label,
+		clipLine(sanitize(eventBody(e)), width-28))
+}
+
+// eventBody is the human-readable text of an event: the message for chat-shaped
+// events, the tool + target for work steps.
+func eventBody(e api.Event) string {
+	if who := e.Str("username"); who != "" && (e.EventType == "prompt" || e.EventType == "viewer_comment") {
+		return paint(who, cBold) + ": " + e.Str("message", "text", "content")
+	}
+	if t := e.Str("message", "text", "content"); t != "" {
+		return t
+	}
+	tool := e.Str("tool_name", "tool", "name")
+	target := e.Str("file_path", "path", "file", "command")
+	switch {
+	case tool != "" && target != "":
+		return paint(tool, cBold) + " — " + target
+	case tool != "":
+		return paint(tool, cBold)
+	case target != "":
+		return target
+	}
+	// Last resort: the payload's own keys, so nothing renders as an empty line.
+	var keys []string
+	for k, v := range e.Payload {
+		keys = append(keys, fmt.Sprintf("%s=%v", k, v))
+	}
+	return strings.Join(keys, " ")
+}

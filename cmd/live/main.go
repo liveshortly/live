@@ -35,6 +35,29 @@ Usage:
   live handoff <session-id>  Print the copyable command to continue a session
   live context [<id>]        Reprint a fork's prior-context digest
 
+Browse and join sessions from the terminal:
+  live ls [filters]          List your sessions (add --live for running ones)
+  live shared                List the sessions other people shared with you
+  live info <id>             Everything about one session + its last events
+  live join <id>             Attach to a LIVE session: watch it and talk to the
+                             agent from your terminal — the other person's CLI
+                             sees your message, you see their agent's work.
+                             Turns are shown with their author and in full;
+                             ↑/↓ recall, /help lists the slash commands.
+                             --full for all history, -n <count> for some of it
+  live watch <id>            Same, read-only
+  live share <id> <email>    Grant someone access (--role viewer|commenter)
+  live stop <id>             End a running session
+  live open <id>             Open the session page in a browser
+  live hosts                 List your machines running "live daemon"
+
+  <id> is the 8-character handle printed by "live ls", or a full session id.
+  ls shows the 10 most recent by default: --all for every one, -n <limit> for a
+  count. Other filters: --mine --shared --live --ended -q <text> --json
+
+  While joined, /allow, /deny and /always answer a permission prompt the agent
+  is stuck on — so a session does not stall because its owner walked away.
+
 Continue (fork) an existing session as a NEW session you own:
   live claude --session <id>       Continue from a session's latest state
   live claude --handoff <code>     Continue from a pinned handoff snapshot
@@ -104,6 +127,24 @@ func main() {
 		cmdChannel()
 	case "daemon":
 		os.Exit(cmdDaemon(os.Args[2:]))
+	case "ls", "list", "sessions":
+		os.Exit(cmdLs(os.Args[2:], "mine"))
+	case "shared":
+		os.Exit(cmdLs(os.Args[2:], "shared"))
+	case "info", "show":
+		os.Exit(cmdInfo(os.Args[2:]))
+	case "join":
+		os.Exit(cmdJoin(os.Args[2:], false))
+	case "watch":
+		os.Exit(cmdJoin(os.Args[2:], true))
+	case "share":
+		os.Exit(cmdShare(os.Args[2:]))
+	case "stop":
+		os.Exit(cmdStopSession(os.Args[2:]))
+	case "open":
+		os.Exit(cmdOpen(os.Args[2:]))
+	case "hosts":
+		os.Exit(cmdHosts(os.Args[2:]))
 	case "handoff":
 		os.Exit(cmdHandoff(os.Args[2:]))
 	case "context":

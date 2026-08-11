@@ -205,6 +205,113 @@ agent:
   yellow `[live] 💬` line in your terminal — random CLIs can't safely have
   text injected into them, so you relay it.
 
+## Browsing and joining sessions from the terminal
+
+Everything the website shows you, without the website:
+
+```bash
+live ls                     # the 10 most recent, one line each
+live ls --all               # every one of them
+live ls --live              # only the ones running right now
+live ls -q auth --ended     # search titles
+live shared                 # what other people have shared with you
+live info <id>              # one session in full, plus its last events
+live hosts                  # your machines running `live daemon`
+```
+
+`<id>` is the eight-character handle every listing prints — or a full session
+id, or a pasted session link. Add `--json` to `ls` if you'd rather pipe it.
+
+### Joining someone else's session
+
+This is the part that makes two terminals talk to each other:
+
+```bash
+live join <id>              # watch it live AND talk to the agent
+live watch <id>             # same, read-only
+```
+
+`live join` prints the last ~20 turns for context, then streams the session as
+it happens. Anything you type goes to the running agent as a viewer message —
+the same channel the web composer uses — so the person whose terminal it is
+sees your message land in their agent, and you see the reply come back. Two
+people, two CLIs, one agent in the middle.
+
+It reads like the web viewer, not like a log:
+
+```
+ › Rohit Sehgal · you 08:31:32
+   append a line 'v2 tui' to README.md, then run wc -l
+
+ ⟳ Bash · running  08:31:35
+   git status --short
+
+ ▸ Bash  08:31:35
+   git status --short
+   ⎿ ?? README.md
+
+ ✎ Edit  +1 −0  08:33:15
+   …/scratchpad/demo/README.md
+    hello
+   +v2 tui
+
+ ◆ claude-opus-5 · agent 08:33:17
+   Status: `?? README.md` (untracked). Line `v2 tui` appended.
+
+────────────────────────────────────────────────────────────────────────
+[4m · 2◉] ❯ nice — now add a test
+```
+
+Every turn names who produced it, replies are shown in full rather than cut to
+one line, diffs are coloured with their `+`/`−` counts, and the prompt at the
+bottom carries the session's uptime and how many people are watching.
+
+Your input line stays put: an event arriving while you are halfway through a
+sentence is printed above the prompt, not spliced into it. `↑`/`↓` recall what
+you have sent, `Ctrl-U` clears the line, `Ctrl-W` deletes a word, `Ctrl-C`
+leaves. Piping works too (`echo "ship it" | live join <id>`).
+
+### Answering permission prompts from a join
+
+When the agent stops to ask permission for a tool, whoever is joined can answer
+it — not just whoever is sitting at the session's own terminal:
+
+```
+ ⌐ waiting for permission 09:12:21
+   Claude wants to run Write: …/scratchpad/demo/perm2.txt
+   ⏸ the agent is waiting — /allow, /deny or /always answers it from here
+
+[BLOCKED — /allow or /deny] ❯ /allow
+```
+
+The prompt itself turns into a `BLOCKED` chip so a stalled session is obvious
+even after the request scrolls away, and joining an already-stuck session says
+so up front. The verdict goes through the same endpoint the web viewer uses and
+carries the same authorization — commenter access, the same right that lets you
+talk to the session — so the running agent picks it up within a second and
+everybody watching sees who answered.
+
+Slash commands while joined: `/allow`, `/deny`, `/always`, `/info`, `/who`,
+`/tail`, `/url`, `/fork`, `/stop`, `/quit`. `/help` lists them.
+
+Add `--full` to print the entire history instead of the last 20 turns, or
+`-n <count>` to pick your own.
+
+To let someone in, grant them access:
+
+```bash
+live share <id> them@example.com                 # commenter — they can talk
+live share <id> them@example.com --role viewer   # watch only
+live share <id> --list                           # who has access
+```
+
+And to wind one up from anywhere:
+
+```bash
+live stop <id>              # end a running session
+live open <id>              # open its page in a browser
+```
+
 ## Who works with what
 
 | Command | How it's captured | What shows up | Messages back |
