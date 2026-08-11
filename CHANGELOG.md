@@ -4,6 +4,69 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v2.0.0 — 2026-08-11
+
+The terminal stops being write-only. Until now `live` could *start* a session
+and nothing else: to see what you had running, who it was shared with, or what
+someone else's agent was doing, you opened the website. This release moves that
+whole surface into the CLI, and adds the thing the website could never do —
+letting two developers hold a conversation through one agent, terminal to
+terminal.
+
+- **`live ls` / `live shared` — your sessions, in the terminal.** One line each —
+  status, title, handle, link, agent — and the ten most recent by default, since
+  a listing is a glance rather than an archive; `--all` pages through the rest
+  and `-n <limit>` picks a count. Filters: `--mine` / `--shared`, `--live` /
+  `--ended`, `-q <text>`, and `--json` for piping. `live shared` is
+  `live ls --shared`. The link is never truncated to make a row fit: the title
+  column gives way first, and the agent column is dropped before the title stops
+  naming anything.
+- **`live join <id>` — attach a second terminal to a running session.** It
+  prints recent history for context, streams the session as it happens, and
+  sends anything you type to the running agent as a viewer message — the same
+  path the web composer uses, so it reaches the agent mid-task. The person who
+  owns the session sees your message arrive in their agent; you see the reply
+  stream back. `live watch <id>` is the read-only half. `/info`, `/url`,
+  `/fork`, `/stop` and `/quit` work while joined.
+- **The joined view reads like the web viewer, not like a log.** Every turn is
+  a block that names who produced it — the owner (marked *you* when it is your
+  own session), the model that replied, or the viewer who spoke — with its text
+  wrapped and shown in full instead of clipped to one line. Work steps render
+  as compact rows: the tool and its target, captured output under a `⎿`, and
+  file writes with a coloured diff and its `+`/`−` counts. Permission and
+  input waits surface as their own notice, a command flagged dangerous is
+  marked, and long paths keep the tail that identifies the file.
+- **The input line holds its ground.** `live join` draws its own prompt in raw
+  mode — carrying the session's uptime and live watcher count — and prints
+  arriving events *above* it, so an event landing mid-sentence no longer
+  splices itself into what you are typing. `↑`/`↓` recall what you sent,
+  `Ctrl-U` clears, `Ctrl-W` deletes a word, `Ctrl-A`/`Ctrl-E` and the arrows
+  move the cursor. A non-terminal stdin falls back to plain line reads, so
+  `echo "ship it" | live join <id>` still works, and the join exits by itself
+  when the session ends.
+- **A joined terminal can answer the agent's permission prompts.** A session
+  used to stall whenever its owner walked away from the tool prompt. Now the
+  request surfaces in the joined view with `/allow`, `/deny` and `/always`, the
+  prompt turns into a `BLOCKED` chip until it is answered, and joining an
+  already-stuck session says so on arrival. It posts to the same `/decision`
+  endpoint the web viewer uses and carries the same comment-level
+  authorization, so the running shim — which polls for a verdict every second —
+  resumes just as it would from the browser, and the decision is emitted as an
+  event so every watcher sees who answered.
+- **`live share <id> <email>` — grant access without leaving the shell.**
+  Defaults to `commenter` (the role a CLI joiner needs to talk back);
+  `--role viewer` is watch-only, and `--list` shows who has access.
+- **`live info <id>`** prints one session in full — lineage, machine, repo and
+  branch, whether the agent stream is currently attached — plus its last events.
+- **`live stop`, `live open`, `live hosts`** end a running session from
+  anywhere, open its page, and list the machines currently running
+  `live daemon`.
+- Every command that takes an `<id>` accepts the eight-character handle the
+  listings print, a full session id, or a pasted session link.
+
+No server change was needed for any of it: the listing, streaming, comment and
+share endpoints already existed for the web client.
+
 ## Unreleased
 
 - **Fixed: a session whose capture process died no longer sits "live" forever.**

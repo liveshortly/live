@@ -945,8 +945,12 @@ func clipLine(s string, n int) string {
 	for strings.Contains(s, "  ") {
 		s = strings.ReplaceAll(s, "  ", " ")
 	}
-	if len(s) > n {
-		return s[:n] + "…"
+	// Rune-, not byte-bounded: the listing commands align columns on this, and a
+	// byte cut both misaligns a non-ASCII title and can split a rune in half.
+	// The bound is n runes PLUS the ellipsis — callers that need exactly n
+	// columns go through fit().
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + "…"
 	}
 	return s
 }
