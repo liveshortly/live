@@ -37,6 +37,12 @@ const (
 	cBlue   = "\033[34m"
 	cCyan   = "\033[36m"
 	cViolet = "\033[35m"
+
+	// Bright (aixterm) variants. A terminal's normal green is a body-text
+	// colour; a live indicator competing with a wall of it needs the bright
+	// one to read as a signal rather than as more text.
+	cBrightGreen = "\033[92m"
+	cBrightAmber = "\033[93m"
 )
 
 func paint(s string, codes ...string) string {

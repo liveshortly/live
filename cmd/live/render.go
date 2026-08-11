@@ -92,6 +92,22 @@ func capLines(lines []string, n int) []string {
 	return append(lines[:n], paint(fmt.Sprintf("… %d more lines", len(lines)-n), cDim))
 }
 
+// agentLabel names whatever is actually doing the work, most specific first:
+// the model if the session has reported one, else the agent that was launched.
+// It is deliberately the real identifier rather than a friendly brand — on a
+// machine running several agents, "claude-opus-5 is working" and "codex is
+// working" tell you which one; "Claude is working" does not, and would be an
+// outright lie next to a gemini or ollama session.
+func agentLabel(s api.Session) string {
+	if s.Model != "" {
+		return s.Model
+	}
+	if a := agentOf(s); a != "" && a != "terminal" {
+		return a
+	}
+	return "the agent"
+}
+
 // chatTypes are the events that read as somebody speaking, and so get a
 // speaker-labelled block rather than a work row.
 var chatTypes = map[string]bool{"prompt": true, "response": true, "viewer_comment": true}
@@ -108,14 +124,7 @@ func speaker(e api.Event, s api.Session, me string) (name, role, color string) {
 		}
 		return name, "viewer", cViolet
 	case "response":
-		name = s.Model
-		if name == "" {
-			name = s.Agent
-		}
-		if name == "" {
-			name = "agent"
-		}
-		return name, "agent", cGreen
+		return agentLabel(s), "agent", cGreen
 	case "prompt":
 		name = e.Str("username")
 		if name == "" {

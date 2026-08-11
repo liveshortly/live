@@ -113,25 +113,77 @@ func cmdJoin(args []string, readOnly bool) int {
 	// session that is ALREADY stuck is the case this exists for.
 	var blocked atomic.Bool
 	blocked.Store(pendingPermission(s.Events))
+
+	// workingUntil is the instant the "is working" indicator goes quiet. The two
+	// captures need different rules, because they emit different things:
+	//
+	//   hooks (claude)  brackets a turn — prompt … response — and emits NOTHING
+	//                   while the model thinks. Silence cannot clear the
+	//                   indicator here or it dies a few seconds into every turn,
+	//                   which is exactly the stretch a watcher wants it for. So
+	//                   an opening event holds it until the turn closes.
+	//   pty  (ollama…)  has no prompt/response at all, only `output` and a
+	//                   `stream_start` heartbeat every 2s while output buffers.
+	//                   Silence is the only signal available, and the window has
+	//                   to exceed the flush interval or it strobes between the
+	//                   batches of one reply.
+	//
+	// Taking the later of the two deadlines covers both without branching on the
+	// capture mode: a pty session never emits an opening event, and a heartbeat
+	// mid-turn can never cut a turn short.
+	var workingUntil atomic.Int64
+	label := agentLabel(s)
 	started := s.CreatedAt
 	status := func() string {
 		if blocked.Load() {
-			return paint("[BLOCKED — /allow or /deny]", cAmber, cBold)
+			return paint("[BLOCKED — /allow or /deny]", cBrightAmber, cBold)
 		}
 		parts := []string{humanDur(time.Since(started))}
 		if n := watchers.Load(); n > 0 {
 			parts = append(parts, fmt.Sprintf("%d◉", n))
 		}
-		return "[" + strings.Join(parts, " · ") + "]"
+		chip := paint("["+strings.Join(parts, " · ")+"]", cDim)
+		if workingUntil.Load() > time.Now().UnixNano() {
+			return chip + " " + paint(spinnerFrame()+" "+label+" is working…", cBrightGreen, cBold)
+		}
+		return chip
+	}
+	noteActivity := func(e api.Event) {
+		workingUntil.Store(workingDeadline(e, time.Now(), workingUntil.Load()))
+	}
+	for _, e := range s.Events { // seed from history: it may be working right now
+		noteActivity(e)
 	}
 
 	// In watch mode nothing is typed, so the editor stays in its passive form and
 	// serves only as the printer.
-	ed := &editor{}
+	// Both halves own a bottom line so the indicator is live either way; only
+	// the interactive one takes the keyboard.
+	ed := newStatusLine(status)
 	if !readOnly {
 		ed = newEditor(status)
-		defer ed.Close()
 	}
+	defer ed.Close()
+
+	// Repaint while the indicator is animating. Idle costs one comparison a
+	// tick and prints nothing.
+	go func() {
+		tick := time.NewTicker(140 * time.Millisecond)
+		defer tick.Stop()
+		wasWorking := false
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				now := workingUntil.Load() > time.Now().UnixNano()
+				if now || wasWorking { // animate, then one repaint to clear it
+					ed.redraw()
+				}
+				wasWorking = now
+			}
+		}
+	}()
 
 	ended := make(chan struct{})
 	go func() {
@@ -154,6 +206,7 @@ func cmdJoin(args []string, readOnly bool) int {
 						// Answered here, answered elsewhere, or the agent moved on.
 						blocked.Store(false)
 					}
+					noteActivity(f.Event)
 					ed.Print(renderBlock(f.Event, s, me, termWidth())...)
 					if blocked.Load() && !readOnly {
 						ed.Print(paint("   ⏸ the agent is waiting — /allow, /deny or /always answers it from here", cAmber))
@@ -162,6 +215,7 @@ func cmdJoin(args []string, readOnly bool) int {
 					watchers.Store(int64(f.Count))
 					ed.redraw()
 				case f.Type == "session_ended":
+					workingUntil.Store(0)
 					ed.Print("", paint(" ── session ended ──", cAmber), "")
 				}
 			})
@@ -182,6 +236,7 @@ func cmdJoin(args []string, readOnly bool) int {
 
 	if readOnly {
 		<-ended
+		ed.Close()
 		fmt.Println()
 		return 0
 	}
@@ -210,7 +265,19 @@ func cmdJoin(args []string, readOnly bool) int {
 			}
 			continue
 		}
+		// Light the indicator the moment enter is pressed, not when the round
+		// trip finishes. Sending is itself a network call, so waiting for the
+		// agent's first event costs two round trips before the terminal admits
+		// anything is happening. The window is deliberately short: if no real
+		// activity follows, this optimistic guess expires on its own rather
+		// than claiming a queued message woke the agent.
+		optimistic := time.Now().Add(sendLinger).UnixNano()
+		if optimistic > workingUntil.Load() {
+			workingUntil.Store(optimistic)
+			ed.redraw()
+		}
 		if err := c.PostComment(id, line); err != nil {
+			workingUntil.Store(0)
 			ed.Print(paint("  ✗ not sent: "+err.Error(), cRed))
 		}
 	}
@@ -235,6 +302,47 @@ func pendingPermission(events []api.Event) bool {
 		}
 	}
 	return false
+}
+
+const (
+	// heartbeatLinger must exceed the pty capture's flush interval, or the
+	// indicator strobes between the batches of a single reply.
+	heartbeatLinger = 3 * time.Second
+	// sendLinger is how long the indicator holds on the optimistic guess that a
+	// message we just sent is about to wake the agent. Short, because a comment
+	// delivered to an idle agent may sit queued until its next turn.
+	sendLinger = 20 * time.Second
+	// turnCeiling bounds an open turn: a hooks agent that dies mid-turn never
+	// sends the closing event, and without this the indicator would claim it is
+	// still working for the rest of the session.
+	turnCeiling = 10 * time.Minute
+)
+
+// workingDeadline returns the instant the "is working" indicator should go
+// quiet, given one event, the time now, and the deadline currently in force.
+// Zero means not working. See cmdJoin for why the two captures need different
+// rules and why the later deadline wins.
+func workingDeadline(e api.Event, now time.Time, current int64) int64 {
+	var until int64
+	switch e.EventType {
+	case "prompt", "pre_tool", "tool_call", "file_write":
+		until = now.Add(turnCeiling).UnixNano()
+	case "output", "stream_start":
+		until = now.Add(heartbeatLinger).UnixNano()
+	case "response", "input_requested":
+		return 0 // the turn ended, or it is waiting on a human
+	default:
+		return current
+	}
+	return max(until, current)
+}
+
+// spinnerFrame is the current cell of a braille spinner, driven by the clock so
+// every repaint advances it without anybody owning the frame counter.
+func spinnerFrame() string {
+	const frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+	r := []rune(frames)
+	return string(r[(time.Now().UnixNano()/int64(120*time.Millisecond))%int64(len(r))])
 }
 
 // signedInName is the display name of the signed-in account, used to mark the

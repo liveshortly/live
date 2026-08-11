@@ -20,7 +20,8 @@ type editor struct {
 	mu     sync.Mutex
 	buf    []rune
 	pos    int  // cursor index into buf
-	on     bool // raw mode engaged (a non-tty stdin falls back to line mode)
+	on     bool // owns the bottom line: erase before printing, redraw after
+	raw    bool // terminal in raw mode, so keys arrive one at a time
 	status func() string
 
 	history []string
@@ -43,8 +44,21 @@ func newEditor(status func() string) *editor {
 	if err != nil {
 		return e
 	}
-	e.on = true
+	e.on, e.raw = true, true
 	e.restore = func() { _ = term.Restore(fd, st) }
+	e.redraw()
+	return e
+}
+
+// newStatusLine is the read-only half: it owns a bottom line that events print
+// above, but never touches raw mode or reads a key. `live watch` uses it to
+// carry the working indicator without capturing the terminal.
+func newStatusLine(status func() string) *editor {
+	e := &editor{status: status}
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		return e
+	}
+	e.on = true
 	e.redraw()
 	return e
 }
@@ -58,7 +72,9 @@ func (e *editor) Close() {
 	}
 	fmt.Print("\r\033[K")
 	e.on = false
-	e.restore()
+	if e.restore != nil {
+		e.restore()
+	}
 }
 
 // Print writes lines above the prompt without disturbing what is being typed.
@@ -79,8 +95,10 @@ func (e *editor) Print(lines ...string) {
 	}
 }
 
+// nl is the line terminator to print. Raw mode disables the tty's own
+// newline→CRLF translation, so every line has to carry its own carriage return.
 func (e *editor) nl() string {
-	if e.on {
+	if e.raw {
 		return "\r\n"
 	}
 	return "\n"
@@ -91,8 +109,16 @@ func (e *editor) prompt() string {
 	s := ""
 	if e.status != nil {
 		if st := e.status(); st != "" {
-			s = paint(st, cDim) + " "
+			// NOT re-coloured here. Wrapping the whole status in dim used to
+			// leave `\033[2m` in effect when a colour inside it began, so an
+			// "is working" green or a BLOCKED amber rendered faint — the two
+			// things on this line that most need to be seen. The status owns
+			// its own colours.
+			s = st + " "
 		}
+	}
+	if !e.raw {
+		return s // read-only: a status line, not something you can type into
 	}
 	return s + paint("❯", cCyan) + " "
 }
@@ -146,7 +172,7 @@ const (
 // ReadLine blocks for one submitted line. ok is false when the user asked to
 // leave (Ctrl-C, Ctrl-D on an empty line, or EOF).
 func (e *editor) ReadLine(in *bufio.Reader) (string, editorStop) {
-	if !e.on {
+	if !e.raw {
 		line, err := in.ReadString('\n')
 		if err != nil && strings.TrimSpace(line) == "" {
 			return "", stopEOF
