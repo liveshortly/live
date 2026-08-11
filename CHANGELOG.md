@@ -4,6 +4,53 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v2.0.1 — 2026-08-11
+
+Follow-up to v2.0.0: a live "is working" indicator, and a codex capture bug bad
+enough to justify the release on its own.
+
+- **Fixed: `live codex` captured nothing unless you typed within 30 seconds.**
+  The rollout watcher waited 30s from launch for codex to open its session file
+  and then gave up for good — but codex writes that file when you send your
+  FIRST PROMPT, not when it starts. Any session where the first message came
+  later was recorded as an empty feed, which is most of them, and certain
+  whenever codex opens with an update prompt. The timer bought nothing: the
+  goroutine already exits with the session's context, which is the correct
+  bound. It now waits as long as the session lives, polling briskly at first and
+  easing off once it is clearly waiting on a human. Verified by idling 45s past
+  launch — the window that used to kill capture — and getting a full transcript.
+- **The prompt says when the agent is working.** A spinner and "<agent> is
+  working…" sit in the status chip for as long as the turn runs, so a watcher
+  can tell a thinking agent from a hung one. The rule differs by capture because
+  the captures differ: a hooks agent brackets a turn (`prompt` … `response`) and
+  emits *nothing* in between, so an opening event holds the indicator until the
+  turn closes — the web's silence-based rule would drop it a few seconds into
+  every turn, which is precisely the stretch worth reporting. A pty agent has no
+  prompt/response at all, only `output` and a `stream_start` heartbeat, so
+  silence is the only signal and the window is set wider than the flush interval
+  to stop it strobing between the batches of one reply. Taking the later of the
+  two deadlines covers both without branching, and an open turn is capped so a
+  dead agent stops claiming to work. `live watch` carries the same indicator on
+  a status line, without taking the keyboard.
+- **The indicator names what is actually running**, most specific first: the
+  model when the session has reported one, else the agent that was launched —
+  `gpt-5.5`, `claude-opus-5`, `codex`, `gemma4`. It used to say "Claude", which
+  is a brand rather than the thing doing the work, and would have been an
+  outright lie beside a codex or ollama session. The transcript's own speaker
+  label now resolves through the same function; the two disagreed before, one
+  saying "Claude" while the turn above it said "claude-opus-5".
+- **Fixed: the status chip rendered faint.** The prompt wrapped the whole status
+  in `\033[2m`, so dim was still in effect when a colour inside it began and the
+  terminal drew dim green — applied to the two things on that line most needing
+  to be seen, the working indicator and the BLOCKED permission chip. The status
+  owns its own colours now, and the indicator is bright rather than normal green:
+  a terminal's normal green is a body-text colour, not a signal.
+- **A message you send lights the indicator on keypress**, not when the round
+  trip finishes. Sending is itself a network call, so the terminal used to admit
+  nothing was happening for two round trips. The optimistic window is short and
+  expires by itself, so a message queued against an idle agent does not leave a
+  lying indicator behind.
+
 ## v2.0.0 — 2026-08-11
 
 The terminal stops being write-only. Until now `live` could *start* a session

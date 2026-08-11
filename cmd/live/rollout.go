@@ -192,8 +192,15 @@ func snapshotRollouts() map[string]bool {
 // (a file not present in `before`, preferring one whose recorded cwd matches
 // ours) and tails it until ctx is cancelled.
 func tailNewRollout(ctx context.Context, sc *sidecar.Sidecar, before map[string]bool, cwd string) {
-	deadline := time.Now().Add(30 * time.Second)
+	// Codex writes its rollout file when the FIRST PROMPT is sent, not when it
+	// launches — so this waits for the user, and the user takes as long as they
+	// take. Giving up on a timer captured nothing at all for any session whose
+	// first message was more than 30s after launch, which is most of them, and
+	// certain whenever codex opens with an update prompt. The session's own
+	// context is the only correct bound: it ends when the session does.
 	var path string
+	warned := false
+	start := time.Now()
 	for {
 		if ctx.Err() != nil {
 			return
@@ -208,14 +215,21 @@ func tailNewRollout(ctx context.Context, sc *sidecar.Sidecar, before map[string]
 			path = p
 			break
 		}
-		if time.Now().After(deadline) {
-			sc.Log.Printf("rollout: no new codex session file appeared within 30s — feed will be sparse")
-			return
+		// Poll briskly at first so a prompt sent immediately is picked up fast,
+		// then ease off — past this point we are waiting on a human.
+		wait := 300 * time.Millisecond
+		if elapsed := time.Since(start); elapsed > 30*time.Second {
+			wait = time.Second
+			if !warned {
+				warned = true
+				sc.Log.Printf("rollout: still waiting for codex to open a session file " +
+					"(it writes one on the first prompt) — capture starts then")
+			}
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(300 * time.Millisecond):
+		case <-time.After(wait):
 		}
 	}
 	sc.Log.Printf("rollout: tailing %s", path)

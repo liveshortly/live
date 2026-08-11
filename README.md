@@ -266,6 +266,18 @@ Every turn names who produced it, replies are shown in full rather than cut to
 one line, diffs are coloured with their `+`/`−` counts, and the prompt at the
 bottom carries the session's uptime and how many people are watching.
 
+While the agent is mid-task the prompt says so, with a spinner:
+
+```
+[4m · 2◉] ⠹ Claude is working… ❯
+```
+
+It holds for the whole turn rather than a few seconds — a hooks-captured agent
+emits nothing at all while the model thinks, and that silent stretch is exactly
+when you want to know something is happening. It clears the moment the reply
+lands, or when the agent stops to ask you something. `live watch` carries the
+same indicator on its own status line.
+
 Your input line stays put: an event arriving while you are halfway through a
 sentence is printed above the prompt, not spliced into it. `↑`/`↓` recall what
 you have sent, `Ctrl-U` clears the line, `Ctrl-W` deletes a word, `Ctrl-C`

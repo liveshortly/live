@@ -190,3 +190,93 @@ func TestVisibleLenIgnoresColour(t *testing.T) {
 		t.Fatalf("visibleLen = %d, want 3", got)
 	}
 }
+
+// The "is working" indicator has to survive a whole hooks turn — prompt, then
+// silence while the model thinks, then response — because that silent stretch
+// is exactly when a watcher wants it. A pty session has no prompt/response at
+// all and can only be driven by its heartbeat.
+func TestWorkingDeadline(t *testing.T) {
+	now := time.Date(2026, 8, 11, 9, 0, 0, 0, time.UTC)
+	ev := func(t string) api.Event { return api.Event{EventType: t} }
+	busy := func(deadline int64) bool { return deadline > now.UnixNano() }
+
+	// hooks: a turn opens and stays open until it closes.
+	d := workingDeadline(ev("prompt"), now, 0)
+	if !busy(d) {
+		t.Fatal("a prompt should start the indicator")
+	}
+	if d <= now.Add(time.Minute).UnixNano() {
+		t.Error("an open turn must outlive the silence while the model thinks")
+	}
+	if got := workingDeadline(ev("response"), now, d); got != 0 {
+		t.Errorf("a response should end it, got %d", got)
+	}
+	if got := workingDeadline(ev("input_requested"), now, d); got != 0 {
+		t.Error("waiting on a human is not working")
+	}
+
+	// A heartbeat mid-turn must never cut the open turn short.
+	if got := workingDeadline(ev("output"), now, d); got != d {
+		t.Error("a heartbeat shortened an open turn")
+	}
+
+	// pty: only the heartbeat exists, and silence is what clears it.
+	h := workingDeadline(ev("stream_start"), now, 0)
+	if !busy(h) {
+		t.Fatal("a heartbeat should start the indicator")
+	}
+	if h > now.Add(10*time.Second).UnixNano() {
+		t.Error("a heartbeat should linger seconds, not span a turn")
+	}
+	if busy2 := h > now.Add(4*time.Second).UnixNano(); busy2 {
+		t.Error("the heartbeat window outlived its silence budget")
+	}
+
+	// An unrelated event leaves the state alone.
+	if got := workingDeadline(ev("viewer_comment"), now, d); got != d {
+		t.Error("an unrelated event changed the working state")
+	}
+}
+
+// The indicator must name what is actually running. A machine with a claude, a
+// codex and an ollama session going needs to tell them apart, and a friendly
+// "Claude" would be plainly wrong on the latter two.
+func TestAgentLabel(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		s    api.Session
+		want string
+	}{
+		{"model wins — it is the most specific",
+			api.Session{Agent: "claude-code", Model: "claude-opus-5"}, "claude-opus-5"},
+		{"before the model is reported, the agent",
+			api.Session{Agent: "claude-code"}, "claude-code"},
+		{"codex", api.Session{Agent: "codex"}, "codex"},
+		{"gemini", api.Session{Agent: "gemini-cli"}, "gemini-cli"},
+		{"ollama reports its model", api.Session{Agent: "ollama", Model: "gemma4"}, "gemma4"},
+		{"framework stands in for a missing agent",
+			api.Session{Framework: "claude-code"}, "claude-code"},
+		{"a bare terminal capture names nothing specific",
+			api.Session{Agent: "terminal"}, "the agent"},
+		{"nothing known at all", api.Session{}, "the agent"},
+	} {
+		if got := agentLabel(c.s); got != c.want {
+			t.Errorf("%s: agentLabel = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// The chip and the transcript must agree about who answered; they used to
+// disagree, one saying "Claude" while the other said "claude-opus-5".
+func TestResponseSpeakerMatchesTheIndicator(t *testing.T) {
+	for _, s := range []api.Session{
+		{Agent: "claude-code", Model: "claude-opus-5"},
+		{Agent: "codex"},
+		{Agent: "ollama", Model: "gemma4"},
+	} {
+		name, _, _ := speaker(api.Event{EventType: "response"}, s, "")
+		if name != agentLabel(s) {
+			t.Errorf("transcript says %q, indicator says %q", name, agentLabel(s))
+		}
+	}
+}
