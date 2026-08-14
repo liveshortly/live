@@ -36,6 +36,10 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, de
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sig)
+
 	c := &codexApp{
 		emit:        sc.Emit,
 		logf:        sc.Log.Printf,
@@ -94,16 +98,15 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, de
 	}
 
 	// Headless: block until the operator ends it (Ctrl-C) or codex exits.
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	select {
 	case <-sig:
+		cancel()
+		_ = c.cmd.Process.Signal(syscall.SIGTERM)
+		return 130
 	case <-c.done:
+		cancel()
+		return c.exitCode()
 	}
-	signal.Stop(sig)
-	cancel()
-	_ = c.cmd.Process.Signal(syscall.SIGTERM)
-	return 0
 }
 
 // threadStartParams builds the thread/start payload. on-request approval +
@@ -153,6 +156,7 @@ type codexApp struct {
 	pending   map[int]chan rpcResp
 	threadID  string
 	activeTur string // id of the in-progress turn (for steer), "" when idle
+	exit      int
 }
 
 func (c *codexApp) start(ctx context.Context, binPath string) error {
@@ -173,7 +177,17 @@ func (c *codexApp) start(ctx context.Context, binPath string) error {
 		return err
 	}
 	go c.readLoop(stdout)
-	go func() { c.cmd.Wait(); close(c.done) }()
+	go func() {
+		err := c.cmd.Wait()
+		c.mu.Lock()
+		if c.cmd.ProcessState != nil {
+			c.exit = c.cmd.ProcessState.ExitCode()
+		} else if err != nil {
+			c.exit = 1
+		}
+		c.mu.Unlock()
+		close(c.done)
+	}()
 	return nil
 }
 
@@ -187,6 +201,9 @@ func (c *codexApp) request(method string, params any) (json.RawMessage, error) {
 	c.mu.Unlock()
 
 	if err := c.write(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
+		c.mu.Lock()
+		delete(c.pending, id)
+		c.mu.Unlock()
 		return nil, err
 	}
 	resp := <-ch
@@ -194,6 +211,12 @@ func (c *codexApp) request(method string, params any) (json.RawMessage, error) {
 		return nil, fmt.Errorf("%s: %s", method, resp.err.Message)
 	}
 	return resp.result, nil
+}
+
+func (c *codexApp) exitCode() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.exit
 }
 
 func (c *codexApp) respond(id json.RawMessage, result any) {

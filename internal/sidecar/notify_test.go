@@ -27,6 +27,7 @@ func TestIconWrites(t *testing.T) {
 // TestDesktopNotifyNoPanic just exercises the code path; real delivery is
 // visual and OS-dependent, so we only assert it doesn't panic.
 func TestDesktopNotifyNoPanic(t *testing.T) {
-	desktopNotify([]api.Comment{{Username: "tester", Message: `hi "there"`}})
-	desktopNotify(nil)
+	desktopNotify("http://localhost:8080", "0eaf6c37-d8f9-4db1-ab59-484503a91213",
+		[]api.Comment{{Username: "tester", Message: `hi "there"`}})
+	desktopNotify("", "", nil)
 }

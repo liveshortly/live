@@ -4,6 +4,39 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v2.0.2 — 2026-08-14
+
+CLI audit follow-up: correctness fixes across join, exit codes, session lookup,
+and UTF-8 handling.
+
+- **Fixed: `live version` lied on `go run` builds.** The fallback was stuck at
+  `1.0.1` while releases were on `2.x`. It now reads the checked-in `VERSION`
+  file when not set via `-ldflags`.
+- **Fixed: tmux and app-server modes always exited 0.** Agent failures were
+  invisible to shells and CI. Tmux paths now propagate the pane exit status;
+  app-server mode returns the codex process exit code (130 on Ctrl-C).
+- **Fixed: `live join` called `os.Exit` when a session ended.** That skipped
+  terminal cleanup and raced with raw-mode input. Session end now unblocks the
+  main loop cleanly.
+- **Fixed: live join stream dedup used hidden events.** `baseSeq` came from the
+  last raw event (including `stream_start`), which could duplicate or skip live
+  events. It now tracks the max seq of visible events only.
+- **Fixed: `live ls -n 0` fetched every session.** `-n` now requires a positive
+  count; use `--all` for the full list.
+- **Fixed: short session handles missed on large accounts.** `resolveID` only
+  scanned the first 100 sessions; it now paginates through all of them.
+- **Fixed: invalid session URLs were forwarded to the API.** Pasted links now
+  validate the UUID after `/session/`.
+- **Fixed: UTF-8 truncation in viewer comments, PTY output, codex instructions,
+  and rollout clips.** Byte cuts could split multi-byte runes; all are now
+  rune-safe.
+- **Fixed: desktop notifications always opened liveshortly.com.** They now use
+  the configured `WebURL` from host.json.
+- **Fixed: sidecar shutdown race.** The hook HTTP server could still POST while
+  the event queue was closed; HTTP now shuts down before the queue.
+- **Fixed: app-server JSON-RPC hang on write failure.** A failed write left a
+  pending entry that blocked forever; pending entries are now cleaned up.
+
 ## v2.0.1 — 2026-08-11
 
 Follow-up to v2.0.0: a live "is working" indicator, and a codex capture bug bad

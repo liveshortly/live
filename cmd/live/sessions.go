@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -346,7 +347,12 @@ func cmdLs(args []string, defScope string) int {
 		case "-n", "--limit":
 			if i+1 < len(args) {
 				i++
-				opts.Limit, _ = strconv.Atoi(args[i])
+				n, err := strconv.Atoi(args[i])
+				if err != nil || n <= 0 {
+					fmt.Fprintf(os.Stderr, "live ls: -n requires a positive count (or use --all)\n")
+					return 2
+				}
+				opts.Limit = n
 			}
 		default:
 			fmt.Fprintf(os.Stderr, "live ls: unknown option %q\n", a)
@@ -675,6 +681,8 @@ func cmdHosts(args []string) int {
 
 // ── id resolution ─────────────────────────────────────────────────────────────
 
+var sessionUUIDRe = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
 // resolveID accepts a full session uuid or the 8-char handle printed by
 // `live ls`, resolving the latter against the caller's own + shared sessions.
 func resolveID(c *api.Client, ref string) (string, error) {
@@ -685,13 +693,23 @@ func resolveID(c *api.Client, ref string) (string, error) {
 	// A pasted session link — checked before the length test, since a URL is
 	// always longer than a bare uuid and would otherwise pass straight through.
 	if u := strings.TrimSuffix(ref, "/"); strings.Contains(u, "/session/") {
-		return u[strings.LastIndex(u, "/session/")+len("/session/"):], nil
+		id := u[strings.LastIndex(u, "/session/")+len("/session/"):]
+		if i := strings.IndexAny(id, "?#"); i >= 0 {
+			id = id[:i]
+		}
+		if !sessionUUIDRe.MatchString(id) {
+			return "", fmt.Errorf("invalid session link — expected a UUID after /session/")
+		}
+		return id, nil
 	}
 	// A full uuid (or anything already long enough) goes straight through.
 	if len(ref) >= 36 {
+		if !sessionUUIDRe.MatchString(ref) {
+			return "", fmt.Errorf("invalid session id %q", ref)
+		}
 		return ref, nil
 	}
-	rows, _, err := c.ListSessions(api.ListOpts{Scope: "all", Status: "all", Limit: 100})
+	rows, _, err := listAll(c, api.ListOpts{Scope: "all", Status: "all", Limit: 0})
 	if err != nil {
 		return "", err
 	}

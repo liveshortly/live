@@ -9,13 +9,34 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/liveshortly/live/internal/api"
 	"github.com/liveshortly/live/internal/auth"
 	"github.com/liveshortly/live/internal/hostcfg"
 )
 
-var version = "1.0.1" // overridden via -ldflags "-X main.version=..."
+// version is set at link time via -ldflags "-X main.version=..."; when unset
+// (e.g. `go run`), fall back to the checked-in VERSION file at the repo root.
+var version string
+
+func init() {
+	if version != "" {
+		return
+	}
+	for _, p := range []string{
+		"VERSION",
+		filepath.Join("..", "..", "VERSION"),
+	} {
+		if b, err := os.ReadFile(p); err == nil {
+			if v := strings.TrimSpace(string(b)); v != "" {
+				version = v
+				return
+			}
+		}
+	}
+}
 
 const usage = `live — stream your coding-agent session to LiveShortly
 

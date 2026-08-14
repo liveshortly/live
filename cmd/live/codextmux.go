@@ -117,12 +117,12 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 
 	// Same as the claude path: attach when there is a terminal, otherwise hold
 	// the session open for a web-started (daemon-spawned) run.
-	attachOrWait(t.cmd, sess)
+	exitCode := attachOrWait(t.cmd, sess)
 
 	_ = t.run("kill-session", "-t", sess)
 	stopTail()
 	<-tailDone
-	return 0
+	return exitCode
 }
 
 // viewerTurn formats a comment for the composer. The "(live viewer):" marker is

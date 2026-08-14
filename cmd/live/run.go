@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -441,10 +442,10 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	}()
 
 	// attach the user (foreground; returns when Claude exits and the session ends)
-	attachOrWait(tmux, sess)
+	exitCode := attachOrWait(tmux, sess)
 
 	_ = tmux("kill-session", "-t", sess).Run()
-	return 0
+	return exitCode
 }
 
 // headless reports that no operator is at this terminal — the state `live
@@ -592,21 +593,53 @@ func confirmChannelPrompt(tmux func(args ...string) *exec.Cmd, sess string) {
 //
 // Ceiling: the wait ends when the agent exits. Ending the session from the web
 // archives the feed but leaves the pane running until the agent itself stops.
-func attachOrWait(tmux func(args ...string) *exec.Cmd, sess string) {
+// Returns the pane's exit status so callers can propagate it to the shell.
+func attachOrWait(tmux func(args ...string) *exec.Cmd, sess string) int {
 	if !headless() {
 		att := tmux("attach-session", "-t", sess)
 		att.Stdin, att.Stdout, att.Stderr = os.Stdin, os.Stdout, os.Stderr
 		signal.Ignore(os.Interrupt, syscall.SIGQUIT)
 		defer signal.Reset(os.Interrupt, syscall.SIGQUIT)
 		_ = att.Run()
-		return
+		return tmuxPaneExit(tmux, sess)
 	}
 	for {
-		if err := tmux("has-session", "-t", sess).Run(); err != nil {
-			return // the pane's process exited
+		exitCode, dead, err := tmuxPaneStatus(tmux, sess)
+		if err != nil {
+			return 0 // session already torn down
+		}
+		if dead {
+			return exitCode
 		}
 		time.Sleep(2 * time.Second)
 	}
+}
+
+// tmuxPaneExit reads the exit status of the sole pane in a tmux session.
+func tmuxPaneExit(tmux func(args ...string) *exec.Cmd, sess string) int {
+	out, err := tmux("display-message", "-p", "-t", sess, "#{pane_exit_status}").Output()
+	if err != nil {
+		return 0
+	}
+	code, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0
+	}
+	return code
+}
+
+// tmuxPaneStatus reports whether the pane has exited and its exit code.
+func tmuxPaneStatus(tmux func(args ...string) *exec.Cmd, sess string) (exitCode int, dead bool, err error) {
+	out, err := tmux("list-panes", "-t", sess, "-F", "#{pane_dead} #{pane_exit_status}").Output()
+	if err != nil {
+		return 0, false, err
+	}
+	parts := strings.Fields(string(out))
+	if len(parts) < 2 {
+		return 0, false, fmt.Errorf("unexpected pane status %q", out)
+	}
+	code, _ := strconv.Atoi(parts[1])
+	return code, parts[0] == "1", nil
 }
 
 // pinnedEnvKeys are the variables a captured tmux session must carry from THIS
@@ -880,7 +913,12 @@ func codexInstructions(markdown string) string {
 		return ""
 	}
 	if len(md) > maxCodexInstructions {
-		md = md[:maxCodexInstructions] + "\n\n[truncated — see the digest file for the full prior context]"
+		r := []rune(md)
+		for len(md) > maxCodexInstructions && len(r) > 0 {
+			r = r[:len(r)-1]
+			md = string(r)
+		}
+		md += "\n\n[truncated — see the digest file for the full prior context]"
 	}
 	return "You are continuing a prior coding session. Here is its context.\n" +
 		"Do not act on it until the operator asks; use it to answer their first message.\n\n" + md
@@ -1039,8 +1077,8 @@ func viewerLine(who, message string) string {
 		return ""
 	}
 	const maxViewerLine = 2000
-	if len(flat) > maxViewerLine {
-		flat = flat[:maxViewerLine] + "…"
+	if r := []rune(flat); len(r) > maxViewerLine {
+		flat = string(r[:maxViewerLine]) + "…"
 	}
 	return viewerTurn(who, flat)
 }
@@ -1107,7 +1145,7 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 			return
 		}
 		if len(text) > maxText {
-			text = text[:maxText] + "…"
+			text = clipLine(text, maxText)
 		}
 		sc.Emit("output", map[string]any{"text": text, "ts": time.Now().UTC().Format(time.RFC3339)})
 	}

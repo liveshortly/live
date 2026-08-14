@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -39,10 +40,17 @@ func cmdJoin(args []string, readOnly bool) int {
 		case "--full":
 			history = 1 << 30
 		case "-n", "--history":
-			if i+1 < len(args) {
-				i++
-				fmt.Sscanf(args[i], "%d", &history)
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "live join: -n requires a count")
+				return 2
 			}
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n < 0 {
+				fmt.Fprintf(os.Stderr, "live join: invalid history count %q\n", args[i])
+				return 2
+			}
+			history = n
 		}
 	}
 
@@ -67,8 +75,10 @@ func cmdJoin(args []string, readOnly bool) int {
 	// twice.
 	baseSeq := 0
 	shown := visibleEvents(s.Events)
-	if len(s.Events) > 0 {
-		baseSeq = s.Events[len(s.Events)-1].Seq
+	for _, e := range shown {
+		if e.Seq > baseSeq {
+			baseSeq = e.Seq
+		}
 	}
 	if len(shown) > history {
 		fmt.Printf("%s\n\n", paint(fmt.Sprintf("   ⋮ %d earlier events hidden — live %s %s --full for all of them",
@@ -242,45 +252,65 @@ func cmdJoin(args []string, readOnly bool) int {
 	}
 
 	// The stream ending should end the join too, rather than leave a prompt
-	// attached to a dead session. Nothing can unblock a terminal read in place —
-	// and with the session gone there is nothing left to send or flush — so the
-	// terminal is restored and the process exits here.
+	// attached to a dead session.
+	leave := make(chan struct{})
 	go func() {
 		<-ended
 		ed.Print(paint("  session closed — leaving", cDim), "")
 		time.Sleep(300 * time.Millisecond)
-		ed.Close()
-		os.Exit(0)
+		close(leave)
 	}()
 
 	in := bufio.NewReader(os.Stdin)
 	for {
-		line, stop := ed.ReadLine(in)
-		if stop != stopNone || ctx.Err() != nil {
-			break
+		select {
+		case <-leave:
+			goto done
+		default:
 		}
-		if strings.HasPrefix(line, "/") {
-			if quit := joinCommand(c, id, line, ed.Print); quit {
-				break
+		lineCh := make(chan struct {
+			line string
+			stop editorStop
+		})
+		go func() {
+			line, stop := ed.ReadLine(in)
+			lineCh <- struct {
+				line string
+				stop editorStop
+			}{line, stop}
+		}()
+		select {
+		case <-leave:
+			goto done
+		case r := <-lineCh:
+			if r.stop != stopNone || ctx.Err() != nil {
+				goto done
 			}
-			continue
-		}
-		// Light the indicator the moment enter is pressed, not when the round
-		// trip finishes. Sending is itself a network call, so waiting for the
-		// agent's first event costs two round trips before the terminal admits
-		// anything is happening. The window is deliberately short: if no real
-		// activity follows, this optimistic guess expires on its own rather
-		// than claiming a queued message woke the agent.
-		optimistic := time.Now().Add(sendLinger).UnixNano()
-		if optimistic > workingUntil.Load() {
-			workingUntil.Store(optimistic)
-			ed.redraw()
-		}
-		if err := c.PostComment(id, line); err != nil {
-			workingUntil.Store(0)
-			ed.Print(paint("  ✗ not sent: "+err.Error(), cRed))
+			line := r.line
+			if strings.HasPrefix(line, "/") {
+				if quit := joinCommand(c, id, line, ed.Print); quit {
+					goto done
+				}
+				continue
+			}
+			// Light the indicator the moment enter is pressed, not when the round
+			// trip finishes. Sending is itself a network call, so waiting for the
+			// agent's first event costs two round trips before the terminal admits
+			// anything is happening. The window is deliberately short: if no real
+			// activity follows, this optimistic guess expires on its own rather
+			// than claiming a queued message woke the agent.
+			optimistic := time.Now().Add(sendLinger).UnixNano()
+			if optimistic > workingUntil.Load() {
+				workingUntil.Store(optimistic)
+				ed.redraw()
+			}
+			if err := c.PostComment(id, line); err != nil {
+				workingUntil.Store(0)
+				ed.Print(paint("  ✗ not sent: "+err.Error(), cRed))
+			}
 		}
 	}
+done:
 	ed.Close()
 	cancel()
 	fmt.Println()

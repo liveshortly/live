@@ -653,8 +653,9 @@ func firstNonEmptyStr(ss ...string) string {
 func isoNow() string { return time.Now().UTC().Format(time.RFC3339) }
 
 func clip(s string, n int) string {
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return string(r[:n]) + "…"
 }

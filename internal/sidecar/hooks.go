@@ -145,7 +145,7 @@ func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
 				msg += ": " + desc
 			}
 			s.Emit("input_requested", map[string]any{"message": truncate(msg, 500), "kind": "permission", "ts": nowISO()})
-			go desktopNotify([]api.Comment{{Username: "permission", Message: msg}})
+			go desktopNotify(s.WebURL, s.SessionID, []api.Comment{{Username: "permission", Message: msg}})
 			var source string
 			verdict, source = s.Broker.Request(context.Background(), tool, desc)
 			s.Log.Printf("permission %q → %s (%s)", tool, verdict, source)

@@ -117,6 +117,9 @@ func TestResolveIDAcceptsLinkAndUUID(t *testing.T) {
 	if _, err := resolveID(nil, "  "); err == nil {
 		t.Error("resolveID(blank) should fail")
 	}
+	if _, err := resolveID(nil, "https://liveshortly.com/session/not-a-uuid"); err == nil {
+		t.Error("resolveID(invalid link) should fail")
+	}
 }
 
 // A listing row must never truncate the link — half a URL is useless — so the

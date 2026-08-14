@@ -128,6 +128,11 @@ func (s *Sidecar) Emit(eventType string, payload map[string]any) {
 // server. Safe to call once.
 func (s *Sidecar) Shutdown() {
 	s.cancel()
+	if s.httpSrv != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = s.httpSrv.Shutdown(ctx)
+		cancel()
+	}
 	close(s.events)
 
 	done := make(chan struct{})
@@ -136,11 +141,6 @@ func (s *Sidecar) Shutdown() {
 	case <-done:
 	case <-time.After(12 * time.Second):
 		s.Log.Printf("shutdown: flush timed out")
-	}
-	if s.httpSrv != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = s.httpSrv.Shutdown(ctx)
 	}
 }
 
@@ -276,7 +276,7 @@ func (s *Sidecar) drain() {
 
 	// The agent may be idle (no hook boundary coming) — surface arrival
 	// out-of-band so the operator knows a message is waiting.
-	go desktopNotify(comments)
+	go desktopNotify(s.WebURL, s.SessionID, comments)
 }
 
 // routeToChannel hands each comment to any connected channel subscriber and
@@ -376,7 +376,7 @@ func iconPath() string {
 // terminal-notifier (which shows the LiveShortly icon) when installed,
 // falling back to osascript (which always shows the Script Editor icon —
 // an Apple limitation that cannot be overridden from AppleScript).
-func desktopNotify(comments []api.Comment) {
+func desktopNotify(webURL, sessionID string, comments []api.Comment) {
 	if len(comments) == 0 {
 		return
 	}
@@ -388,12 +388,16 @@ func desktopNotify(comments []api.Comment) {
 	if len(comments) > 1 {
 		body = fmt.Sprintf("%s (+%d more)", body, len(comments)-1)
 	}
+	openURL := strings.TrimRight(webURL, "/") + "/session/" + sessionID
+	if webURL == "" || sessionID == "" {
+		openURL = "https://liveshortly.com"
+	}
 
 	switch runtime.GOOS {
 	case "darwin":
 		if tn, err := exec.LookPath("terminal-notifier"); err == nil {
 			args := []string{"-title", "LiveShortly", "-subtitle", who, "-message", body,
-				"-sound", "default", "-open", "https://liveshortly.com"}
+				"-sound", "default", "-open", openURL}
 			if icon := iconPath(); icon != "" {
 				args = append(args, "-appIcon", icon, "-contentImage", icon)
 			}
@@ -445,7 +449,7 @@ func (s *Sidecar) awaitDecision(ctx context.Context, tool, desc string) string {
 		"kind":    "permission",
 		"ts":      nowISO(),
 	})
-	go desktopNotify([]api.Comment{{Username: "permission", Message: msg}})
+	go desktopNotify(s.WebURL, s.SessionID, []api.Comment{{Username: "permission", Message: msg}})
 
 	deadline := time.After(permissionGrace)
 	tick := time.NewTicker(time.Second)
