@@ -4,6 +4,20 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v2.1.0 — 2026-08-17
+
+- **`live agy` — full parity with `live claude` for Google Antigravity (AGY)**:
+  - Deep lifecycle hook capture for Antigravity CLI (`agy` / `antigravity`) via
+    an ephemeral managed plugin (`PreInvocation`, `PreToolUse`, `PostToolUse`, `Stop`).
+  - Structured live feed: captures prompts, replies, tool executions (`run_command`),
+    file diffs (`write_to_file`, `replace_file_content`), and web fetching.
+  - Permission control: answer AGY tool prompts from the web or in-terminal tmux popups
+    (`allow`, `deny`, `always-allow`).
+  - Viewer comments: delivered into running AGY sessions via the `liveshortly-channel`
+    MCP server and hook-boundary injection (`injectSteps` / `Stop` continuation).
+  - Session forks: continue any session with `live agy --session <id>` or `live agy --handoff <code>`.
+  - Web daemon: `live daemon` can now spawn `agy` sessions directly from the web.
+
 ## v2.0.2 — 2026-08-14
 
 CLI audit follow-up: correctness fixes across join, exit codes, session lookup,

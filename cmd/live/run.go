@@ -42,6 +42,8 @@ func profileFor(bin string) agentProfile {
 	switch filepath.Base(bin) {
 	case "claude":
 		return agentProfile{framework: "claude-code", captureMode: "hooks", acceptsInitialPrompt: true}
+	case "agy", "antigravity":
+		return agentProfile{framework: "agy", captureMode: "hooks", acceptsInitialPrompt: true}
 	case "gemini":
 		return agentProfile{framework: "gemini-cli", captureMode: "pty"}
 	case "codex":
@@ -56,6 +58,11 @@ func profileFor(bin string) agentProfile {
 	default:
 		return agentProfile{framework: "terminal", captureMode: "pty"}
 	}
+}
+
+func isAgy(bin string) bool {
+	base := filepath.Base(bin)
+	return base == "agy" || base == "antigravity"
 }
 
 // runOpts holds the flags parsed off the front of `live [opts] <agent> …`.
@@ -380,12 +387,34 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		fmt.Fprintf(os.Stderr, "live: %v\n", err)
 		return 1
 	}
-	settings, cleanup, err := adapter.WriteClaudeSettings(self, true)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "live: %v\n", err)
-		return 1
+	isAgyAgent := isAgy(binPath)
+	var agentArgs []string
+	if isAgyAgent {
+		cleanup, err := adapter.EnsureAgyPlugin(self, true)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "live: %v\n", err)
+			return 1
+		}
+		defer cleanup()
+		agentArgs = userArgs
+	} else {
+		settings, cleanup, err := adapter.WriteClaudeSettings(self, true)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "live: %v\n", err)
+			return 1
+		}
+		defer cleanup()
+
+		claudeArgs := []string{"--settings", settings}
+		if chArgs, chCleanup := channelArgs(self, userArgs); chArgs != nil {
+			if chCleanup != nil {
+				defer chCleanup()
+			}
+			claudeArgs = append(claudeArgs, chArgs...)
+		}
+		claudeArgs = append(claudeArgs, userArgs...)
+		agentArgs = claudeArgs
 	}
-	defer cleanup()
 
 	const sock = "liveshortly"
 	sess := "live-" + sc.SessionID[:8]
@@ -397,27 +426,18 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	}
 	_ = tmux("kill-session", "-t", sess).Run() // clear any stale session
 
-	// Same viewer-channel wiring as the plain hooks mode — without this, tmux
-	// sessions (the default when tmux is installed) never load channels, so the
-	// "Loading development channels" prompt never appears.
-	claudeArgs := []string{"--settings", settings}
-	if chArgs, chCleanup := channelArgs(self, userArgs); chArgs != nil {
-		if chCleanup != nil {
-			defer chCleanup()
-		}
-		claudeArgs = append(claudeArgs, chArgs...)
-	}
-	claudeArgs = append(claudeArgs, userArgs...)
-
 	// On a fork, print the prior context inside the pane (it lands in scrollback)
 	// rather than outside it, where attach-session would repaint over it.
-	agent := handoffShimArgs(self, sc.SessionID, append([]string{binPath}, claudeArgs...))
+	agent := handoffShimArgs(self, sc.SessionID, append([]string{binPath}, agentArgs...))
 
 	newArgs := []string{"new-session", "-d", "-s", sess,
 		"-e", "LIVE_SIDECAR=" + addr, "-e", "LIVE_TOKEN=" + token, "-e", "LIVE_SESSION_ID=" + sc.SessionID,
 		// The PreToolUse relay blocks on the broker (popup or web); its HTTP
 		// client must outlast the 8m decision grace, under the 10m hook.
 		"-e", "LIVE_HOOK_TIMEOUT=590"}
+	if isAgyAgent {
+		newArgs = append(newArgs, "-e", "LIVE_CHANNEL_TOOL=1")
+	}
 	newArgs = append(newArgs, pinnedEnvArgs()...)
 	newArgs = append(newArgs, agent...)
 	if out, err := tmux(newArgs...).CombinedOutput(); err != nil {
@@ -429,7 +449,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 
 	// Web-started run: nobody can answer the channel warning, so do it here.
 	// An operator at a real terminal answers it themselves.
-	if headless() {
+	if headless() && !isAgyAgent {
 		go confirmChannelPrompt(tmux, sess)
 	}
 
@@ -441,7 +461,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		}
 	}()
 
-	// attach the user (foreground; returns when Claude exits and the session ends)
+	// attach the user (foreground; returns when agent exits and the session ends)
 	exitCode := attachOrWait(tmux, sess)
 
 	_ = tmux("kill-session", "-t", sess).Run()
@@ -700,7 +720,7 @@ func indexByte(s string, b byte) int {
 	return -1
 }
 
-// runHooksMode captures via the agent's own lifecycle hooks (Claude Code).
+// runHooksMode captures via the agent's own lifecycle hooks (Claude Code / AGY).
 func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 	sc.Start(context.Background())
 	addr, token, err := sc.StartHookServer()
@@ -714,12 +734,6 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		fmt.Fprintf(os.Stderr, "live: %v\n", err)
 		return 1
 	}
-	settings, cleanup, err := adapter.WriteClaudeSettings(self, sc.WebPermissions)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "live: %v\n", err)
-		return 1
-	}
-	defer cleanup()
 
 	env := []string{
 		"LIVE_SIDECAR=" + addr,
@@ -733,14 +747,34 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		env = append(env, "LIVE_HOOK_TIMEOUT=590")
 	}
 
-	args := []string{"--settings", settings}
-	if chArgs, chCleanup := channelArgs(self, userArgs); chArgs != nil {
-		if chCleanup != nil {
-			defer chCleanup()
+	var args []string
+	if isAgy(binPath) {
+		env = append(env, "LIVE_CHANNEL_TOOL=1")
+		cleanup, err := adapter.EnsureAgyPlugin(self, sc.WebPermissions)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "live: %v\n", err)
+			return 1
 		}
-		args = append(args, chArgs...)
+		defer cleanup()
+		args = userArgs
+	} else {
+		settings, cleanup, err := adapter.WriteClaudeSettings(self, sc.WebPermissions)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "live: %v\n", err)
+			return 1
+		}
+		defer cleanup()
+
+		args = []string{"--settings", settings}
+		if chArgs, chCleanup := channelArgs(self, userArgs); chArgs != nil {
+			if chCleanup != nil {
+				defer chCleanup()
+			}
+			args = append(args, chArgs...)
+		}
+		args = append(args, userArgs...)
 	}
-	args = append(args, userArgs...)
+
 	code, err := adapter.RunWithHooks(binPath, args, env)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "live: %v\n", err)
@@ -891,6 +925,12 @@ func seedHandoff(b api.HandoffBundle, sessionID string, userArgs []string, preDi
 		if instr := codexInstructions(b.Markdown); instr != "" {
 			return append([]string{"-c", "developer_instructions=" + instr}, userArgs...)
 		}
+		return userArgs
+	}
+
+	// AGY: pauses so the operator can read the prior context before the TUI opens.
+	if isAgy(claudeBin) {
+		waitForEnterBeforeAgent()
 		return userArgs
 	}
 

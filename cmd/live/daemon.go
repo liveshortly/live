@@ -47,7 +47,7 @@ import (
 
 // spawnableAgents is the closed set of agents a spawn command may name. Keep in
 // step with the server's allowlist in handlers/hosts.go.
-var spawnableAgents = []string{"claude", "codex", "gemini", "ollama"}
+var spawnableAgents = []string{"claude", "agy", "antigravity", "codex", "gemini", "ollama"}
 
 const daemonUsage = `live daemon — let this machine start sessions from the web
 

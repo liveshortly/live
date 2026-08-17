@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -69,6 +70,11 @@ func cmdUninstall(args []string) int {
 	} else {
 		auth.Delete()
 		fmt.Println("✓ signed out (removed credentials.json)")
+	}
+
+	// Clean up agy plugin if agy is present
+	if agyBin, err := exec.LookPath("agy"); err == nil {
+		_ = exec.Command(agyBin, "plugin", "uninstall", "liveshortly").Run()
 	}
 
 	// 2. The binary itself. On Unix a running executable can be unlinked — the

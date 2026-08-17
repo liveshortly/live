@@ -31,6 +31,7 @@
 
 ```bash
 live claude        # Claude Code — the full story: prompts, tools, diffs, replies
+live agy           # Antigravity CLI — full story: prompts, tools, diffs, replies
 live gemini        # some other agent? still works — we capture the terminal
 live npm run dev   # honestly, run whatever you want through it
 ```

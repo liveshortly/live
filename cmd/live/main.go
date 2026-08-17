@@ -50,6 +50,7 @@ Usage:
   live uninstall             Remove the binary + sign out (add --purge for all state)
 
   live claude [args...]      Run Claude Code, captured via lifecycle hooks
+  live agy [args...]         Run Antigravity CLI, captured via lifecycle hooks
   live <command> [args...]   Run any agent/CLI, captured via PTY recording
   live daemon [--dir <p>]    Let this machine start sessions from the web
   live -- <command> [...]    Same, unambiguous form
@@ -81,7 +82,9 @@ Browse and join sessions from the terminal:
 
 Continue (fork) an existing session as a NEW session you own:
   live claude --session <id>       Continue from a session's latest state
+  live agy --session <id>          Continue from a session's latest state
   live claude --handoff <code>     Continue from a pinned handoff snapshot
+  live agy --handoff <code>        Continue from a pinned handoff snapshot
   The original session is untouched; the fork is a new session owned by you,
   and your agent orients itself from the prior context on launch. Works with
   any agent (live gemini --session <id>, …). --session/--handoff need read
@@ -97,11 +100,11 @@ Start sessions from the browser (no terminal needed):
   hooks, same permission gating. Take one over locally any time with
   "tmux -L liveshortly attach -t live-<first 8 chars of the session id>".
   Only the directories you pass to --dir (default: the current one) can ever be
-  used, and only claude / codex / gemini can ever be started.
+  used, and only claude / agy / codex / gemini can ever be started.
 
-Permission control (always ON for live claude):
-  You approve Claude's tool runs from a tmux popup (if tmux is installed) or
-  the session page — allow / deny / allow-always, owner only. While on, it
+Permission control (always ON for live claude and live agy):
+  You approve tool runs from a tmux popup (if tmux is installed) or the
+  session page — allow / deny / allow-always, owner only. While on, it
   gates every tool, so your local allowlist is bypassed. Without tmux you
   approve from the session page. Use --no-permissions to turn it off for a run.
 

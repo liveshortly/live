@@ -205,6 +205,15 @@ func TestProfileForCodex(t *testing.T) {
 	}
 }
 
+func TestProfileForAgy(t *testing.T) {
+	for _, bin := range []string{"agy", "antigravity", "/usr/local/bin/agy"} {
+		p := profileFor(bin)
+		if p.framework != "agy" || p.captureMode != "hooks" || !p.acceptsInitialPrompt {
+			t.Errorf("profileFor(%q) = %+v, want {agy hooks true}", bin, p)
+		}
+	}
+}
+
 // live ollama <args> must be captured as ollama, not as a generic terminal
 // session — that labelling is the whole point of the profile entry.
 func TestProfileForOllama(t *testing.T) {

@@ -13,15 +13,16 @@ import (
 	"github.com/liveshortly/live/internal/api"
 )
 
-// handleHook maps a Claude Code hook payload (relayed by `live hook`) to feed
-// events and hook JSON output. Event types and payload shapes mirror the
-// LiveShortly plugin so the web viewer renders both identically.
+// handleHook maps an agent hook payload (relayed by `live hook`) to feed
+// events and hook JSON output. Supports both Claude Code and Antigravity (agy).
 func (s *Sidecar) handleHook(event string, p map[string]any) map[string]any {
 	switch event {
 	case "session-start":
 		return s.hookSessionStart()
 	case "user-prompt-submit":
 		return s.hookUserPromptSubmit(p)
+	case "pre-invocation":
+		return s.hookPreInvocation(p)
 	case "pre-tool-use":
 		return s.hookPreToolUse(p)
 	case "post-tool-use":
@@ -56,6 +57,17 @@ func isChannelTurn(text string) bool {
 		strings.TrimSpace(channelTagRe.ReplaceAllString(text, "")) == ""
 }
 
+var userRequestTagRe = regexp.MustCompile(`(?is)<USER_REQUEST>(.*?)</USER_REQUEST>`)
+
+// cleanUserPrompt unwraps <USER_REQUEST>...</USER_REQUEST> tags from AGY transcript
+// prompts and trims whitespace.
+func cleanUserPrompt(raw string) string {
+	if m := userRequestTagRe.FindStringSubmatch(raw); len(m) > 1 {
+		return strings.TrimSpace(m[1])
+	}
+	return strings.TrimSpace(raw)
+}
+
 func (s *Sidecar) hookUserPromptSubmit(p map[string]any) map[string]any {
 	prompt := str(p, "prompt")
 	// A channel-delivered viewer comment arrives here as a synthetic prompt;
@@ -70,6 +82,44 @@ func (s *Sidecar) hookUserPromptSubmit(p map[string]any) map[string]any {
 		})
 	}
 	return s.injectComments("UserPromptSubmit")
+}
+
+// hookPreInvocation handles AGY's PreInvocation lifecycle hook.
+func (s *Sidecar) hookPreInvocation(p map[string]any) map[string]any {
+	// Report model if present in payload
+	if model := str(p, "modelName"); model != "" {
+		s.maybeReportModel(model)
+	}
+
+	// Extract prompt from payload or from transcript
+	prompt := str(p, "prompt")
+	if prompt == "" {
+		prompt = str(p, "userMessage")
+	}
+	if prompt == "" {
+		prompt = lastUserPromptFromTranscript(str(p, "transcriptPath"))
+	}
+	prompt = cleanUserPrompt(prompt)
+
+	if prompt != "" && !isChannelTurn(prompt) {
+		s.Emit("prompt", map[string]any{
+			"content": truncate(prompt, maxCaptureBytes),
+			"ts":      nowISO(),
+		})
+	}
+
+	// Inject pending comments into AGY's PreInvocation output
+	if comments := s.takePending(); len(comments) > 0 {
+		s.Log.Printf("injected %d viewer comment(s) at PreInvocation", len(comments))
+		return map[string]any{
+			"injectSteps": []any{
+				map[string]any{
+					"ephemeralMessage": "[live] 💬 " + deliveredSummary(comments),
+				},
+			},
+		}
+	}
+	return map[string]any{"injectSteps": []any{}}
 }
 
 var dangerPatterns = []*regexp.Regexp{
@@ -95,76 +145,180 @@ func isDangerous(cmd string) bool {
 }
 
 func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
-	tool := str(p, "tool_name")
-	in := sub(p, "tool_input")
+	var (
+		isAGY         = p["toolCall"] != nil
+		tool          string
+		in            map[string]any
+		permTool      string
+		permDescStr   string
+		permMemoryKey string
+	)
 
-	switch tool {
-	case "Edit", "Write", "MultiEdit":
-		s.Emit("pre_tool", map[string]any{
-			"tool":   tool,
-			"action": "editing",
-			"file":   filePath(in),
-			"ts":     nowISO(),
-		})
-	case "Bash":
-		cmd := str(in, "command")
-		s.Emit("pre_tool", map[string]any{
-			"tool":      "Bash",
-			"action":    "running",
-			"command":   truncate(cmd, 300),
-			"dangerous": isDangerous(cmd),
-			"ts":        nowISO(),
-		})
-	case "WebFetch":
-		s.Emit("pre_tool", map[string]any{
-			"tool":   "WebFetch",
-			"action": "fetching",
-			"url":    str(in, "url"),
-			"ts":     nowISO(),
-		})
+	if isAGY {
+		tc := sub(p, "toolCall")
+		tool = str(tc, "name")
+		in = sub(tc, "args")
+
+		switch tool {
+		case "run_command":
+			cmd := str(in, "CommandLine")
+			s.Emit("pre_tool", map[string]any{
+				"tool":      "Bash",
+				"action":    "running",
+				"command":   truncate(cmd, 300),
+				"dangerous": isDangerous(cmd),
+				"ts":        nowISO(),
+			})
+			permTool = "Bash"
+			permDescStr = truncate(cmd, 300)
+			permMemoryKey = permKey("Bash", map[string]any{"command": cmd})
+		case "write_to_file":
+			path := str(in, "TargetFile")
+			s.Emit("pre_tool", map[string]any{
+				"tool":   "Write",
+				"action": "editing",
+				"file":   path,
+				"ts":     nowISO(),
+			})
+			permTool = "Write"
+			permDescStr = path
+			permMemoryKey = "Write"
+		case "replace_file_content":
+			path := str(in, "TargetFile")
+			s.Emit("pre_tool", map[string]any{
+				"tool":   "Edit",
+				"action": "editing",
+				"file":   path,
+				"ts":     nowISO(),
+			})
+			permTool = "Edit"
+			permDescStr = path
+			permMemoryKey = "Edit"
+		case "view_file":
+			path := str(in, "AbsolutePath")
+			s.Emit("pre_tool", map[string]any{
+				"tool":   "View",
+				"action": "viewing",
+				"file":   path,
+				"ts":     nowISO(),
+			})
+			permTool = "View"
+			permDescStr = path
+			permMemoryKey = "View"
+		case "read_url_content", "search_web":
+			u := str(in, "Url")
+			if u == "" {
+				u = str(in, "query")
+			}
+			s.Emit("pre_tool", map[string]any{
+				"tool":   "WebFetch",
+				"action": "fetching",
+				"url":    u,
+				"ts":     nowISO(),
+			})
+			permTool = "WebFetch"
+			permDescStr = u
+			permMemoryKey = "WebFetch:" + hostOf(u)
+		default:
+			s.Emit("pre_tool", map[string]any{
+				"tool":   tool,
+				"action": "executing",
+				"ts":     nowISO(),
+			})
+			permTool = tool
+			permDescStr = tool
+			permMemoryKey = tool
+		}
+	} else {
+		// Claude Code format
+		tool = str(p, "tool_name")
+		in = sub(p, "tool_input")
+
+		switch tool {
+		case "Edit", "Write", "MultiEdit":
+			s.Emit("pre_tool", map[string]any{
+				"tool":   tool,
+				"action": "editing",
+				"file":   filePath(in),
+				"ts":     nowISO(),
+			})
+		case "Bash":
+			cmd := str(in, "command")
+			s.Emit("pre_tool", map[string]any{
+				"tool":      "Bash",
+				"action":    "running",
+				"command":   truncate(cmd, 300),
+				"dangerous": isDangerous(cmd),
+				"ts":        nowISO(),
+			})
+		case "WebFetch":
+			s.Emit("pre_tool", map[string]any{
+				"tool":   "WebFetch",
+				"action": "fetching",
+				"url":    str(in, "url"),
+				"ts":     nowISO(),
+			})
+		}
+		permTool = tool
+		permDescStr = permissionDesc(tool, in)
+		permMemoryKey = permKey(tool, in)
 	}
 
-	// Opt-in web permissions: block here and let the owner answer Claude's
-	// permission prompt from the web. awaitDecision surfaces an Approve/Deny
-	// prompt to the feed and long-polls /decision; the verdict becomes Claude's
-	// PreToolUse permission decision, pre-empting the local keyboard prompt.
+	// Opt-in web permissions: block here and let the owner answer the
+	// permission prompt from the web or popup.
 	if s.WebPermissions {
-		key := permKey(tool, in)
-		// An earlier "always allow" for this tool/command auto-allows without
-		// re-prompting — Claude Code's "don't ask again", owner-driven.
-		if s.permAllowed(key) {
-			s.Log.Printf("permission %q auto-allowed (remembered %q)", tool, key)
+		if s.permAllowed(permMemoryKey) {
+			s.Log.Printf("permission %q auto-allowed (remembered %q)", permTool, permMemoryKey)
+			if isAGY {
+				return map[string]any{
+					"decision": "allow",
+					"reason":   "Allowed earlier via LiveShortly (don't ask again)",
+				}
+			}
 			return permOutput("allow", "Allowed earlier via LiveShortly (don't ask again)")
 		}
-		desc := permissionDesc(tool, in)
+
 		var verdict string
 		if s.Broker != nil {
-			// tmux mode: surface the web prompt too, then race popup vs web.
-			msg := "Claude wants to run " + tool
-			if desc != "" {
-				msg += ": " + desc
+			agentName := "Claude"
+			if isAGY {
+				agentName = "agy"
+			}
+			msg := agentName + " wants to run " + permTool
+			if permDescStr != "" {
+				msg += ": " + permDescStr
 			}
 			s.Emit("input_requested", map[string]any{"message": truncate(msg, 500), "kind": "permission", "ts": nowISO()})
 			go desktopNotify(s.WebURL, s.SessionID, []api.Comment{{Username: "permission", Message: msg}})
 			var source string
-			verdict, source = s.Broker.Request(context.Background(), tool, desc)
-			s.Log.Printf("permission %q → %s (%s)", tool, verdict, source)
+			verdict, source = s.Broker.Request(context.Background(), permTool, permDescStr)
+			s.Log.Printf("permission %q → %s (%s)", permTool, verdict, source)
 		} else {
-			verdict = s.awaitDecision(context.Background(), tool, desc)
+			verdict = s.awaitDecision(context.Background(), permTool, permDescStr)
 		}
 		reason := "Answered by the session owner via LiveShortly"
 		if verdict == "always" {
-			s.permRemember(key)
+			s.permRemember(permMemoryKey)
 			verdict = "allow"
-			reason = "Allowed via LiveShortly — won't ask again for " + key
-			s.Log.Printf("permission %q allowed + remembered %q", tool, key)
+			reason = "Allowed via LiveShortly — won't ask again for " + permMemoryKey
+			s.Log.Printf("permission %q allowed + remembered %q", permTool, permMemoryKey)
+		}
+		if isAGY {
+			return map[string]any{
+				"decision": verdict,
+				"reason":   reason,
+			}
 		}
 		return permOutput(verdict, reason)
+	}
+
+	if isAGY {
+		return map[string]any{"decision": "allow"}
 	}
 	return nil
 }
 
-// permOutput builds a PreToolUse permission-decision hook response.
+// permOutput builds a PreToolUse permission-decision hook response for Claude Code.
 func permOutput(decision, reason string) map[string]any {
 	return map[string]any{
 		"hookSpecificOutput": map[string]any{
@@ -183,6 +337,9 @@ func permKey(tool string, in map[string]any) string {
 	switch tool {
 	case "Bash":
 		cmd := strings.TrimSpace(str(in, "command"))
+		if cmd == "" {
+			cmd = strings.TrimSpace(str(in, "CommandLine"))
+		}
 		word := cmd
 		if i := strings.IndexAny(cmd, " \t\n"); i > 0 {
 			word = cmd[:i]
@@ -192,7 +349,11 @@ func permKey(tool string, in map[string]any) string {
 		}
 		return "Bash:" + word
 	case "WebFetch":
-		return "WebFetch:" + hostOf(str(in, "url"))
+		u := str(in, "url")
+		if u == "" {
+			u = str(in, "Url")
+		}
+		return "WebFetch:" + hostOf(u)
 	}
 	return tool // Edit / Write / MultiEdit → accept all of this kind
 }
@@ -219,6 +380,56 @@ func permissionDesc(tool string, in map[string]any) string {
 }
 
 func (s *Sidecar) hookPostToolUse(p map[string]any) map[string]any {
+	isAGY := p["toolCall"] != nil
+	if isAGY {
+		tc := sub(p, "toolCall")
+		tool := str(tc, "name")
+		in := sub(tc, "args")
+
+		switch tool {
+		case "write_to_file":
+			path := str(in, "TargetFile")
+			content := str(in, "CodeContent")
+			diff, added, removed := writeDiff(path, content)
+			s.Emit("file_write", map[string]any{
+				"tool":    "Write",
+				"file":    path,
+				"diff":    diff,
+				"added":   added,
+				"removed": removed,
+				"ts":      nowISO(),
+			})
+		case "replace_file_content":
+			path := str(in, "TargetFile")
+			oldStr := str(in, "TargetContent")
+			newStr := str(in, "ReplacementContent")
+			diff, added, removed := unifiedDiff(path, oldStr, newStr)
+			s.Emit("file_write", map[string]any{
+				"tool":    "Edit",
+				"file":    path,
+				"diff":    diff,
+				"added":   added,
+				"removed": removed,
+				"ts":      nowISO(),
+			})
+		case "run_command":
+			cmd := str(in, "CommandLine")
+			stepIdx := int(num(p, "stepIdx"))
+			out := toolOutputFromTranscript(str(p, "transcriptPath"), stepIdx)
+			if out == "" {
+				out = str(p, "error")
+			}
+			s.Emit("tool_call", map[string]any{
+				"tool":    "Bash",
+				"command": truncate(cmd, 500),
+				"output":  truncate(out, maxCaptureBytes),
+				"ts":      nowISO(),
+			})
+		}
+		return map[string]any{}
+	}
+
+	// Claude Code format
 	tool := str(p, "tool_name")
 	in := sub(p, "tool_input")
 
@@ -291,14 +502,27 @@ func (s *Sidecar) hookNotification(p map[string]any) map[string]any {
 }
 
 func (s *Sidecar) hookStop(p map[string]any) map[string]any {
+	isAGY := p["fullyIdle"] != nil || p["terminationReason"] != nil || (str(p, "modelName") != "" && str(p, "transcriptPath") != "" && p["last_assistant_message"] == nil)
+
+	// Report the true model once — a session is created before the first
+	// assistant turn, so it starts model-less.
+	if model := str(p, "modelName"); model != "" {
+		s.maybeReportModel(model)
+	} else if model := detectModel(str(p, "transcript_path")); model != "" {
+		s.maybeReportModel(model)
+	} else if model := detectModel(str(p, "transcriptPath")); model != "" {
+		s.maybeReportModel(model)
+	}
+
 	// Viewer messages that arrived too late for a tool boundary would
 	// otherwise sit invisible until the next user prompt. Block the stop
-	// once so Claude addresses them before the turn ends.
+	// once so the agent addresses them before the turn ends.
 	if comments := s.takePending(); len(comments) > 0 {
-		// Flush the just-finished turn to the feed BEFORE blocking. Otherwise a
-		// turn whose Stop coincides with a pending comment never reaches the web
-		// UI — the block returns here, before the response emit below.
-		if last := str(p, "last_assistant_message"); last != "" {
+		last := str(p, "last_assistant_message")
+		if last == "" {
+			last = lastAssistantResponseFromTranscript(str(p, "transcriptPath"))
+		}
+		if last != "" {
 			s.Emit("response", map[string]any{
 				"content": truncate(last, maxCaptureBytes),
 				"ts":      nowISO(),
@@ -309,9 +533,12 @@ func (s *Sidecar) hookStop(p map[string]any) map[string]any {
 			lines = append(lines, username(c)+": "+c.Message)
 		}
 		s.Log.Printf("blocked stop to deliver %d viewer comment(s)", len(comments))
-		// Plain chat form as the block reason so it reads like a viewer message,
-		// not a hook error. (Claude Code still frames any decision:block hook with
-		// its own "Stop hook" label — that styling isn't ours to change.)
+		if isAGY {
+			return map[string]any{
+				"decision": "continue",
+				"reason":   "[live] 💬 " + deliveredSummary(comments) + "\n" + strings.Join(lines, "\n"),
+			}
+		}
 		return map[string]any{
 			"decision":      "block",
 			"reason":        strings.Join(lines, "\n"),
@@ -319,32 +546,38 @@ func (s *Sidecar) hookStop(p map[string]any) map[string]any {
 		}
 	}
 
-	// Report the true model once — a session is created before the first
-	// assistant turn, so it starts model-less.
-	s.mu.Lock()
-	needModel := !s.modelReported
-	s.mu.Unlock()
-	if needModel {
-		if model := detectModel(str(p, "transcript_path")); model != "" {
-			s.mu.Lock()
-			s.modelReported = true
-			s.mu.Unlock()
-			go func() {
-				if err := s.Client.ReportModel(s.SessionID, model); err != nil {
-					s.Log.Printf("report model: %v", err)
-				}
-			}()
-		}
+	last := str(p, "last_assistant_message")
+	if last == "" {
+		last = lastAssistantResponseFromTranscript(str(p, "transcriptPath"))
 	}
-
-	if last := str(p, "last_assistant_message"); last != "" {
+	if last != "" {
 		s.Emit("response", map[string]any{
 			"content": truncate(last, maxCaptureBytes),
 			"ts":      nowISO(),
 		})
 	}
 	s.Emit("stream_end", map[string]any{"ts": nowISO()})
+
+	if isAGY {
+		return map[string]any{"decision": "allow"}
+	}
 	return nil
+}
+
+func (s *Sidecar) maybeReportModel(model string) {
+	s.mu.Lock()
+	needModel := !s.modelReported
+	if needModel {
+		s.modelReported = true
+	}
+	s.mu.Unlock()
+	if needModel && model != "" && model != "<synthetic>" {
+		go func() {
+			if err := s.Client.ReportModel(s.SessionID, model); err != nil {
+				s.Log.Printf("report model: %v", err)
+			}
+		}()
+	}
 }
 
 // injectComments drains locally queued viewer comments into hook output as
@@ -389,7 +622,117 @@ func username(c api.Comment) string {
 	return "viewer"
 }
 
-// detectModel scans a Claude Code JSONL transcript from the end for the most
+// lastUserPromptFromTranscript scans a transcript JSONL file from the end
+// for the most recent USER_INPUT content.
+func lastUserPromptFromTranscript(path string) string {
+	if path == "" {
+		return ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	var lines []string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 256*1024), 8<<20)
+	for sc.Scan() {
+		if l := strings.TrimSpace(sc.Text()); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		var step struct {
+			Type    string `json:"type"`
+			Content string `json:"content"`
+		}
+		if json.Unmarshal([]byte(lines[i]), &step) == nil && step.Type == "USER_INPUT" && step.Content != "" {
+			return cleanUserPrompt(step.Content)
+		}
+	}
+	return ""
+}
+
+// lastAssistantResponseFromTranscript scans a transcript JSONL file from the end
+// for the most recent PLANNER_RESPONSE content.
+func lastAssistantResponseFromTranscript(path string) string {
+	if path == "" {
+		return ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	var lines []string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 256*1024), 8<<20)
+	for sc.Scan() {
+		if l := strings.TrimSpace(sc.Text()); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		var step struct {
+			Type    string `json:"type"`
+			Content string `json:"content"`
+		}
+		if json.Unmarshal([]byte(lines[i]), &step) == nil && step.Type == "PLANNER_RESPONSE" && step.Content != "" {
+			return strings.TrimSpace(step.Content)
+		}
+	}
+	return ""
+}
+
+// toolOutputFromTranscript extracts command output for a given stepIdx.
+func toolOutputFromTranscript(path string, stepIdx int) string {
+	if path == "" {
+		return ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	var lines []string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 256*1024), 8<<20)
+	for sc.Scan() {
+		if l := strings.TrimSpace(sc.Text()); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		var step struct {
+			StepIndex int    `json:"step_index"`
+			Type      string `json:"type"`
+			Content   string `json:"content"`
+		}
+		if json.Unmarshal([]byte(lines[i]), &step) == nil {
+			if stepIdx > 0 && step.StepIndex == stepIdx && step.Content != "" {
+				return cleanToolOutput(step.Content)
+			}
+			if stepIdx <= 0 && step.Type != "PLANNER_RESPONSE" && step.Type != "USER_INPUT" && step.Content != "" {
+				return cleanToolOutput(step.Content)
+			}
+		}
+	}
+	return ""
+}
+
+func cleanToolOutput(raw string) string {
+	if idx := strings.Index(raw, "Output:\n"); idx >= 0 {
+		out := raw[idx+len("Output:\n"):]
+		out = strings.ReplaceAll(out, "\t", "")
+		return strings.TrimSpace(out)
+	}
+	return strings.TrimSpace(raw)
+}
+
+// detectModel scans a Claude Code or AGY JSONL transcript from the end for the most
 // recent assistant turn's model id.
 func detectModel(path string) string {
 	if path == "" {
@@ -414,11 +757,19 @@ func detectModel(path string) string {
 			Message struct {
 				Model string `json:"model"`
 			} `json:"message"`
+			ModelName string `json:"modelName"`
+			Model     string `json:"model"`
 		}
 		if json.Unmarshal([]byte(lines[i]), &obj) != nil {
 			continue
 		}
 		if m := obj.Message.Model; m != "" && m != "<synthetic>" {
+			return m
+		}
+		if m := obj.ModelName; m != "" && m != "<synthetic>" {
+			return m
+		}
+		if m := obj.Model; m != "" && m != "<synthetic>" {
 			return m
 		}
 	}
@@ -435,6 +786,22 @@ func str(m map[string]any, key string) string {
 	return v
 }
 
+func num(m map[string]any, key string) float64 {
+	if m == nil {
+		return 0
+	}
+	switch v := m[key].(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case json.Number:
+		n, _ := v.Float64()
+		return n
+	}
+	return 0
+}
+
 func sub(m map[string]any, key string) map[string]any {
 	if m == nil {
 		return nil
@@ -444,7 +811,7 @@ func sub(m map[string]any, key string) map[string]any {
 }
 
 func filePath(in map[string]any) string {
-	for _, k := range []string{"file_path", "path", "new_path"} {
+	for _, k := range []string{"file_path", "path", "new_path", "TargetFile", "AbsolutePath"} {
 		if v := str(in, k); v != "" {
 			return v
 		}
