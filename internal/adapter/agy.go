@@ -86,7 +86,12 @@ func EnsureAgyPlugin(liveBin string, webPerms bool) (cleanup func(), err error) 
 	if err != nil {
 		return nil, err
 	}
-	cleanup = func() { _ = os.RemoveAll(dir) }
+	cleanup = func() {
+		if agyBin, err := exec.LookPath("agy"); err == nil {
+			_ = exec.Command(agyBin, "plugin", "uninstall", "liveshortly").Run()
+		}
+		_ = os.RemoveAll(dir)
+	}
 
 	if err := WriteAgyPluginFiles(dir, liveBin, webPerms); err != nil {
 		cleanup()

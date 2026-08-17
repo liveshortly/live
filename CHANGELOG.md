@@ -4,6 +4,17 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v2.1.2 — 2026-08-17
+
+- **`live agy` single permission gate parity with Claude & ephemeral plugin scoping**:
+  - Automatically pass `--dangerously-skip-permissions` to AGY when LiveShortly's web
+    permissions are ON so the Web UI / popup is the single source of truth (no double CLI prompt).
+  - Auto-detect `--dangerously-skip-permissions` on the CLI to disable LiveShortly's hook broker.
+  - Make `live hook` always output safe `allow` decisions when `LIVE_SIDECAR` is unset,
+    preventing non-live AGY sessions from ever being blocked.
+  - Scope AGY plugin lifecycle to the session by automatically running `agy plugin uninstall`
+    on session cleanup.
+
 ## v2.1.1 — 2026-08-17
 
 - **Fixed: input/comments from the web were not delivered into `live agy`.**

@@ -16,7 +16,18 @@ import (
 func cmdHook(args []string) {
 	out := relay(args)
 	if len(bytes.TrimSpace(out)) == 0 {
-		out = []byte("{}")
+		event := ""
+		if len(args) > 0 {
+			event = args[0]
+		}
+		switch event {
+		case "pre-tool-use", "stop":
+			out = []byte(`{"decision":"allow"}`)
+		case "pre-invocation":
+			out = []byte(`{"injectSteps":[]}`)
+		default:
+			out = []byte("{}")
+		}
 	}
 	os.Stdout.Write(out)
 	if !bytes.HasSuffix(out, []byte("\n")) {

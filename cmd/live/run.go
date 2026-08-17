@@ -146,7 +146,7 @@ leading:
 		case "--web-permissions":
 			o.webPerms = true
 			i++
-		case "--no-permissions":
+		case "--no-permissions", "--dangerously-skip-permissions":
 			o.webPerms = false
 			i++
 		case "--":
@@ -172,6 +172,17 @@ leading:
 				j = nj
 				continue
 			}
+			if rest[j] == "--no-permissions" {
+				o.webPerms = false
+				j++
+				continue
+			}
+			if rest[j] == "--dangerously-skip-permissions" {
+				o.webPerms = false
+				out = append(out, rest[j])
+				j++
+				continue
+			}
 			out = append(out, rest[j])
 			j++
 		}
@@ -187,6 +198,15 @@ leading:
 		return o, nil, fmt.Errorf("--attach cannot be combined with --handoff or --session")
 	}
 	return o, rest, nil
+}
+
+func hasFlag(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
 }
 
 // cmdRun implements `live [opts] <agent> [args...]`. Returns the exit code to
@@ -397,6 +417,9 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		}
 		defer cleanup()
 		agentArgs = userArgs
+		if !hasFlag(agentArgs, "--dangerously-skip-permissions") {
+			agentArgs = append([]string{"--dangerously-skip-permissions"}, agentArgs...)
+		}
 	} else {
 		settings, cleanup, err := adapter.WriteClaudeSettings(self, true)
 		if err != nil {
@@ -771,6 +794,9 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		}
 		defer cleanup()
 		args = userArgs
+		if sc.WebPermissions && !hasFlag(args, "--dangerously-skip-permissions") {
+			args = append([]string{"--dangerously-skip-permissions"}, args...)
+		}
 	} else {
 		settings, cleanup, err := adapter.WriteClaudeSettings(self, sc.WebPermissions)
 		if err != nil {
