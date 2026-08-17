@@ -418,13 +418,31 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 
 	const sock = "liveshortly"
 	sess := "live-" + sc.SessionID[:8]
+	t := &tmuxPane{bin: tmuxBin, sock: sock, sess: sess}
+	_ = t.run("kill-session", "-t", sess) // clear any stale session
+
+	if isAgyAgent {
+		sc.OnComment = func(c api.Comment) {
+			who := c.Username
+			if who == "" {
+				who = "viewer"
+			}
+			turn := viewerTurn(who, c.Message)
+			if err := t.inject(turn); err != nil {
+				sc.Log.Printf("live agy tmux: inject failed (%v) — queuing for hook", err)
+				sc.QueueForHooks(c)
+			} else {
+				sc.Log.Printf("live agy tmux: injected comment from %s into composer", who)
+			}
+		}
+	}
+
 	tmux := func(args ...string) *exec.Cmd {
 		c := exec.Command(tmuxBin, append([]string{"-L", sock}, args...)...)
 		// nested-tmux guard: our isolated socket must not inherit $TMUX.
 		c.Env = envWithout(os.Environ(), "TMUX", "TMUX_PANE")
 		return c
 	}
-	_ = tmux("kill-session", "-t", sess).Run() // clear any stale session
 
 	// On a fork, print the prior context inside the pane (it lands in scrollback)
 	// rather than outside it, where attach-session would repaint over it.
@@ -435,9 +453,6 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		// The PreToolUse relay blocks on the broker (popup or web); its HTTP
 		// client must outlast the 8m decision grace, under the 10m hook.
 		"-e", "LIVE_HOOK_TIMEOUT=590"}
-	if isAgyAgent {
-		newArgs = append(newArgs, "-e", "LIVE_CHANNEL_TOOL=1")
-	}
 	newArgs = append(newArgs, pinnedEnvArgs()...)
 	newArgs = append(newArgs, agent...)
 	if out, err := tmux(newArgs...).CombinedOutput(); err != nil {
@@ -749,7 +764,6 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 
 	var args []string
 	if isAgy(binPath) {
-		env = append(env, "LIVE_CHANNEL_TOOL=1")
 		cleanup, err := adapter.EnsureAgyPlugin(self, sc.WebPermissions)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "live: %v\n", err)

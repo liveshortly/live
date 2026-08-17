@@ -57,6 +57,12 @@ func isChannelTurn(text string) bool {
 		strings.TrimSpace(channelTagRe.ReplaceAllString(text, "")) == ""
 }
 
+var viewerTurnRe = regexp.MustCompile(`(?is)^[^\n:]+\s*\(live viewer\):\s*(.*)$`)
+
+func isViewerTurn(text string) bool {
+	return viewerTurnRe.MatchString(strings.TrimSpace(text))
+}
+
 var userRequestTagRe = regexp.MustCompile(`(?is)<USER_REQUEST>(.*?)</USER_REQUEST>`)
 
 // cleanUserPrompt unwraps <USER_REQUEST>...</USER_REQUEST> tags from AGY transcript
@@ -70,9 +76,9 @@ func cleanUserPrompt(raw string) string {
 
 func (s *Sidecar) hookUserPromptSubmit(p map[string]any) map[string]any {
 	prompt := str(p, "prompt")
-	// A channel-delivered viewer comment arrives here as a synthetic prompt;
+	// A channel-delivered or tmux-injected viewer comment arrives here as a synthetic prompt;
 	// skip it — the viewer_comment event already represents it cleanly.
-	if isChannelTurn(prompt) {
+	if isChannelTurn(prompt) || isViewerTurn(prompt) {
 		return nil
 	}
 	if prompt != "" {
@@ -101,7 +107,7 @@ func (s *Sidecar) hookPreInvocation(p map[string]any) map[string]any {
 	}
 	prompt = cleanUserPrompt(prompt)
 
-	if prompt != "" && !isChannelTurn(prompt) {
+	if prompt != "" && !isChannelTurn(prompt) && !isViewerTurn(prompt) {
 		s.Emit("prompt", map[string]any{
 			"content": truncate(prompt, maxCaptureBytes),
 			"ts":      nowISO(),
@@ -571,7 +577,7 @@ func (s *Sidecar) maybeReportModel(model string) {
 		s.modelReported = true
 	}
 	s.mu.Unlock()
-	if needModel && model != "" && model != "<synthetic>" {
+	if needModel && model != "" && model != "<synthetic>" && s.Client != nil {
 		go func() {
 			if err := s.Client.ReportModel(s.SessionID, model); err != nil {
 				s.Log.Printf("report model: %v", err)

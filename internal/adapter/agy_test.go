@@ -60,26 +60,4 @@ func TestWriteAgyPluginFiles(t *testing.T) {
 	if len(hooksObj.LiveShortly.Stop) != 1 {
 		t.Errorf("Stop len = %d, want 1", len(hooksObj.LiveShortly.Stop))
 	}
-
-	// 3. Check mcp_config.json
-	mcpBytes, err := os.ReadFile(filepath.Join(tmp, "mcp_config.json"))
-	if err != nil {
-		t.Fatalf("reading mcp_config.json: %v", err)
-	}
-	var mcpObj struct {
-		McpServers map[string]struct {
-			Command string   `json:"command"`
-			Args    []string `json:"args"`
-		} `json:"mcpServers"`
-	}
-	if err := json.Unmarshal(mcpBytes, &mcpObj); err != nil {
-		t.Fatalf("unmarshaling mcp_config.json: %v", err)
-	}
-	ch, ok := mcpObj.McpServers["liveshortly-channel"]
-	if !ok {
-		t.Fatalf("missing liveshortly-channel in mcp_config.json")
-	}
-	if ch.Command != liveBin {
-		t.Errorf("mcp command = %q, want %q", ch.Command, liveBin)
-	}
 }

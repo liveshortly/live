@@ -193,3 +193,21 @@ func TestAgyTranscriptExtraction(t *testing.T) {
 		t.Errorf("toolOut = %q, want %q", toolOut, "1")
 	}
 }
+
+func TestAgyViewerTurnSkipped(t *testing.T) {
+	if !isViewerTurn("alice (live viewer): refactor code") {
+		t.Fatal("expected viewerTurn to match")
+	}
+	if isViewerTurn("just a normal user prompt") {
+		t.Fatal("normal prompt should not match viewerTurn")
+	}
+}
+
+func TestQueueForHooks(t *testing.T) {
+	s := testSidecar()
+	s.QueueForHooks(api.Comment{Username: "charlie", Message: "run the linter"})
+	pending := s.takePending()
+	if len(pending) != 1 || pending[0].Username != "charlie" {
+		t.Fatalf("expected 1 comment from charlie, got %v", pending)
+	}
+}

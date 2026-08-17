@@ -4,6 +4,15 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v2.1.1 — 2026-08-17
+
+- **Fixed: input/comments from the web were not delivered into `live agy`.**
+  - Wire `sc.OnComment` in tmux mode to paste and submit viewer comments directly into
+    AGY's composer when idle, prompting AGY to process them immediately.
+  - Automatically queue comments for `Stop` hook continuation (`decision: "continue"`)
+    and `PreInvocation` injection if AGY is mid-turn.
+  - Remove standard MCP tool siphoning that previously emptied the hook queue for AGY.
+
 ## v2.1.0 — 2026-08-17
 
 - **`live agy` — full parity with `live claude` for Google Antigravity (AGY)**:

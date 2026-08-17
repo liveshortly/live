@@ -303,12 +303,15 @@ func (s *Sidecar) routeToChannel(comments []api.Comment) []api.Comment {
 	return undelivered
 }
 
-// queueForHooks adds comments to the hook-boundary injection queue — the
-// guaranteed-delivery backbone for anything the channel could not take.
-func (s *Sidecar) queueForHooks(comments []api.Comment) {
+// QueueForHooks adds comments to the hook-boundary injection queue.
+func (s *Sidecar) QueueForHooks(comments ...api.Comment) {
 	s.mu.Lock()
 	s.pending = append(s.pending, comments...)
 	s.mu.Unlock()
+}
+
+func (s *Sidecar) queueForHooks(comments []api.Comment) {
+	s.QueueForHooks(comments...)
 }
 
 // subscribe registers a channel-delivery consumer; anything already queued

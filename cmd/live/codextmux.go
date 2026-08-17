@@ -162,7 +162,7 @@ func (t *tmuxPane) capture() string {
 	return string(out)
 }
 
-// composerReady reports whether codex is showing its input composer, so typed
+// composerReady reports whether the agent (codex/agy) is showing its input composer, so typed
 // text lands in the prompt rather than in a modal (trust dialog, slash menu,
 // native approval). Injecting blind is how a comment silently answers the wrong
 // question.
@@ -171,12 +171,14 @@ func composerReady(pane string) bool {
 		return false
 	}
 	low := strings.ToLower(pane)
-	for _, modal := range []string{"do you trust", "allow codex to", "yes, allow", "no, and tell"} {
+	for _, modal := range []string{"do you trust", "allow codex to", "yes, allow", "no, and tell", "permission"} {
 		if strings.Contains(low, modal) {
 			return false
 		}
 	}
-	return strings.Contains(pane, "›") || strings.Contains(pane, "Ask Codex")
+	return strings.Contains(pane, "›") || strings.Contains(pane, "Ask Codex") ||
+		strings.Contains(pane, ">") || strings.Contains(pane, "Antigravity") ||
+		strings.Contains(pane, "agy")
 }
 
 // inject types text into codex's composer and submits it. The text goes through

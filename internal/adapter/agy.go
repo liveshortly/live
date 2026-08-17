@@ -1,6 +1,6 @@
 // Package adapter launches coding agents under Live capture. The agy
-// adapter registers lifecycle hooks and MCP channel configuration via an
-// ephemeral/managed plugin installed into Antigravity (agy).
+// adapter registers lifecycle hooks via an ephemeral/managed plugin
+// installed into Antigravity (agy).
 package adapter
 
 import (
@@ -35,8 +35,7 @@ func agyFlatHook(liveBin, event string, timeoutSec int) map[string]any {
 	}
 }
 
-// WriteAgyPluginFiles writes the plugin.json, hooks.json, and mcp_config.json
-// into targetDir.
+// WriteAgyPluginFiles writes plugin.json and hooks.json into targetDir.
 func WriteAgyPluginFiles(targetDir, liveBin string, webPerms bool) error {
 	preToolTimeout := 10
 	if webPerms {
@@ -76,23 +75,7 @@ func WriteAgyPluginFiles(targetDir, liveBin string, webPerms bool) error {
 		return err
 	}
 
-	// 3. mcp_config.json
-	mcp := map[string]any{
-		"mcpServers": map[string]any{
-			"liveshortly-channel": map[string]any{
-				"command": liveBin,
-				"args":    []string{"channel"},
-			},
-		},
-	}
-	mcpB, err := json.MarshalIndent(mcp, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(targetDir, "mcp_config.json"), mcpB, 0o644); err != nil {
-		return err
-	}
-
+	_ = os.Remove(filepath.Join(targetDir, "mcp_config.json"))
 	return nil
 }
 

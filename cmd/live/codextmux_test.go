@@ -17,8 +17,11 @@ func TestComposerReady(t *testing.T) {
 		{"empty pane", "", false},
 		{"composer prompt", "  ›  \n  send a message", true},
 		{"ask codex placeholder", "Ask Codex to do something", true},
+		{"agy prompt", "Welcome to the Antigravity CLI.\n  ›  ", true},
+		{"agy angle prompt", " > please help me with code", true},
 		{"trust dialog blocks", "Do you trust the contents of this directory?\n  ›  Yes", false},
 		{"approval modal blocks", "Allow Codex to run `rm -rf`?\n › Yes, allow", false},
+		{"permission modal blocks", "permission requested for bash\n › Yes", false},
 		{"no composer marker", "thinking…", false},
 	}
 	for _, c := range cases {
