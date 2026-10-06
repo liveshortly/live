@@ -419,3 +419,111 @@ useful to hear. 🚀
 <p align="center">
   <sub>Made with 💚 by <a href="https://x.com/ironfisto/">@ironfisto</a> &middot; <a href="https://x.com/sec_r0">@sec_r0</a> &nbsp;·&nbsp; <a href="https://liveshortly.com">liveshortly.com</a></sub>
 </p>
+
+## pocket.ai support in live daemon
+
+The existing daemon can listen directly for **pocket.ai by LiveShortly** clients:
+
+```sh
+go build -o bin/live ./cmd/live
+./bin/live daemon --server --key 'your-chosen-key' --dir /absolute/path/to/project
+```
+
+Pocket only needs a server URL and key. There is no application-name flag or
+application header. Any non-empty key is accepted. `LIVE_POCKET_KEY` is an
+alternative to `--key`. By default the daemon listens on **all interfaces** at
+`:8787`; override with `--listen`. Repeat `--dir` for multiple workspaces. `--name`
+optionally changes the displayed server name (otherwise the hostname is used).
+
+Use `--tls-cert` and `--tls-key`, or a TLS reverse proxy, for HTTPS. LAN HTTP
+sends the bearer key in plaintext. Every API route requires
+`Authorization: Bearer <key>`. The key grants access to all sessions on this daemon.
+
+Discovery checks PATH for Codex, Claude, Gemini, AGY, Antigravity, Ollama, Aider and
+Cursor Agent. Test connection refreshes this list and enumerates locally pulled
+Ollama models. Agent installation, active session count and last-turn status are
+reported separately; discovery does not verify provider login or quota. Install
+and configure the CLI on the daemon host before using it from Pocket. Agent
+approval controls remain enabled (see Approvals below). Ollama sessions require a selected local model;
+uninstalled models are rejected instead of being downloaded implicitly.
+
+### Additional agents
+
+Register other CLI agents through a local JSON file, then pass `--agents-file`:
+
+```json
+[
+  {"name":"my-agent","command":"/path/to/my-agent","args":["--print"]}
+]
+```
+
+Adapters receive the prompt on stdin and must print their answer to stdout.
+An argument containing `{prompt}` receives the prompt as a literal argv value if
+that CLI requires a command-line prompt. No shell is used. These commands are
+configured only by the server operator; API clients cannot supply arbitrary
+executables or arguments. Custom agents appear when their command is executable.
+
+### API and lifecycle
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/v1/info` | Server name, installed agents, models, workspaces and agent statuses |
+| GET | `/v1/sessions` | Session summaries, newest first |
+| POST | `/v1/sessions` | Create with `{"agent":"codex","directory":"/allowed/path"}`; Ollama also requires `"model"` |
+| GET | `/v1/sessions/{id}` | Status and complete conversation |
+| POST | `/v1/sessions/{id}/messages` | Submit `{"text":"..."}`; returns 202 while working |
+| POST | `/v1/sessions/{id}/stop` | Cancel a turn and its subprocess group |
+| POST | `/v1/sessions/{id}/permissions/{requestId}` | Answer a pending request with `{"decision":"allow"}` or `{"decision":"deny"}` |
+| DELETE | `/v1/sessions/{id}` | Delete an idle session |
+
+Turns continue independently of client connections. Poll until `running` becomes
+`idle`, `failed`, or `interrupted`. After an ambiguous connection failure, fetch
+the session before resubmitting. Limits: one active turn per session, four total,
+200 sessions, 50 turns per session, 32,000-byte messages, 256 KiB output and a
+15-minute timeout. The most recent 96 KB of context is replayed to a fresh CLI
+process each turn. Native CLI thread resumption is not implemented. Existing
+website/tmux sessions are separate from these API sessions.
+
+### Approvals in pocket.ai
+
+Codex uses its app-server protocol with on-request approvals and the workspace-write
+sandbox. Claude and AGY/Antigravity use PreToolUse hooks: each tool call waits for
+an explicit decision in the phone's chat. The app shows the complete tool input,
+**Approve once**, and **Deny**. Codex and Claude retain their native permission
+checks. As in the existing LiveShortly web/tmux adapter, AGY delegates terminal
+prompts to the installed, enabled PreToolUse gate using its
+`--dangerously-skip-permissions` flag. The gate still requires a phone decision for
+every tool; it denies on relay failures, timeout, cancellation, and invalid input.
+AGY is not launched in this mode if hook installation or enabling fails.
+
+While the agent waits, the session stays `running` and exposes a `permissions`
+array containing each request's ID, tool, detail and expiry. Reconnecting retrieves
+the same pending requests. Answers require the daemon key, apply only to that
+request, and reject stale/replayed IDs. Requests expire after eight minutes;
+stopping a turn or restarting the daemon denies outstanding requests. A Codex
+permission-profile grant is limited to the current turn, as required by its native
+protocol. The key holder can answer any session on this daemon.
+
+Claude receives temporary settings. AGY installs a separate `liveshortly-pocket`
+plugin under `~/.liveshortly/pocket-hook-plugin`; it is inert outside pocket-launched
+processes and does not replace the existing `liveshortly` plugin. Hook traffic uses
+a loopback-only listener and a random per-turn token. Failed relays deny the tool.
+
+Agent discovery reports `approvals: supported`, `unsupported`, or `not-needed`.
+Gemini, Cursor, Aider and custom command adapters currently have no phone approval
+bridge; their existing CLI permission behavior remains in effect. Ollama's chat
+adapter does not execute tools. The app displays this support status in connection
+settings.
+
+Session files remain at `~/.liveshortly/pocket/liveshortly-pocket` for compatibility
+with existing installations; `--state-dir` overrides this. A lock prevents duplicate
+daemons using the same store. History survives restarts. Interrupted turns are
+marked accordingly. A launch-directory allowlist is not a general filesystem
+sandbox: agents run as the daemon's OS user. Use a dedicated user/container for
+untrusted collaborators. Restart with a new key to rotate access.
+
+The original web-connected `live daemon --dir ...` mode is unchanged.
+
+Validation: `go test -race ./cmd/live`, `go test ./...`, `go vet ./...`. The Pocket
+repository also includes `python3 scripts/test_liveshortly.py` for cross-project
+contract and persistence tests without provider calls.

@@ -145,8 +145,11 @@ type codexApp struct {
 	requestPerm func(context.Context, string, string) string // web permission verdict
 	echo        func(string)                                 // live CLI transcript (nil in tests)
 
-	cmd  *exec.Cmd
-	done chan struct{}
+	notification  func(string, json.RawMessage)
+	serverRequest func(json.RawMessage, string, json.RawMessage)
+	directory     string
+	cmd           *exec.Cmd
+	done          chan struct{}
 
 	wmu   sync.Mutex // serializes writes to codex stdin
 	stdin *bufio.Writer
@@ -162,7 +165,10 @@ type codexApp struct {
 func (c *codexApp) start(ctx context.Context, binPath string) error {
 	c.done = make(chan struct{})
 	c.cmd = exec.CommandContext(ctx, binPath, "app-server")
-	c.cmd.Env = os.Environ()
+	c.cmd.Env = envWithout(os.Environ(), "LIVE_POCKET_KEY")
+	c.cmd.Dir = c.directory
+	c.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	c.cmd.Cancel = func() error { return syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL) }
 	stdin, err := c.cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -176,8 +182,10 @@ func (c *codexApp) start(ctx context.Context, binPath string) error {
 	if err := c.cmd.Start(); err != nil {
 		return err
 	}
-	go c.readLoop(stdout)
+	readDone := make(chan struct{})
+	go func() { c.readLoop(stdout); close(readDone) }()
 	go func() {
+		<-readDone
 		err := c.cmd.Wait()
 		c.mu.Lock()
 		if c.cmd.ProcessState != nil {
@@ -206,7 +214,15 @@ func (c *codexApp) request(method string, params any) (json.RawMessage, error) {
 		c.mu.Unlock()
 		return nil, err
 	}
-	resp := <-ch
+	var resp rpcResp
+	select {
+	case resp = <-ch:
+	case <-c.done:
+		c.mu.Lock()
+		delete(c.pending, id)
+		c.mu.Unlock()
+		return nil, fmt.Errorf("%s: codex app-server exited", method)
+	}
 	if resp.err != nil {
 		return nil, fmt.Errorf("%s: %s", method, resp.err.Message)
 	}
@@ -270,9 +286,17 @@ func (c *codexApp) readLoop(stdout interface{ Read([]byte) (int, error) }) {
 				}
 			}
 		case msg.Method != "" && len(msg.ID) > 0:
-			c.handleServerRequest(msg.ID, msg.Method, msg.Params)
+			if c.serverRequest != nil {
+				c.serverRequest(msg.ID, msg.Method, msg.Params)
+			} else {
+				c.handleServerRequest(msg.ID, msg.Method, msg.Params)
+			}
 		case msg.Method != "":
-			c.handleNotification(msg.Method, msg.Params)
+			if c.notification != nil {
+				c.notification(msg.Method, msg.Params)
+			} else {
+				c.handleNotification(msg.Method, msg.Params)
+			}
 		}
 	}
 }

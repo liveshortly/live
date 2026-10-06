@@ -143,6 +143,8 @@ func main() {
 		os.Exit(cmdUninstall(os.Args[2:]))
 	case "help", "--help", "-h":
 		fmt.Print(usage)
+	case "pocket-hook":
+		cmdPocketHook(os.Args[2:])
 	case "hook":
 		cmdHook(os.Args[2:])
 	case "perm-prompt":

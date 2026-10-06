@@ -60,18 +60,51 @@ Usage:
                   machine is reachable.
   --name <label>  How this machine appears in the picker (default: hostname).
 
+Standalone Pocket server (no web login required):
+  live daemon --server --key <key> --dir /path/to/project
+  Set LIVE_POCKET_KEY or use --key. Any non-empty key is accepted.
+  --listen defaults to :8787 (all interfaces).
+  --state-dir stores sessions (default ~/.liveshortly/pocket/liveshortly-pocket).
+  --agents-file loads additional local CLI adapters from a JSON file.
+  --tls-cert and --tls-key enable HTTPS. Use HTTPS for internet access.
+
 Leave it running; open the site and hit "+ New session".
 `
 
 type daemonOpts struct {
-	dirs []string
-	name string
+	dirs                                               []string
+	name                                               string
+	server                                             bool
+	key, listen, stateDir, tlsCert, tlsKey, agentsFile string
 }
 
 func parseDaemonFlags(args []string) (daemonOpts, error) {
 	var o daemonOpts
 	for i := 0; i < len(args); {
 		switch args[i] {
+		case "--server":
+			o.server = true
+			i++
+		case "--agents-file", "--key", "--listen", "--state-dir", "--tls-cert", "--tls-key":
+			if i+1 >= len(args) {
+				return o, fmt.Errorf("%s needs a value", args[i])
+			}
+			value := args[i+1]
+			switch args[i] {
+			case "--agents-file":
+				o.agentsFile = value
+			case "--key":
+				o.key = value
+			case "--listen":
+				o.listen = value
+			case "--state-dir":
+				o.stateDir = value
+			case "--tls-cert":
+				o.tlsCert = value
+			case "--tls-key":
+				o.tlsKey = value
+			}
+			i += 2
 		case "--dir":
 			if i+1 >= len(args) {
 				return o, fmt.Errorf("--dir needs a value")
@@ -116,6 +149,13 @@ func cmdDaemon(args []string) int {
 		return 2
 	}
 
+	if opts.server {
+		return cmdPocketServer(opts)
+	}
+	if opts.agentsFile != "" || opts.key != "" || opts.listen != "" || opts.stateDir != "" || opts.tlsCert != "" || opts.tlsKey != "" {
+		fmt.Fprintln(os.Stderr, "live: server flags require --server")
+		return 2
+	}
 	if _, err := auth.AccessToken(); err != nil {
 		if _, err := auth.DeviceLogin(); err != nil {
 			fmt.Fprintln(os.Stderr, "live:", err)
