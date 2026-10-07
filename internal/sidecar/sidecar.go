@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/liveshortly/live/internal/hostcfg"
 	"io"
 	"log"
 	"net"
@@ -393,7 +394,7 @@ func desktopNotify(webURL, sessionID string, comments []api.Comment) {
 	}
 	openURL := strings.TrimRight(webURL, "/") + "/session/" + sessionID
 	if webURL == "" || sessionID == "" {
-		openURL = "https://liveshortly.com"
+		openURL = hostcfg.WebURL()
 	}
 
 	switch runtime.GOOS {

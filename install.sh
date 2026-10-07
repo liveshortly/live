@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # live — one-command installer.
 #
-#     curl -fsSL https://liveshortly.com/i.sh | bash
+#     curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.sh | bash
 #
 # Downloads a prebuilt, checksum-verified binary for your platform, puts it on
-# your PATH, and signs you in. No Go toolchain, no source checkout, no build.
+# your PATH. Configure your own server separately. No Go toolchain, no source checkout, no build.
 # Idempotent — rerun it any time to update.
 #
 # Everything lives inside main(), invoked on the last line. A truncated download
@@ -12,16 +12,16 @@
 
 # Piped through plain `sh` on some systems? Everything below assumes bash.
 if [ -z "${BASH_VERSION:-}" ]; then
-  echo "[live-install] please pipe to bash:  curl -fsSL https://liveshortly.com/i.sh | bash" >&2
+  echo "[live-install] please pipe to bash:  curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.sh | bash" >&2
   exit 1
 fi
 set -euo pipefail
 
-# Where release assets are served from. GitHub Releases is the origin; the
-# LiveShortly web app mirrors the same filenames and is the fallback. The
-# version pointer always comes from the mirror (no API rate limit).
+# GitHub hosts release assets and the latest-version pointer. An operator may
+# explicitly opt into a flat mirror with LIVE_INSTALL_BASE.
 GH_BASE="${LIVE_GH_BASE:-https://github.com/liveshortly/live-dist/releases/download}"
-MIRROR_BASE="${LIVE_INSTALL_BASE:-https://liveshortly.com/install}"
+LATEST_URL="${LIVE_LATEST_URL:-https://github.com/liveshortly/live-dist/releases/latest/download/latest.txt}"
+MIRROR_BASE="${LIVE_INSTALL_BASE:-}"
 
 say()  { printf '\033[32m[live-install]\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[live-install]\033[0m %s\n' "$*" >&2; }
@@ -73,7 +73,8 @@ trap 'rm -rf "${LIVE_TMP:-}"' EXIT
 main() {
   local REQ_VERSION="${LIVE_VERSION:-}"
   local BIN_DIR="${LIVE_BIN_DIR:-}"
-  local NO_LOGIN="${LIVE_NO_LOGIN:-}"
+  # --no-login remains accepted for scripts written before self-hosting.
+  local DO_LOGIN=""
   local NO_MODIFY_PATH="${LIVE_NO_MODIFY_PATH:-}"
   local FROM_SOURCE="${LIVE_FROM_SOURCE:-}"
 
@@ -81,7 +82,8 @@ main() {
     case "$1" in
       --version) REQ_VERSION="${2:-}"; shift 2 ;;
       --bin-dir) BIN_DIR="${2:-}"; shift 2 ;;
-      --no-login) NO_LOGIN=1; shift ;;
+      --no-login) DO_LOGIN=""; shift ;;
+      --login) DO_LOGIN=1; shift ;;
       --no-modify-path) NO_MODIFY_PATH=1; shift ;;
       --from-source) FROM_SOURCE=1; shift ;;
       *) fail "unknown flag: $1" ;;
@@ -116,11 +118,14 @@ main() {
   # ── 2. Resolve the version ──────────────────────────────────────────────────
   local version="$REQ_VERSION"
   if [ -z "$version" ]; then
-    version="$(fetch "$MIRROR_BASE/latest.txt" - 2>/dev/null | tr -d '[:space:]')" \
+    local pointer="$LATEST_URL"
+    [ -z "$MIRROR_BASE" ] || pointer="$MIRROR_BASE/latest.txt"
+    version="$(fetch "$pointer" - 2>/dev/null | tr -d '[:space:]')" \
       || fail "could not resolve the latest version — check your network."
-    [ -n "$version" ] || fail "empty version pointer at $MIRROR_BASE/latest.txt"
+    [ -n "$version" ] || fail "empty version pointer at $pointer"
   fi
   version="v${version#v}"
+  [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid release version: $version"
 
   # ── 3. Download + verify ────────────────────────────────────────────────────
   local asset="live-$version-$os-$arch"
@@ -128,7 +133,9 @@ main() {
 
   say "downloading live $version ($os/$arch)"
   local ok=""
-  for base in "$GH_BASE/$version" "$MIRROR_BASE"; do
+  local sources=("$GH_BASE/$version")
+  [ -z "$MIRROR_BASE" ] || sources=("$MIRROR_BASE" "${sources[@]}")
+  for base in "${sources[@]}"; do
     if fetch "$base/$asset.sha256" "$tmp/sum" 2>/dev/null \
        && fetch "$base/$asset.gz" "$tmp/$asset.gz" 2>/dev/null; then
       ok=1; break
@@ -136,7 +143,7 @@ main() {
     warn "not available at $base — trying the next source"
   done
   [ -n "$ok" ] || fail "live $version is not published for $os/$arch.
-              See https://liveshortly.com/install/ for published versions."
+              See https://github.com/liveshortly/live-dist/releases for published versions."
 
   gzip -dc "$tmp/$asset.gz" > "$tmp/live" || fail "corrupt archive — aborting."
 
@@ -201,27 +208,20 @@ main() {
   command -v tmux >/dev/null 2>&1 \
     || say "tip: install tmux — required for 'live codex', and it gives 'live claude' clean permission popups."
 
-  # ── 5. Sign in (device flow opens your browser; no typing needed) ───────────
-  if [ -n "$NO_LOGIN" ]; then
-    say "skipping sign-in. Run: live login"
-  elif "$BIN_DIR/live" whoami >/dev/null 2>&1; then
-    say "already signed in: $("$BIN_DIR/live" whoami 2>/dev/null | head -1)"
-  elif interactive; then
-    say "signing in — approve the request in your browser"
-    # Read from the terminal, not stdin: stdin is the install script itself
-    # when this ran as `curl … | bash`.
-    "$BIN_DIR/live" login < /dev/tty
-  else
-    # Truly headless (CI/cron): a device flow nobody can approve would just
-    # hang forever. Tell them what to run instead.
-    say "non-interactive install — finish with: live login"
+  # Installation never contacts a session server unless explicitly requested.
+  if [ -n "$DO_LOGIN" ]; then
+    say "signing in to your configured self-hosted server"
+    if interactive; then "$BIN_DIR/live" login < /dev/tty
+    else "$BIN_DIR/live" login; fi
   fi
+  say "done. No hosted account is required to install."
+  say "Pocket: use a release with daemon --server support, or build main; see the setup guide."
+  say "Web sessions: configure ~/.liveshortly/host.json for your server, then run live login."
+  say "Setup: https://github.com/liveshortly/live#choose-your-server"
 
-  say "done. Try:  live claude"
-  say "permission control is on by default (tmux popup / session page) — disable with LIVE_WEB_PERMS=0"
 }
 
-# Developer escape hatch: build from a source checkout. Needs repo access.
+# Build from the public source checkout (requires Git and Go).
 build_from_source() {
   local req="$1"
   command -v git >/dev/null 2>&1 || fail "git is required — install it and rerun."
@@ -239,8 +239,8 @@ build_from_source() {
   else
     mkdir -p "$(dirname "$src")"
     say "cloning liveshortly/live → $src"
-    git clone --quiet git@github.com:liveshortly/live.git "$src" \
-      || fail "clone failed — liveshortly/live is private; check your GitHub SSH key."
+    git clone --quiet https://github.com/liveshortly/live.git "$src" \
+      || fail "clone failed — check repository availability and your network."
   fi
   [ -n "$req" ] && git -C "$src" checkout --quiet "$req"
 

@@ -4,6 +4,13 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## Unreleased
+
+- Document self-hosted Pocket daemon and browser-platform setup separately.
+- Install and update from GitHub Releases without a website mirror or automatic login.
+- Default new CLI configurations to the local single-origin web stack; preserve explicit host settings.
+- Remove the hosted website mirror/deployment from CLI releases.
+
 ## v2.1.2 — 2026-08-17
 
 - **`live agy` single permission gate parity with Claude & ephemeral plugin scoping**:

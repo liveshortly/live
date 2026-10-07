@@ -25,7 +25,7 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/live ./cmd/live
 FROM node:22-bookworm-slim
 
 # tmux: `live` drives the agent inside a tmux session. git + ca-certificates:
-# needed by claude-code and for TLS to api.anthropic.com / liveshortly.com.
+# needed by claude-code and for TLS to api.anthropic.com / your self-hosted server.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tmux git ca-certificates \
  && rm -rf /var/lib/apt/lists/*

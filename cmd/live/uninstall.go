@@ -90,7 +90,7 @@ func cmdUninstall(args []string) int {
 	}
 
 	fmt.Println("\ndone. reinstall any time:")
-	fmt.Println("  curl -fsSL https://liveshortly.com/install.sh | bash")
+	fmt.Println("  curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.sh | bash")
 	if !purge {
 		fmt.Println("\n(kept ~/.liveshortly — run `live uninstall --purge` to remove everything)")
 	}

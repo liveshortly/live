@@ -59,6 +59,7 @@ jobs:
       # error here is a broken install for everyone, and nothing else tests it.
       - run: shellcheck -S error install.sh
       - run: bash -n install.sh
+      - run: python3 scripts/test_install.py
 
       # release.yml hard-fails on a malformed VERSION *after* main has already
       # moved. Catch it on the PR instead.

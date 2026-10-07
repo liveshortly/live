@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/github/stars/liveshortly/live?style=flat-square&labelColor=1a1a1a&color=1f7a4d&label=stars" alt="Stars">
   <img src="https://img.shields.io/badge/works_with-claude_%C2%B7_gemini_%C2%B7_codex_%C2%B7_anything-1f7a4d?style=flat-square&labelColor=1a1a1a" alt="Works with any agent">
   <img src="https://img.shields.io/badge/built_with-Go-1f7a4d?style=flat-square&labelColor=1a1a1a&logo=go&logoColor=white" alt="Built with Go">
-  <a href="https://liveshortly.com"><img src="https://img.shields.io/badge/watch-liveshortly.com-1f7a4d?style=flat-square&labelColor=1a1a1a" alt="liveshortly.com"></a>
+  <img src="https://img.shields.io/badge/deploy-self--hosted-1f7a4d?style=flat-square" alt="Self-hosted">
 </p>
 
 <p align="center">
@@ -24,10 +24,12 @@
 </p>
 
 <p align="center">
-  <code>curl -fsSL https://liveshortly.com/i.sh | bash</code>
+  <code>curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.sh | bash</code>
 </p>
 
 ---
+
+After [configuring your server](#choose-your-server):
 
 ```bash
 live claude        # Claude Code — the full story: prompts, tools, diffs, replies
@@ -56,84 +58,113 @@ cool if…" and turned out to be pretty cool. 🙂
 - **It stays out of your way.** If the server's down or you're offline, your
   agent runs exactly like normal. Capture is best-effort; your work is not.
 
-## Getting it
-
-### The easy way
+## Install
 
 ```bash
-curl -fsSL https://liveshortly.com/i.sh | bash
+curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.sh | bash
 ```
 
-Downloads a prebuilt binary for your platform, checks it against its published
-SHA-256, drops `live` on your PATH, and pops open the browser to sign in. Run it
-again whenever you want to update. **No Go toolchain, no source checkout, no
-build** — it's one static binary.
+Installs a checksum-verified binary for macOS/Linux, arm64/amd64, from
+[GitHub Releases](https://github.com/liveshortly/live-dist/releases). No website,
+hosted account, Go toolchain, or automatic login is involved. To inspect the
+installer first, download that URL to a file and run it with `bash install.sh`.
 
-Binaries are published on every release for macOS and Linux, amd64 and arm64:
-[liveshortly/live-dist releases](https://github.com/liveshortly/live-dist/releases),
-mirrored at [liveshortly.com/install/](https://liveshortly.com/install/).
-
-If you'd rather not pipe curl into bash, grab the binary and its `.sha256` from
-either link, verify, `chmod +x`, and move it onto your PATH.
-
-### Homebrew, if that's your thing
+### Homebrew
 
 ```bash
-brew tap liveshortly/tap git@github.com:liveshortly/homebrew-tap.git
+brew tap liveshortly/tap
 brew install liveshortly/tap/live
+```
+
+### Build from source
+
+Install the Go version in `go.mod` (or use Go's automatic toolchain download):
+
+```bash
+git clone https://github.com/liveshortly/live.git
+cd live
+mkdir -p "$HOME/.local/bin"
+go build -o "$HOME/.local/bin/live" ./cmd/live
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Source builds use the current checkout; release downloads contain the most
+recently published version. The public source repository is the place to report
+issues and contribute changes. If the Homebrew tap is not yet publicly available,
+use the installer or build from source.
+
+### Updates
+
+```bash
+live update
+live update --version v2.1.2
+# Homebrew-managed installations:
+brew upgrade liveshortly/tap/live
+```
+
+The updater uses GitHub Releases independently of your session server. A server
+operator can set `LIVE_INSTALL_BASE=https://downloads.example.com/live` to use a
+flat mirror containing `latest.txt`, the `.gz` assets, and their `.sha256` files.
+For a GitHub-compatible release host, set `LIVE_GH_BASE` and `LIVE_LATEST_URL`.
+The installer accepts `--version`, `--bin-dir`, `--no-modify-path`, and
+`--from-source`. Login is opt-in with `--login`, after configuring your server;
+`--no-login` remains accepted for older scripts.
+
+## Choose your server
+
+LiveShortly is self-hosted. The former managed website is being retired; deploy
+one of these setups on infrastructure you control.
+
+### pocket.ai: standalone daemon
+
+The standalone daemon and GitHub-based `live update` changes are currently on
+`main`; until the next binary release, [build from source](#build-from-source)
+for these features. The installer itself already downloads directly from GitHub.
+
+Install and sign in to your chosen agent CLIs on the server, then:
+
+```bash
+export LIVE_POCKET_KEY="$(openssl rand -hex 32)"
+live daemon --server --dir /absolute/path/to/project
+```
+
+Keep the key for phone setup. In pocket.ai, select **LiveShortly**, enter the
+server address (for example `http://your-server.local:8787`) and the same key,
+then **Test connection**, select an agent/workspace, and save. The daemon listens
+on all interfaces by default. Use HTTPS or a private network for remote access.
+No web platform, Google login, Postgres, or Redis is needed for this mode.
+See [Standalone server for pocket.ai](#pocketai-support-in-live-daemon) for TLS,
+agent adapters, persistence, API routes and approval support.
+
+### Browser sessions: self-host the web platform
+
+Deploy [liveshortly-server](https://github.com/liveshortly/liveshortly-server)
+using its [self-hosting guide](https://github.com/liveshortly/liveshortly-server/blob/main/deploy/DEPLOY.md).
+It includes the web UI, API, Postgres, Redis, and a streaming-aware reverse proxy.
+Configure your own Google OAuth client to enable browser and CLI login.
+
+Then point the CLI at the same origin users open in their browser:
+
+```bash
+mkdir -p "$HOME/.liveshortly"
+cat > "$HOME/.liveshortly/host.json" <<'EOF'
+{"api_url":"https://live.example.com","web_url":"https://live.example.com"}
+EOF
 live login
+live whoami
+live claude
+# Register a machine for the web UI's session launcher:
+live daemon --dir /absolute/path/to/project
 ```
 
-Installs the same prebuilt binary as the curl installer — no Go, no compile. (The
-tap repo is still private, so your SSH key needs access; once it's public this is
-just `brew tap liveshortly/tap`.) Update later with `brew upgrade liveshortly/tap/live`.
-
-### Keeping it current
-
-Once it's installed, it updates itself:
-
-```bash
-live update                     # grab the latest
-live update --version v0.1.1    # or pin a specific one (yes, downgrades too)
-```
-
-Under the hood it pulls checksum-verified binaries from
-`https://liveshortly.com/install/` (one per platform, plus a `latest.txt`).
-Every release stays up there, so nothing you've pinned ever disappears. The
-installer takes the same pin if you prefer:
-
-```bash
-curl -fsSL https://liveshortly.com/i.sh | bash -s -- --version v1.0.1
-```
-
-### Or build it yourself
-
-The source repo is private; this needs access.
-
-```bash
-git clone git@github.com:liveshortly/live.git && cd live
-make install          # → /usr/local/bin/live
-live login            # browser sign-in
-live whoami           # make sure it took
-```
-
-Your login lives at `~/.liveshortly/credentials.json` (locked down to 0600)
-and refreshes on its own.
-
-### Point `live` at a local server
-
-`live` reads its endpoint from `~/.liveshortly/host.json`. Two make targets flip
-it:
-
-```bash
-make use-local        # → http://localhost:8080  (then: live login)
-make use-prod         # → https://liveshortly.com (then: live login)
-```
-
-`use-local` targets the **single-origin nginx** stack (`docker-compose.local.yml`
-in liveshortly-server, `:8080`) — not the base `:3000`/`:8000` split, whose
-Next.js proxy buffers SSE and never streams live events. Override the origin with
-`make use-local LOCAL_ORIGIN=http://host:port` if needed.
+For the local Compose stack, use `http://localhost:8080` for both URLs. A fresh
+CLI defaults to that origin. From a checkout, `make use-local` or
+`make use-server SERVER_ORIGIN=https://live.example.com` writes `host.json`.
+`host.json` takes precedence over `LIVESHORTLY_API_URL` / `LIVESHORTLY_WEB_URL`.
+Credentials in `~/.liveshortly/credentials.json` belong to one server; run
+`live login` again after changing servers. Update existing configurations that
+still point at the retired domain. Data and accounts from that service are not
+automatically transferred to a self-hosted installation.
 
 ### tmux 🪄
 
@@ -186,7 +217,7 @@ live -- ./scripts/deploy.sh       # anything at all; `--` ends live's flags
 When it starts you'll see your link:
 
 ```
-● live streaming → https://liveshortly.com/session/<id>
+● live streaming → https://live.example.com/session/<id>
 ```
 
 When it exits, it wraps up the session and prints the replay link. Your
@@ -417,7 +448,7 @@ useful to hear. 🚀
 ---
 
 <p align="center">
-  <sub>Made with 💚 by <a href="https://x.com/ironfisto/">@ironfisto</a> &middot; <a href="https://x.com/sec_r0">@sec_r0</a> &nbsp;·&nbsp; <a href="https://liveshortly.com">liveshortly.com</a></sub>
+  <sub>Made with 💚 by <a href="https://x.com/ironfisto/">@ironfisto</a> &middot; <a href="https://x.com/sec_r0">@sec_r0</a> &nbsp;·&nbsp; <a href="https://github.com/liveshortly/live">GitHub</a></sub>
 </p>
 
 ## pocket.ai support in live daemon

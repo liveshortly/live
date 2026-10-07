@@ -13,12 +13,10 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/liveshortly/live/internal/hostcfg"
 )
 
 // cmdUpdate implements `live update [--version vX.Y.Z]`: self-update from the
-// release binaries published under <web>/install/ (see Makefile `publish`).
+// release binaries published on GitHub, or an explicitly configured flat mirror.
 // Without --version it upgrades to latest.txt; with it, any published version
 // can be installed, including downgrades.
 func cmdUpdate(args []string) {
@@ -43,7 +41,7 @@ func cmdUpdate(args []string) {
 
 	target := requested
 	if target == "" {
-		latest, err := fetchString(hc, base+"/latest.txt")
+		latest, err := fetchString(hc, latestReleaseURL())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "live: could not resolve latest version: %v\n", err)
 			os.Exit(1)
@@ -69,6 +67,9 @@ func cmdUpdate(args []string) {
 		fmt.Fprintln(os.Stderr, "note: this copy is managed by Homebrew — `brew upgrade liveshortly/tap/live` is the cleaner path. Continuing anyway.")
 	}
 
+	if strings.TrimSpace(os.Getenv("LIVE_INSTALL_BASE")) == "" {
+		base += "/" + target
+	}
 	asset := fmt.Sprintf("live-%s-%s-%s", target, runtime.GOOS, runtime.GOARCH)
 	fmt.Printf("downloading %s …\n", asset)
 
@@ -111,7 +112,12 @@ func cmdUpdate(args []string) {
 	}
 	tmp.Close()
 
-	if got := hex.EncodeToString(sum.Sum(nil)); got != strings.Fields(wantSum)[0] {
+	fields := strings.Fields(wantSum)
+	if len(fields) != 1 || len(fields[0]) != 64 {
+		fmt.Fprintln(os.Stderr, "live: invalid release checksum")
+		os.Exit(1)
+	}
+	if got := hex.EncodeToString(sum.Sum(nil)); got != fields[0] {
 		fmt.Fprintf(os.Stderr, "live: checksum mismatch (got %s, want %s) — aborting\n", got, wantSum)
 		os.Exit(1)
 	}
@@ -139,7 +145,10 @@ func installBase() string {
 	if v := strings.TrimSpace(os.Getenv("LIVE_INSTALL_BASE")); v != "" {
 		return strings.TrimRight(v, "/")
 	}
-	return hostcfg.WebURL() + "/install"
+	if v := strings.TrimSpace(os.Getenv("LIVE_GH_BASE")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return "https://github.com/liveshortly/live-dist/releases/download"
 }
 
 func fetchString(hc *http.Client, url string) (string, error) {
@@ -160,4 +169,14 @@ func fetchString(hc *http.Client, url string) (string, error) {
 		return "", fmt.Errorf("empty response from %s", url)
 	}
 	return s, nil
+}
+
+func latestReleaseURL() string {
+	if v := strings.TrimSpace(os.Getenv("LIVE_INSTALL_BASE")); v != "" {
+		return strings.TrimRight(v, "/") + "/latest.txt"
+	}
+	if v := strings.TrimSpace(os.Getenv("LIVE_LATEST_URL")); v != "" {
+		return v
+	}
+	return "https://github.com/liveshortly/live-dist/releases/latest/download/latest.txt"
 }

@@ -46,5 +46,5 @@ The published image carries no secrets; sharing it just shares the tooling.
 - **No `--read-only` rootfs** — agents write under `$HOME`/`/tmp`. Add tmpfs maps
   to enable it when hardening.
 - **No egress firewall** — container can reach any host. Restrict to
-  `api.anthropic.com` + `liveshortly.com` with a network policy if untrusted.
+  `api.anthropic.com` + your self-hosted server with a network policy if untrusted.
 - **claude-only** — codex needs its CLI added to the image and a creds path.

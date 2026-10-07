@@ -6,7 +6,6 @@ package hostcfg
 
 import (
 	"encoding/json"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,21 +33,11 @@ func loadHost() hostFile {
 	return h
 }
 
-// DefaultAPIURL is the hosted service. `live` is a consumer deliverable, so it
-// must reach production by default; devs target a local stack with a host.json
-// or LIVESHORTLY_API_URL.
-const DefaultAPIURL = "https://liveshortly.com"
+// DefaultAPIURL is the single-origin self-hosted web stack. Explicit host.json
+// settings still win over shell environment variables during migration.
+const DefaultAPIURL = "http://localhost:8080"
 
-// APIURL returns the API base URL. Order: host.json, then LIVESHORTLY_API_URL,
-// then the hosted default.
-//
-// host.json deliberately wins. It is the explicit, tool-managed switch — `make
-// use-local` / `make use-prod` write it — whereas LIVESHORTLY_API_URL is
-// commonly left exported in a shell profile from some earlier debugging
-// session. v1.3.0 inverted this, and a stale `export
-// LIVESHORTLY_API_URL=http://localhost:8000` in a .zshrc silently redirected
-// every `live` command away from the production host.json the user had chosen —
-// including token refresh, which then 401'd against the wrong server.
+// APIURL returns the configured API origin: host.json, environment, local stack.
 func APIURL() string {
 	if h := loadHost(); h.APIURL != "" {
 		return strings.TrimRight(h.APIURL, "/")
@@ -59,9 +48,8 @@ func APIURL() string {
 	return DefaultAPIURL
 }
 
-// WebURL returns the base URL for shareable session links. Falls back to the
-// API origin when nothing names a web URL and the API isn't localhost
-// (production serves both on one domain). host.json wins, as in APIURL.
+// WebURL returns the explicit browser origin, or the API origin for a
+// single-origin self-hosted installation. host.json wins, as in APIURL.
 func WebURL() string {
 	if h := loadHost(); h.WebURL != "" {
 		return strings.TrimRight(h.WebURL, "/")
@@ -71,11 +59,7 @@ func WebURL() string {
 			return strings.TrimRight(v, "/")
 		}
 	}
-	api := APIURL()
-	if u, err := url.Parse(api); err == nil && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" {
-		return api
-	}
-	return "http://localhost:3000"
+	return APIURL()
 }
 
 // CredPath returns the credentials file path (shared with the plugin).

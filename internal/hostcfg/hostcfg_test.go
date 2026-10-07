@@ -26,15 +26,15 @@ func writeHostFile(t *testing.T, body string) {
 // a stale export in a .zshrc silently redirected every command — including token
 // refresh — away from the production host the user had configured.
 func TestHostFileOverridesEnv(t *testing.T) {
-	writeHostFile(t, `{"api_url":"https://liveshortly.com","web_url":"https://liveshortly.com"}`)
+	writeHostFile(t, `{"api_url":"https://live.example.test","web_url":"https://live.example.test"}`)
 
 	t.Setenv("LIVESHORTLY_API_URL", "http://localhost:8000/")
 	t.Setenv("LIVESHORTLY_WEB_URL", "http://localhost:3000/")
 
-	if got := APIURL(); got != "https://liveshortly.com" {
+	if got := APIURL(); got != "https://live.example.test" {
 		t.Errorf("APIURL = %q, want the host.json value — a stale env export must not hijack it", got)
 	}
-	if got := WebURL(); got != "https://liveshortly.com" {
+	if got := WebURL(); got != "https://live.example.test" {
 		t.Errorf("WebURL = %q, want the host.json value", got)
 	}
 }
@@ -67,9 +67,8 @@ func TestHostFileUsedWhenEnvUnset(t *testing.T) {
 	}
 }
 
-// With nothing configured at all, live must reach production — it ships to
-// consumers, so a missing config file is not a reason to talk to localhost.
-func TestDefaultsToProduction(t *testing.T) {
+// A fresh install must not contact the retired hosted service.
+func TestDefaultsToSelfHostedStack(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LIVESHORTLY_API_URL", "")
 	t.Setenv("LIVESHORTLY_WEB_URL", "")

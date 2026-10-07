@@ -4,27 +4,9 @@ name: release
 # in VERSION does not exist yet, this builds it, tags it, and publishes it.
 # Bumping VERSION *is* the release. Any other push to main is a no-op.
 #
-# What one release does, in order:
-#   1. tag       vX.Y.Z on this repo
-#   2. live-dist publish a GitHub Release with the four platform binaries
-#   3. mirror    commit the same binaries + latest.txt + the installer into
-#                liveshortly-server, whose own deploy workflow then serves them
-#                at liveshortly.com/install/ and liveshortly.com/i.sh
-#   4. tap       bump homebrew-tap's formula to the new urls + .gz checksums
-#
-# Why live-dist exists: this repo is private, and release assets on a private
-# repo require an auth token to download — which would break `curl … | bash` for
-# anyone outside the org. live-dist carries no source, only release assets.
-#
-# Requires one repo secret:
-#   RELEASE_TOKEN — a fine-grained PAT owned by the `liveshortly` org, with
-#                   Contents: read+write on live-dist, liveshortly-server, and
-#                   homebrew-tap. A fine-grained PAT is scoped to a resource
-#                   OWNER, so a token issued against another org will not work.
-#
-# The tag is pushed with GITHUB_TOKEN, which deliberately does not trigger other
-# workflows. The mirror commit is pushed with RELEASE_TOKEN precisely so that it
-# DOES trigger liveshortly-server's deploy.
+# Publishes platform binaries and latest.txt on live-dist, then updates the tap.
+# No website deployment or website-hosted mirror is required.
+# RELEASE_TOKEN needs Contents: read+write on live-dist and homebrew-tap.
 
 on:
   push:
@@ -81,7 +63,6 @@ jobs:
       VERSION: v${{ needs.gate.outputs.version }}
       BARE_VERSION: ${{ needs.gate.outputs.version }}
       DIST_REPO: liveshortly/live-dist
-      SERVER_REPO: liveshortly/liveshortly-server
       TAP_REPO: liveshortly/homebrew-tap
     steps:
       - uses: actions/checkout@v4
@@ -134,40 +115,26 @@ jobs:
 
           Install:
 
-              curl -fsSL https://liveshortly.com/i.sh | bash
+              curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.sh | bash
 
           Each binary has a matching \`.sha256\` of the *uncompressed* binary; the installer verifies it before installing."
           gh release upload "$VERSION" -R "$DIST_REPO" --clobber dist/*.gz dist/*.sha256 dist/latest.txt
 
-      # The mirror is cumulative: old versions stay installable. Pushed with
-      # RELEASE_TOKEN so liveshortly-server's deploy workflow actually fires.
-      - name: Mirror to liveshortly-server
+      - name: Update the public installer
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
-          git clone --depth 1 \
-            "https://x-access-token:${GH_TOKEN}@github.com/${SERVER_REPO}.git" server
-          install_dir=server/web/public/install
-          mkdir -p "$install_dir"
-          cp dist/*.gz dist/*.sha256 "$install_dir/"
-          echo "$VERSION" > "$install_dir/latest.txt"
-
-          # install.sh is the source of truth; /i.sh is served as a short alias
-          # and must stay byte-identical to it.
-          cp install.sh server/web/public/install.sh
-          cp install.sh server/web/public/i.sh
-
-          cd server
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "mirror already current — nothing to commit"
-            exit 0
-          fi
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "chore(install): publish live $VERSION to the mirror"
-          git push origin HEAD:main
+          gh api "repos/$DIST_REPO/contents/install.sh" --jq .sha > dist/installer.sha
+          python3 - <<'PYTHON'
+          import base64, json, pathlib
+          body = {"message": "Update installer for self-hosted live",
+                  "sha": pathlib.Path("dist/installer.sha").read_text().strip(),
+                  "content": base64.b64encode(pathlib.Path("install.sh").read_bytes()).decode()}
+          pathlib.Path("dist/installer-request.json").write_text(json.dumps(body))
+          PYTHON
+          gh api --method PUT "repos/$DIST_REPO/contents/install.sh" \
+            --input dist/installer-request.json > /dev/null
 
       - name: Bump the Homebrew formula
         env:
