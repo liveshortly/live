@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -293,5 +294,41 @@ func TestCanSubmitCommentsIsAllowlisted(t *testing.T) {
 		if canSubmitComments(bin) {
 			t.Errorf("canSubmitComments(%q) = true — viewer text must not be typed into an arbitrary agent", bin)
 		}
+	}
+}
+
+// TestTmuxPaneStatusLivePane guards the headless/web-spawned path: tmux reports
+// an EMPTY #{pane_exit_status} for a still-running pane, so the format yields a
+// single field ("0 "). Reading that as an error made attachOrWait tear the
+// session down the instant it started. A live pane must parse as not-dead.
+func TestTmuxPaneStatus(t *testing.T) {
+	cases := []struct {
+		name     string
+		output   string // what `tmux list-panes -F ...` prints
+		wantDead bool
+		wantCode int
+		wantErr  bool
+	}{
+		{"live pane (empty exit status)", "0 \n", false, 0, false},
+		{"dead pane, exit 0", "1 0\n", true, 0, false},
+		{"dead pane, exit 137", "1 137\n", true, 137, false},
+		{"empty output", "\n", false, 0, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fake := func(args ...string) *exec.Cmd {
+				return exec.Command("printf", "%s", c.output)
+			}
+			code, dead, err := tmuxPaneStatus(fake, "sess")
+			if (err != nil) != c.wantErr {
+				t.Fatalf("err = %v, wantErr = %v", err, c.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			if dead != c.wantDead || code != c.wantCode {
+				t.Errorf("got (code=%d dead=%v), want (code=%d dead=%v)", code, dead, c.wantCode, c.wantDead)
+			}
+		})
 	}
 }

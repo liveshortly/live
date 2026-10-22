@@ -11,6 +11,17 @@ Homebrew formula and `live version` report.
 - Default new CLI configurations to the local single-origin web stack; preserve explicit host settings.
 - Remove the hosted website mirror/deployment from CLI releases.
 
+## v2.1.3 — 2026-10-22
+
+- **Fix: web-spawned / headless sessions ended instantly with no agent attached.**
+  `tmuxPaneStatus` parsed `tmux list-panes -F "#{pane_dead} #{pane_exit_status}"`
+  assuming two fields, but a live pane reports an empty `#{pane_exit_status}`
+  (one field, `"0 "`). That was treated as an error, so `attachOrWait` tore the
+  session down the moment it started. Only the headless path (`live daemon`
+  web-started sessions) was affected — interactive runs use `tmux attach-session`
+  and never hit this. Parse `pane_dead` first; read the exit code only once the
+  pane has actually exited.
+
 ## v2.1.2 — 2026-08-17
 
 - **`live agy` single permission gate parity with Claude & ephemeral plugin scoping**:
