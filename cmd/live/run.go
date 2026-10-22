@@ -692,12 +692,20 @@ func tmuxPaneStatus(tmux func(args ...string) *exec.Cmd, sess string) (exitCode 
 	if err != nil {
 		return 0, false, err
 	}
+	// A LIVE pane reports an EMPTY #{pane_exit_status} (tmux only fills it once
+	// the pane's process exits), so the format yields just "0 " — one field, not
+	// two. Parse pane_dead first and read the exit code only when it is present;
+	// treating the one-field live case as an error made attachOrWait tear the
+	// session down the instant it started (headless/web-spawned sessions only).
 	parts := strings.Fields(string(out))
-	if len(parts) < 2 {
+	if len(parts) == 0 {
 		return 0, false, fmt.Errorf("unexpected pane status %q", out)
 	}
-	code, _ := strconv.Atoi(parts[1])
-	return code, parts[0] == "1", nil
+	dead = parts[0] == "1"
+	if len(parts) >= 2 {
+		exitCode, _ = strconv.Atoi(parts[1])
+	}
+	return exitCode, dead, nil
 }
 
 // pinnedEnvKeys are the variables a captured tmux session must carry from THIS
