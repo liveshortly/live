@@ -390,6 +390,11 @@ type SpawnCommand struct {
 	// choice from the list this machine registered, not a free-form argument —
 	// the daemon re-checks it against a fresh `ollama list`.
 	Model string `json:"model,omitempty"`
+	// BypassPermissions is the owner's request to run the agent unattended:
+	// no web permission probes from live, and the agent's own prompt flag
+	// (claude --dangerously-skip-permissions / gemini --yolo) where one exists.
+	// It is a boolean the daemon maps to KNOWN flags — never a free-form arg.
+	BypassPermissions bool `json:"bypass_permissions,omitempty"`
 }
 
 // ErrHostStreamUnsupported means the server predates GET /api/hosts/{id}/stream.

@@ -341,7 +341,24 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cmd
 		agentArgs = []string{"run", model}
 	}
 
-	child := exec.Command(self, append([]string{"--attach", cmd.SessionID, bin}, agentArgs...)...)
+	// Owner-requested permission bypass. The spawn came from the owner's own
+	// account targeting their own machine, so this is equivalent to them
+	// running `claude --dangerously-skip-permissions` locally: live's web
+	// permission probes turn off (--no-permissions) and the agent's own
+	// prompts are skipped via its documented flag where one exists. The
+	// boolean maps to fixed flags here — nothing from the wire is forwarded.
+	liveArgs := []string{"--attach", cmd.SessionID}
+	if cmd.BypassPermissions {
+		liveArgs = append(liveArgs, "--no-permissions")
+		switch cmd.Agent {
+		case "claude":
+			agentArgs = append(agentArgs, "--dangerously-skip-permissions")
+		case "gemini":
+			agentArgs = append(agentArgs, "--yolo")
+		}
+	}
+
+	child := exec.Command(self, append(append(liveArgs, bin), agentArgs...)...)
 	child.Dir = cwd
 	child.Env = os.Environ()
 	child.Stdin = nil // no tty — this is what selects the headless path
