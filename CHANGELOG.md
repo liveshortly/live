@@ -6,6 +6,16 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.2.0 — 2026-10-23
+
+### Added
+- Web-spawned sessions can run **unattended**: the spawn command's new
+  `bypass_permissions` boolean makes the daemon start the agent with
+  `live --no-permissions` plus the agent's own bypass flag
+  (`claude --dangerously-skip-permissions`, `gemini --yolo`), so an
+  owner-started session raises no permission probes. The boolean is mapped to
+  these fixed flags in the daemon — nothing from the wire reaches the argv.
+
 - Document self-hosted Pocket daemon and browser-platform setup separately.
 - Install and update from GitHub Releases without a website mirror or automatic login.
 - Default new CLI configurations to the local single-origin web stack; preserve explicit host settings.
