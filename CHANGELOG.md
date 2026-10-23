@@ -6,6 +6,15 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.2.1 — 2026-10-23
+
+### Fixed
+- Web-spawned sessions with `bypass_permissions` ended the instant they were
+  created: `--no-permissions` also dropped tmux mode, so the headless child ran
+  claude with no terminal and it exited immediately. Headless runs now keep the
+  tmux pane regardless of permission gating, and the claude settings follow the
+  resolved gating (no permission hook installed on a bypassed run).
+
 ## v2.2.0 — 2026-10-23
 
 ### Added

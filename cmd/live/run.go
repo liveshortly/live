@@ -314,7 +314,13 @@ func cmdRun(args []string) int {
 	// otherwise, on a pure default (no LIVE_* set), fall back to Claude's
 	// native terminal prompts rather than stranding a solo keyboard user on
 	// web-only. Explicit LIVE_WEB_PERMS=1 forces web-only even without tmux.
-	tmuxMode := webPerms && tmuxWanted && hooks && hasTmux
+	//
+	// A HEADLESS run (web-spawned: stdin is not a tty) needs tmux regardless of
+	// permission gating — the pane is what hosts the agent at all, and
+	// attachOrWait is what keeps the session alive. Dropping tmux just because
+	// permissions were bypassed ran claude with no terminal, which exited
+	// instantly and archived the session the moment it was created.
+	tmuxMode := (webPerms || headless()) && tmuxWanted && hooks && hasTmux
 	if webPerms && hooks && !tmuxMode && !hasTmux {
 		fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m no tmux — approve tool runs from the session page (install tmux for in-terminal popups)\n\n")
 	}
@@ -421,7 +427,10 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 			agentArgs = append([]string{"--dangerously-skip-permissions"}, agentArgs...)
 		}
 	} else {
-		settings, cleanup, err := adapter.WriteClaudeSettings(self, true)
+		// Permission hooks follow the resolved gating, not the tmux choice: a
+		// bypassed run (sc.WebPermissions=false) still captures events but must
+		// not re-gate tools the agent was explicitly told to skip.
+		settings, cleanup, err := adapter.WriteClaudeSettings(self, sc.WebPermissions)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "live: %v\n", err)
 			return 1
