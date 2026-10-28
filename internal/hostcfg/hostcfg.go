@@ -92,3 +92,10 @@ func HandoffDir() string {
 func HostIDPath() string {
 	return filepath.Join(home(), ".liveshortly", "host_id")
 }
+
+// AgentsPath is the optional adapter file listing extra agent harnesses this
+// machine can run (see cmd/live/agents.go). Absent on most machines, where the
+// probed builtins are enough.
+func AgentsPath() string {
+	return filepath.Join(home(), ".liveshortly", "agents.json")
+}

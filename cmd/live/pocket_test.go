@@ -241,11 +241,11 @@ func TestPocketDiscoveryAndCustomAdapters(t *testing.T) {
 	}
 	config := filepath.Join(dir, "agents.json")
 	os.WriteFile(config, []byte(`[{"name":"my-agent","command":"custom-cli","args":[]}]`), 0600)
-	adapters, err := loadPocketAgentCommands(config)
+	adapters, err := loadAgentCommands(config)
 	if err != nil {
 		t.Fatal(err)
 	}
-	agents := discoverPocketAgents(adapters)
+	agents := discoverAgents(pocketBuiltins, adapters)
 	if strings.Join(agents, ",") != "codex,agy,ollama,my-agent" {
 		t.Fatal(agents)
 	}
