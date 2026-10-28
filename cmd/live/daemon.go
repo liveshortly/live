@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"syscall"
@@ -253,8 +254,15 @@ func cmdDaemon(args []string) int {
 		}
 
 		err := client.HostStream(ctx, hostID, func(cmd api.SpawnCommand) {
-			if err := spawnSession(client, self, reg, cmd); err != nil {
-				fmt.Fprintf(os.Stderr, "\x1b[31m● live\x1b[0m spawn refused: %v\n", err)
+			switch cmd.Type {
+			case "spawn":
+				if err := spawnSession(client, self, reg, cmd); err != nil {
+					fmt.Fprintf(os.Stderr, "\x1b[31m● live\x1b[0m spawn refused: %v\n", err)
+				}
+			case "set_model":
+				if err := setSessionModel(cmd); err != nil {
+					fmt.Fprintf(os.Stderr, "\x1b[31m● live\x1b[0m model switch refused: %v\n", err)
+				}
 			}
 		})
 		switch {
@@ -327,6 +335,11 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cmd
 	// the same trust boundary the directory check enforces, and a model can be
 	// removed while the daemon is running.
 	agentArgs := []string{}
+	// claude takes an optional model ALIAS from the fixed allowlist. Anything
+	// unknown is ignored (the alias list is the trust boundary, not the wire).
+	if cmd.Agent == "claude" && claudeModelAliases[strings.TrimSpace(cmd.Model)] {
+		agentArgs = append(agentArgs, "--model", strings.TrimSpace(cmd.Model))
+	}
 	if cmd.Agent == "ollama" {
 		model := strings.TrimSpace(cmd.Model)
 		if model == "" {
@@ -653,4 +666,48 @@ func nextBackoff(d time.Duration) time.Duration {
 		return 30 * time.Second
 	}
 	return d
+}
+
+// claudeModelAliases is the fixed set of model aliases a web command may hand
+// to claude — the same allowlist the server enforces; re-checked here because
+// the server is not this process's trust boundary.
+var claudeModelAliases = map[string]bool{
+	"sonnet": true,
+	"opus":   true,
+	"haiku":  true,
+}
+
+// sessionIDRe bounds a session id to the UUID alphabet before it is used in a
+// tmux target name.
+var sessionIDRe = regexp.MustCompile(`^[a-f0-9-]{8,64}$`)
+
+// setSessionModel types `/model <alias>` into the session's tmux pane — the
+// same slash command the operator would use in the terminal. The alias comes
+// from a fixed allowlist and the session id from the UUID alphabet, so nothing
+// free-form from the wire reaches tmux. A session this machine does not host
+// simply has no matching tmux session, and the send fails quietly.
+func setSessionModel(cmd api.SpawnCommand) error {
+	id := strings.TrimSpace(cmd.SessionID)
+	model := strings.TrimSpace(cmd.Model)
+	if !sessionIDRe.MatchString(id) {
+		return fmt.Errorf("invalid session id")
+	}
+	if !claudeModelAliases[model] {
+		return fmt.Errorf("unknown model alias %q", model)
+	}
+	target := "live-" + id[:8]
+	// The pane may be on another of the owner's machines: not an error worth
+	// ending anything over — just report and move on.
+	if err := exec.Command("tmux", "-L", tmuxSocket, "has-session", "-t", target).Run(); err != nil {
+		return fmt.Errorf("session %s is not hosted on this machine", id[:8])
+	}
+	// Literal text first (-l so "/model" is not interpreted), then Enter.
+	if err := exec.Command("tmux", "-L", tmuxSocket, "send-keys", "-t", target, "-l", "/model "+model).Run(); err != nil {
+		return fmt.Errorf("could not type into the session pane: %v", err)
+	}
+	if err := exec.Command("tmux", "-L", tmuxSocket, "send-keys", "-t", target, "Enter").Run(); err != nil {
+		return fmt.Errorf("could not submit the model switch: %v", err)
+	}
+	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m switched %s to /model %s\n", id[:8], model)
+	return nil
 }
