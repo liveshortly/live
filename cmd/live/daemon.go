@@ -32,7 +32,8 @@ import (
 // daemon trusts the server for NOTHING beyond "the owner asked for this":
 //
 //   - The command line is built here. The server sends an agent NAME; anything
-//     outside spawnableAgents is dropped.
+//     this process did not itself register and resolve on this machine's PATH
+//     is dropped (see agents.go for how that set is built).
 //   - The directory must be one THIS process registered at startup. The server
 //     checks too, but that check is a courtesy — this one is the defense.
 //   - ollama additionally carries a MODEL name, because `ollama run` is
@@ -42,13 +43,11 @@ import (
 //     line — it can only choose from what this machine already has.
 //   - Nothing from the command is ever passed to a shell.
 //
-// The blast radius is therefore exactly: run one of four known agents, in one
-// of the directories the operator named on the command line, and for ollama
-// against a model already pulled on this machine.
-
-// spawnableAgents is the closed set of agents a spawn command may name. Keep in
-// step with the server's allowlist in handlers/hosts.go.
-var spawnableAgents = []string{"claude", "agy", "antigravity", "codex", "gemini", "ollama"}
+// The blast radius is therefore exactly: run one of the agents THIS machine
+// registered at startup, in one of the directories the operator named on the
+// command line, and for ollama against a model already pulled on this machine.
+// Widening the set of agent names (agents.json) does not widen that radius —
+// the operator declares the set, exactly as they declare --dir.
 
 const daemonUsage = `live daemon — let this machine start sessions from the web
 
@@ -60,6 +59,14 @@ Usage:
                   place a web-started session can run — nothing else on this
                   machine is reachable.
   --name <label>  How this machine appears in the picker (default: hostname).
+  --agents-file   Extra agent harnesses this machine can run, as JSON
+                  (default: ~/.liveshortly/agents.json, optional).
+
+Agents: every harness on PATH that live knows by name is offered automatically.
+For anything else — a different name, a path, a fixed argv prefix — list it:
+
+  [{"name": "hermes"},
+   {"name": "pi", "command": "pi.dev", "args": ["chat"]}]
 
 Standalone Pocket server (no web login required):
   live daemon --server --key <key> --dir /path/to/project
@@ -153,7 +160,7 @@ func cmdDaemon(args []string) int {
 	if opts.server {
 		return cmdPocketServer(opts)
 	}
-	if opts.agentsFile != "" || opts.key != "" || opts.listen != "" || opts.stateDir != "" || opts.tlsCert != "" || opts.tlsKey != "" {
+	if opts.key != "" || opts.listen != "" || opts.stateDir != "" || opts.tlsCert != "" || opts.tlsKey != "" {
 		fmt.Fprintln(os.Stderr, "live: server flags require --server")
 		return 2
 	}
@@ -173,7 +180,15 @@ func cmdDaemon(args []string) int {
 		opts.dirs = []string{filepath.Clean(wd)}
 	}
 
-	agents := availableAgents()
+	// The operator's adapter file, if they have one. A file that exists but
+	// does not parse stops startup: dropping agents silently would leave them
+	// wondering why the picker is short.
+	custom, err := loadAgentCommands(opts.agentsFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "live:", err)
+		return 2
+	}
+	agents := discoverAgents(spawnableBuiltins, custom)
 	// ollama with no models pulled cannot be spawned — `ollama run` needs one —
 	// so drop it rather than advertise a target that would fail on click.
 	models := availableModels()
@@ -181,8 +196,9 @@ func cmdDaemon(args []string) int {
 		agents = without(agents, "ollama")
 	}
 	if len(agents) == 0 {
-		fmt.Fprintf(os.Stderr, "live: none of %s are installed — nothing to spawn\n",
-			strings.Join(spawnableAgents, ", "))
+		fmt.Fprintln(os.Stderr, "live: no agent harness found on PATH — nothing to spawn")
+		fmt.Fprintf(os.Stderr, "      looked for: %s\n", strings.Join(spawnableBuiltins, ", "))
+		fmt.Fprintf(os.Stderr, "      anything else: list it in %s\n", hostcfg.AgentsPath())
 		return 1
 	}
 
@@ -256,7 +272,7 @@ func cmdDaemon(args []string) int {
 		err := client.HostStream(ctx, hostID, func(cmd api.SpawnCommand) {
 			switch cmd.Type {
 			case "spawn":
-				if err := spawnSession(client, self, reg, cmd); err != nil {
+				if err := spawnSession(client, self, reg, custom, cmd); err != nil {
 					fmt.Fprintf(os.Stderr, "\x1b[31m● live\x1b[0m spawn refused: %v\n", err)
 				}
 			case "set_model":
@@ -291,7 +307,7 @@ func cmdDaemon(args []string) int {
 // Every rejection ends the session server-side: the web is already showing a
 // session page, and leaving it waiting forever for an agent that will never
 // attach is worse than showing it ended.
-func spawnSession(client *api.Client, self string, reg api.HostRegistration, cmd api.SpawnCommand) error {
+func spawnSession(client *api.Client, self string, reg api.HostRegistration, custom map[string]agentCommand, cmd api.SpawnCommand) error {
 	fail := func(format string, a ...any) error {
 		err := fmt.Errorf(format, a...)
 		if cmd.SessionID != "" {
@@ -303,14 +319,27 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cmd
 	if cmd.SessionID == "" {
 		return fmt.Errorf("spawn command carried no session id")
 	}
-	// Re-check the agent locally: the server's allowlist is not this process's
-	// trust boundary.
+	// Re-check the agent locally: the server's validation is not this process's
+	// trust boundary. The name must be one THIS process registered, and the
+	// executable it maps to is resolved here — the wire never carries a path.
 	if !contains(reg.Agents, cmd.Agent) {
 		return fail("agent %q is not offered by this machine", cmd.Agent)
 	}
-	bin, err := exec.LookPath(cmd.Agent)
+	command, fixedArgs := cmd.Agent, []string(nil)
+	if def, ok := custom[cmd.Agent]; ok {
+		command = def.Command
+		// {prompt} is a Pocket (one-shot) substitution; an interactive session
+		// has no prompt to put there, so those args are left out rather than
+		// passed through with the placeholder intact.
+		for _, a := range def.Args {
+			if !strings.Contains(a, "{prompt}") {
+				fixedArgs = append(fixedArgs, a)
+			}
+		}
+	}
+	bin, err := exec.LookPath(command)
 	if err != nil {
-		return fail("%s is not on PATH anymore", cmd.Agent)
+		return fail("%s is not on PATH anymore", command)
 	}
 	// Re-check the directory locally, after cleaning — this is the check that
 	// actually bounds what a compromised web session could reach.
@@ -334,7 +363,7 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cmd
 	// the registration we sent (or anything the server echoed back): this is
 	// the same trust boundary the directory check enforces, and a model can be
 	// removed while the daemon is running.
-	agentArgs := []string{}
+	agentArgs := append([]string{}, fixedArgs...)
 	// claude takes an optional model ALIAS from the fixed allowlist. Anything
 	// unknown is ignored (the alias list is the trust boundary, not the wire).
 	if cmd.Agent == "claude" && claudeModelAliases[strings.TrimSpace(cmd.Model)] {
@@ -513,17 +542,6 @@ func sidecarAlive(addr string) bool {
 		}
 	}
 	return false
-}
-
-// availableAgents reports which spawnable agents are actually installed here.
-func availableAgents() []string {
-	var out []string
-	for _, a := range spawnableAgents {
-		if _, err := exec.LookPath(a); err == nil {
-			out = append(out, a)
-		}
-	}
-	return out
 }
 
 // maxSpawnableModels bounds what a machine advertises, so a host with a large

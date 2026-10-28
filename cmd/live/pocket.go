@@ -99,7 +99,7 @@ func cmdPocketServer(o daemonOpts) int {
 		return 1
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	custom, err := loadPocketAgentCommands(o.agentsFile)
+	custom, err := loadAgentCommands(o.agentsFile)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "live:", err)
 		return 2
@@ -109,7 +109,7 @@ func cmdPocketServer(o daemonOpts) int {
 		name, _ = os.Hostname()
 	}
 	s := &pocketServer{name: name, key: o.key, stateDir: o.stateDir, dirs: o.dirs, sessions: map[string]*pocketSession{}}
-	s.discover = func() ([]string, []string) { return discoverPocketAgents(custom), availableModels() }
+	s.discover = func() ([]string, []string) { return discoverAgents(pocketBuiltins, custom), availableModels() }
 	s.agents, s.models = s.discover()
 	s.run = func(ctx context.Context, agent, dir, prompt, model string) (string, error) {
 		return runPocketAgent(ctx, agent, dir, prompt, model, custom)
@@ -465,7 +465,7 @@ func (s *pocketServer) turn(ctx context.Context, cancel context.CancelFunc, id, 
 // CLI subprocesses use argv and stdin, never shell interpolation. Agent permission
 // checks remain native for Codex/Claude; AGY delegates to the fail-closed hook
 // gate just as in runHooked. The shared key grants access as the daemon's OS user.
-func runPocketAgent(ctx context.Context, agent, dir, prompt, model string, custom map[string]pocketAgentCommand) (string, error) {
+func runPocketAgent(ctx context.Context, agent, dir, prompt, model string, custom map[string]agentCommand) (string, error) {
 	var args []string
 	command := agent
 	switch agent {
