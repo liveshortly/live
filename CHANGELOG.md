@@ -6,6 +6,39 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.3.0 — 2026-10-28
+
+### Added
+- `live daemon` offers **every agent harness installed on the machine**, not a
+  fixed list of six. The builtin probe widens to the harnesses worth guessing
+  at (`copilot`, `opencode`, `crush`, `goose`, `amp`, `qwen`, `pi`, `hermes`
+  alongside the existing set), and anything else goes in
+  `~/.liveshortly/agents.json` — a different executable name, an absolute path,
+  or a fixed argv prefix:
+
+  ```json
+  [{"name": "hermes"},
+   {"name": "pi", "command": "pi.dev", "args": ["chat"]}]
+  ```
+
+  Same schema the Pocket `--agents-file` adapters already used, so one file
+  covers both modes, and `--agents-file` is no longer `--server`-only. An agent
+  live has no native capture for runs through the generic pty path — exactly as
+  `live <that harness>` already did when typed by hand.
+- Web spawns can pick a **claude model alias**, and `/model` switches the model
+  of a running session.
+
+### Fixed
+- `agy` and `antigravity` were probed and registered by the daemon but silently
+  dropped by the server, so they never appeared in the picker.
+
+### Security
+- The daemon's agent allowlist is now the set **it** built at startup from this
+  machine's PATH and the operator's own adapter file, rather than a hardcoded
+  list — the same shape as the `--dir` allowlist. A spawn still carries only a
+  NAME; the argv is still built locally, and a name the daemon did not register
+  is refused.
+
 ## v2.2.1 — 2026-10-23
 
 ### Fixed
