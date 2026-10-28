@@ -449,7 +449,9 @@ func (c *Client) HostStream(ctx context.Context, hostID string, onSpawn func(Spa
 		if json.Unmarshal([]byte(strings.TrimSpace(line[5:])), &cmd) != nil {
 			continue
 		}
-		if cmd.Type == "spawn" {
+		// Every typed command goes to the callback; the daemon switches on
+		// Type (spawn, set_model, …) so new command kinds need no client change.
+		if cmd.Type != "" {
 			onSpawn(cmd)
 		}
 	}
