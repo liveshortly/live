@@ -4,7 +4,7 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
-## Unreleased
+## v2.3.1 — 2026-11-02
 
 ### Fixed
 - **A fresh `live` reaches liveshortly.com again.** v2.3.0 defaulted to
