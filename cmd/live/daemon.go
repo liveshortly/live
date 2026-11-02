@@ -723,6 +723,14 @@ func setSessionModel(cmd api.SpawnCommand) error {
 	if err := exec.Command("tmux", "-L", tmuxSocket, "has-session", "-t", target).Run(); err != nil {
 		return fmt.Errorf("session %s is not hosted on this machine", id[:8])
 	}
+	// `/model` is Claude Code's command; never type it into another agent's
+	// pane. Panes record their agent in LIVE_AGENT_NAME (older panes don't,
+	// and keep the previous behaviour).
+	if out, err := exec.Command("tmux", "-L", tmuxSocket, "show-environment", "-t", target, "LIVE_AGENT_NAME").Output(); err == nil {
+		if v := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(out)), "LIVE_AGENT_NAME=")); v != "" && v != "Claude" {
+			return fmt.Errorf("%s can't switch models mid-session", v)
+		}
+	}
 	// Literal text first (-l so "/model" is not interpreted), then Enter.
 	if err := exec.Command("tmux", "-L", tmuxSocket, "send-keys", "-t", target, "-l", "/model "+model).Run(); err != nil {
 		return fmt.Errorf("could not type into the session pane: %v", err)
