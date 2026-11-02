@@ -65,8 +65,9 @@ curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.
 ```
 
 Installs a checksum-verified binary for macOS/Linux, arm64/amd64, from
-[GitHub Releases](https://github.com/liveshortly/live-dist/releases). No website,
-hosted account, Go toolchain, or automatic login is involved. To inspect the
+[GitHub Releases](https://github.com/liveshortly/live-dist/releases). No Go
+toolchain or automatic login. Then `live login` signs you in to
+[liveshortly.com](https://liveshortly.com) (or [your own server](#choose-your-server)). To inspect the
 installer first, download that URL to a file and run it with `bash install.sh`.
 
 ### Homebrew
@@ -107,13 +108,14 @@ operator can set `LIVE_INSTALL_BASE=https://downloads.example.com/live` to use a
 flat mirror containing `latest.txt`, the `.gz` assets, and their `.sha256` files.
 For a GitHub-compatible release host, set `LIVE_GH_BASE` and `LIVE_LATEST_URL`.
 The installer accepts `--version`, `--bin-dir`, `--no-modify-path`, and
-`--from-source`. Login is opt-in with `--login`, after configuring your server;
+`--from-source`. Login is opt-in with `--login`;
 `--no-login` remains accepted for older scripts.
 
 ## Choose your server
 
-LiveShortly is self-hosted. The former managed website is being retired; deploy
-one of these setups on infrastructure you control.
+By default `live` uses the hosted service at **https://liveshortly.com** —
+`live login`, `live claude`, done. Self-hosting is first-class: deploy one of
+these setups on infrastructure you control and point the CLI at it.
 
 ### pocket.ai: standalone daemon
 
@@ -157,14 +159,14 @@ live claude
 live daemon --dir /absolute/path/to/project
 ```
 
-For the local Compose stack, use `http://localhost:8080` for both URLs. A fresh
-CLI defaults to that origin. From a checkout, `make use-local` or
+For the local Compose stack, use `http://localhost:8080` for both URLs. From a
+checkout, `make use-local` or
 `make use-server SERVER_ORIGIN=https://live.example.com` writes `host.json`.
-`host.json` takes precedence over `LIVESHORTLY_API_URL` / `LIVESHORTLY_WEB_URL`.
-Credentials in `~/.liveshortly/credentials.json` belong to one server; run
-`live login` again after changing servers. Update existing configurations that
-still point at the retired domain. Data and accounts from that service are not
-automatically transferred to a self-hosted installation.
+Server resolution: `host.json` → `LIVESHORTLY_API_URL` / `LIVESHORTLY_WEB_URL`
+→ `https://liveshortly.com`. Delete `host.json` (or `make use-prod`) to go back
+to the hosted service. Credentials in `~/.liveshortly/credentials.json` belong
+to one server; run `live logout && live login` after changing servers. Data and
+accounts are not transferred between the hosted service and a self-hosted one.
 
 ### tmux 🪄
 
@@ -397,7 +399,7 @@ this client already talks to: [docs/SERVER-PROMPT.md](docs/SERVER-PROMPT.md).
 
 | Thing | Where it lives |
 |---|---|
-| Which server | `~/.liveshortly/host.json` `{"api_url": "...", "web_url": "..."}`, or the `LIVESHORTLY_API_URL` env var, else localhost |
+| Which server | `~/.liveshortly/host.json` `{"api_url": "...", "web_url": "..."}`, or the `LIVESHORTLY_API_URL` env var, else https://liveshortly.com |
 | Your login | `~/.liveshortly/credentials.json` (0600) — point elsewhere with `LIVESHORTLY_CRED_PATH` |
 | Logs | `~/.liveshortly/live.log` (we never scribble over the agent's screen) |
 | Idle messages | On by default for `live claude` — a per-session channel lets viewer messages reach Claude even while it's idle. First run, Claude Code shows a one-time "load development channels?" prompt — just say yes. Set `LIVE_CHANNEL=0` to turn it off. Channel logs at `~/.liveshortly/channel.log` |

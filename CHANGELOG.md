@@ -4,7 +4,19 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
-## Unreleased
+## v2.3.1 — 2026-11-02
+
+### Fixed
+- **A fresh `live` reaches liveshortly.com again.** v2.3.0 defaulted to
+  `http://localhost:8080`, so `live login` on a new install could not reach the
+  hosted service. With no `~/.liveshortly/host.json` and no
+  `LIVESHORTLY_API_URL`, the CLI now uses `https://liveshortly.com` (hosted
+  first, self-host first-class — D131). Resolution order is unchanged:
+  host.json, then the env var, then the hosted default; existing self-host
+  configurations keep working. `make use-prod` points back at liveshortly.com.
+- Installer copy no longer says no hosted account is involved; it points at
+  `live login` for liveshortly.com with a one-line self-host pointer. Installer
+  behaviour (downloads, checksum verification, paths) is unchanged.
 
 ## v2.3.0 — 2026-10-28
 
@@ -252,6 +264,18 @@ No server change was needed for any of it: the listing, streaming, comment and
 share endpoints already existed for the web client.
 
 ## Unreleased
+
+### Fixed
+- **A fresh `live` reaches liveshortly.com again.** v2.3.0 defaulted to
+  `http://localhost:8080`, so `live login` on a new install could not reach the
+  hosted service. With no `~/.liveshortly/host.json` and no
+  `LIVESHORTLY_API_URL`, the CLI now uses `https://liveshortly.com` (hosted
+  first, self-host first-class — D131). Resolution order is unchanged:
+  host.json, then the env var, then the hosted default; existing self-host
+  configurations keep working. `make use-prod` points back at liveshortly.com.
+- Installer copy no longer says no hosted account is involved; it points at
+  `live login` for liveshortly.com with a one-line self-host pointer. Installer
+  behaviour (downloads, checksum verification, paths) is unchanged.
 
 - **Fixed: a session whose capture process died no longer sits "live" forever.**
   A spawned `live --attach` child runs in its own process group so a session

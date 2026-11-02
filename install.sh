@@ -4,7 +4,7 @@
 #     curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.sh | bash
 #
 # Downloads a prebuilt, checksum-verified binary for your platform, puts it on
-# your PATH. Configure your own server separately. No Go toolchain, no source checkout, no build.
+# your PATH. No Go toolchain, no source checkout, no build.
 # Idempotent — rerun it any time to update.
 #
 # Everything lives inside main(), invoked on the last line. A truncated download
@@ -210,14 +210,12 @@ main() {
 
   # Installation never contacts a session server unless explicitly requested.
   if [ -n "$DO_LOGIN" ]; then
-    say "signing in to your configured self-hosted server"
+    say "signing in"
     if interactive; then "$BIN_DIR/live" login < /dev/tty
     else "$BIN_DIR/live" login; fi
   fi
-  say "done. No hosted account is required to install."
-  say "Pocket: use a release with daemon --server support, or build main; see the setup guide."
-  say "Web sessions: configure ~/.liveshortly/host.json for your server, then run live login."
-  say "Setup: https://github.com/liveshortly/live#choose-your-server"
+  say "done. Next: live login   (signs in to https://liveshortly.com), then: live claude"
+  say "Self-hosting? Point ~/.liveshortly/host.json at your server first: https://github.com/liveshortly/live#choose-your-server"
 
 }
 

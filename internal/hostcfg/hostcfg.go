@@ -33,11 +33,16 @@ func loadHost() hostFile {
 	return h
 }
 
-// DefaultAPIURL is the single-origin self-hosted web stack. Explicit host.json
-// settings still win over shell environment variables during migration.
-const DefaultAPIURL = "http://localhost:8080"
+// DefaultAPIURL is the hosted service (D131: hosted first, self-host
+// first-class). Self-hosters point elsewhere with host.json or
+// LIVESHORTLY_API_URL; web and API share one origin, so WebURL follows.
+const DefaultAPIURL = "https://liveshortly.com"
 
-// APIURL returns the configured API origin: host.json, environment, local stack.
+// APIURL returns the API origin. Order: host.json, LIVESHORTLY_API_URL, hosted
+// default. host.json deliberately wins: it is the explicit switch (`make
+// use-local` / `use-server` write it), whereas the env var is often left
+// exported from old debugging — v1.3.0 inverted this and a stale export
+// silently redirected every command, token refresh included.
 func APIURL() string {
 	if h := loadHost(); h.APIURL != "" {
 		return strings.TrimRight(h.APIURL, "/")

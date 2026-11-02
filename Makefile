@@ -19,15 +19,15 @@ DIST_REPO ?= liveshortly/live-dist
 # Env-var alternative (no file): LIVESHORTLY_API_URL=http://localhost:8080 live …
 LOCAL_ORIGIN ?= http://localhost:8080
 SERVER_ORIGIN ?= http://localhost:8080
-PROD_ORIGIN ?= $(SERVER_ORIGIN)
+PROD_ORIGIN ?= https://liveshortly.com
 use-local:
 	@mkdir -p $$HOME/.liveshortly
 	@printf '{"api_url":"%s","web_url":"%s"}\n' "$(LOCAL_ORIGIN)" "$(LOCAL_ORIGIN)" \
 		> $$HOME/.liveshortly/host.json
 	@echo "live → $(LOCAL_ORIGIN)  (run: live login)"
 
-# Select an operator-owned server. use-prod is a compatibility alias; it no
-# longer points at the retired hosted service.
+# Select an operator-owned server. use-prod points back at the hosted service
+# (same as deleting host.json).
 use-prod:
 	@$(MAKE) use-server SERVER_ORIGIN="$(PROD_ORIGIN)"
 
