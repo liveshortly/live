@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // agyHook builds one hook entry for AGY's hooks.json schema (grouped).
@@ -80,17 +81,28 @@ func WriteAgyPluginFiles(targetDir, liveBin string, webPerms bool) error {
 	return nil
 }
 
-// EnsureAgyPlugin creates/updates the LiveShortly plugin for agy and installs it
-// using `agy plugin install <dir>`.
-func EnsureAgyPlugin(liveBin string, webPerms bool) (cleanup func(), err error) {
+// EnsureAgyPlugin creates/updates the LiveShortly plugin for agy and installs
+// and enables it with the same binary the user launched (`agy` or
+// `antigravity`), so the hooks land in the agy that is about to run.
+//
+// Install or enable failing is an error, never ignored: live launches agy
+// with its own prompts skipped and relies on these hooks for capture and
+// approvals, so a silent failure would run every tool ungated.
+func EnsureAgyPlugin(agyBin, liveBin string, webPerms bool) (cleanup func(), err error) {
+	if agyBin == "" {
+		agyBin = "agy"
+	}
+	if p, err := exec.LookPath(agyBin); err == nil {
+		agyBin = p
+	} else {
+		return nil, fmt.Errorf("can't find %s on PATH: %w", agyBin, err)
+	}
 	dir, err := os.MkdirTemp("", "live-agy-plugin-*")
 	if err != nil {
 		return nil, err
 	}
 	cleanup = func() {
-		if agyBin, err := exec.LookPath("agy"); err == nil {
-			_ = exec.Command(agyBin, "plugin", "uninstall", "liveshortly").Run()
-		}
+		_ = exec.Command(agyBin, "plugin", "uninstall", "liveshortly").Run()
 		_ = os.RemoveAll(dir)
 	}
 
@@ -98,12 +110,16 @@ func EnsureAgyPlugin(liveBin string, webPerms bool) (cleanup func(), err error) 
 		cleanup()
 		return nil, err
 	}
-
-	// Install plugin into agy if agy binary is present
-	if agyBin, err := exec.LookPath("agy"); err == nil {
-		cmd := exec.Command(agyBin, "plugin", "install", dir)
-		_ = cmd.Run()
+	if out, err := agyCommand(agyBin, "plugin", "install", dir).CombinedOutput(); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("couldn't install LiveShortly's agy plugin (%s plugin install): %v: %s", filepath.Base(agyBin), err, strings.TrimSpace(string(out)))
 	}
-
+	if out, err := agyCommand(agyBin, "plugin", "enable", "liveshortly").CombinedOutput(); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("couldn't enable LiveShortly's agy plugin (%s plugin enable): %v: %s", filepath.Base(agyBin), err, strings.TrimSpace(string(out)))
+	}
 	return cleanup, nil
 }
+
+// agyCommand is a seam for tests.
+var agyCommand = exec.Command

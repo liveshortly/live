@@ -120,7 +120,7 @@ func (s *Sidecar) hookPreInvocation(p map[string]any) map[string]any {
 		return map[string]any{
 			"injectSteps": []any{
 				map[string]any{
-					"ephemeralMessage": "[live] 💬 " + deliveredSummary(comments),
+					"ephemeralMessage": viewerMessageBlock(comments),
 				},
 			},
 		}
@@ -286,11 +286,7 @@ func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
 
 		var verdict string
 		if s.Broker != nil {
-			agentName := "Claude"
-			if isAGY {
-				agentName = "agy"
-			}
-			msg := agentName + " wants to run " + permTool
+			msg := s.agentName() + " wants to run " + permTool
 			if permDescStr != "" {
 				msg += ": " + permDescStr
 			}
@@ -492,7 +488,7 @@ func (s *Sidecar) hookPostToolUse(p map[string]any) map[string]any {
 func (s *Sidecar) hookNotification(p map[string]any) map[string]any {
 	msg := strings.TrimSpace(str(p, "message"))
 	if msg == "" {
-		msg = "Claude is waiting for your input"
+		msg = s.agentName() + " is waiting for your input"
 	}
 	kind := "input"
 	low := strings.ToLower(msg)
@@ -542,13 +538,13 @@ func (s *Sidecar) hookStop(p map[string]any) map[string]any {
 		if isAGY {
 			return map[string]any{
 				"decision": "continue",
-				"reason":   "[live] 💬 " + deliveredSummary(comments) + "\n" + strings.Join(lines, "\n"),
+				"reason":   "[live] 💬 " + s.deliveredSummary(comments) + "\n" + strings.Join(lines, "\n"),
 			}
 		}
 		return map[string]any{
 			"decision":      "block",
 			"reason":        strings.Join(lines, "\n"),
-			"systemMessage": "[live] 💬 " + deliveredSummary(comments),
+			"systemMessage": "[live] 💬 " + s.deliveredSummary(comments),
 		}
 	}
 
@@ -593,32 +589,39 @@ func (s *Sidecar) injectComments(hookEventName string) map[string]any {
 	if len(comments) == 0 {
 		return nil
 	}
-	lines := []string{"[live] Viewer message(s) (respond if relevant):"}
-	for _, c := range comments {
-		lines = append(lines, "  • "+username(c)+": "+c.Message)
-	}
 	s.Log.Printf("injected %d viewer comment(s) at %s", len(comments), hookEventName)
 	return map[string]any{
 		// systemMessage is shown to the operator in the CLI — without it,
 		// delivery is invisible and looks broken.
-		"systemMessage": "[live] 💬 " + deliveredSummary(comments),
+		"systemMessage": "[live] 💬 " + s.deliveredSummary(comments),
 		"hookSpecificOutput": map[string]any{
 			"hookEventName":     hookEventName,
-			"additionalContext": strings.Join(lines, "\n"),
+			"additionalContext": viewerMessageBlock(comments),
 		},
 	}
 }
 
+// viewerMessageBlock is what the agent itself reads: every comment in full,
+// one per line with its author. Never the operator receipt, which is cut.
+func viewerMessageBlock(comments []api.Comment) string {
+	lines := []string{"[live] Viewer message(s) (respond if relevant):"}
+	for _, c := range comments {
+		lines = append(lines, "  • "+username(c)+": "+c.Message)
+	}
+	return strings.Join(lines, "\n")
+}
+
 // deliveredSummary is the one-line operator-facing receipt for a batch.
-func deliveredSummary(comments []api.Comment) string {
+func (s *Sidecar) deliveredSummary(comments []api.Comment) string {
+	to := " → delivered to " + s.agentName()
 	if len(comments) == 1 {
-		return username(comments[0]) + ": " + truncate(comments[0].Message, 120) + " → delivered to Claude"
+		return username(comments[0]) + ": " + truncate(comments[0].Message, 120) + to
 	}
 	names := make([]string, 0, len(comments))
 	for _, c := range comments {
 		names = append(names, username(c))
 	}
-	return fmt.Sprintf("%d viewer messages (%s) → delivered to Claude", len(comments), strings.Join(names, ", "))
+	return fmt.Sprintf("%d viewer messages (%s)", len(comments), strings.Join(names, ", ")) + to
 }
 
 func username(c api.Comment) string {

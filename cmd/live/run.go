@@ -330,6 +330,7 @@ func cmdRun(args []string) int {
 		SessionID:      sessionID,
 		WebURL:         hostcfg.WebURL(),
 		WebPermissions: webPerms && hooks,
+		Agent:          sidecar.AgentDisplayName(prof.framework),
 		Log:            logger,
 	}
 	if sc.WebPermissions {
@@ -416,7 +417,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	isAgyAgent := isAgy(binPath)
 	var agentArgs []string
 	if isAgyAgent {
-		cleanup, err := adapter.EnsureAgyPlugin(self, true)
+		cleanup, err := adapter.EnsureAgyPlugin(binPath, self, true)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "live: %v\n", err)
 			return 1
@@ -484,7 +485,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		"-e", "LIVE_SIDECAR=" + addr, "-e", "LIVE_TOKEN=" + token, "-e", "LIVE_SESSION_ID=" + sc.SessionID,
 		// The PreToolUse relay blocks on the broker (popup or web); its HTTP
 		// client must outlast the 8m decision grace, under the 10m hook.
-		"-e", "LIVE_HOOK_TIMEOUT=590"}
+		"-e", "LIVE_HOOK_TIMEOUT=590", "-e", "LIVE_AGENT_NAME=" + sc.Agent}
 	newArgs = append(newArgs, pinnedEnvArgs()...)
 	newArgs = append(newArgs, agent...)
 	if out, err := tmux(newArgs...).CombinedOutput(); err != nil {
@@ -804,7 +805,7 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 
 	var args []string
 	if isAgy(binPath) {
-		cleanup, err := adapter.EnsureAgyPlugin(self, sc.WebPermissions)
+		cleanup, err := adapter.EnsureAgyPlugin(binPath, self, sc.WebPermissions)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "live: %v\n", err)
 			return 1

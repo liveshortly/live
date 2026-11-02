@@ -44,7 +44,11 @@ func cmdPermPrompt(args []string) {
 		return // already resolved (e.g. from the web)
 	}
 
-	fmt.Printf("\r\n  \x1b[33mClaude wants to run \x1b[1m%s\x1b[0m", tool)
+	agent := os.Getenv("LIVE_AGENT_NAME")
+	if agent == "" {
+		agent = "The agent"
+	}
+	fmt.Printf("\r\n  \x1b[33m%s wants to run \x1b[1m%s\x1b[0m", agent, tool)
 	if detail != "" {
 		if len(detail) > 120 {
 			detail = detail[:120] + "…"

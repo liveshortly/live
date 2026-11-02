@@ -60,6 +60,10 @@ type Sidecar struct {
 	// owner's browser tap instead of the local keyboard. Opt-in.
 	WebPermissions bool
 
+	// Agent is the agent's display name ("Codex", "Antigravity"…) used in
+	// prompts and receipts. Empty reads as "The agent"; see AgentDisplayName.
+	Agent string
+
 	Log *log.Logger
 
 	events chan event
@@ -444,7 +448,7 @@ const permissionGrace = 8 * time.Minute
 // (Claude resolved it locally, dropping the connection), or the grace window
 // expires. Returns "allow" or "deny" ("deny" on timeout — the safe default).
 func (s *Sidecar) awaitDecision(ctx context.Context, tool, desc string) string {
-	msg := "Claude wants to run " + tool
+	msg := s.agentName() + " wants to run " + tool
 	if desc != "" {
 		msg += ": " + desc
 	}
@@ -651,3 +655,27 @@ func truncate(s string, n int) string {
 // fanning out; capture stays lossless up to this ceiling, which matches the
 // server's per-event belt cap so we never send a payload the server discards.
 const maxCaptureBytes = 256 * 1024
+
+// AgentDisplayName is the user-facing name for a session framework.
+func AgentDisplayName(framework string) string {
+	switch framework {
+	case "claude-code":
+		return "Claude"
+	case "codex":
+		return "Codex"
+	case "agy":
+		return "Antigravity"
+	case "gemini-cli":
+		return "Gemini"
+	case "ollama":
+		return "Ollama"
+	}
+	return "The agent"
+}
+
+func (s *Sidecar) agentName() string {
+	if s.Agent != "" {
+		return s.Agent
+	}
+	return "The agent"
+}

@@ -13,6 +13,7 @@ import (
 
 func testSidecar(pending ...api.Comment) *Sidecar {
 	return &Sidecar{
+		Agent:   "Claude",
 		Log:     log.New(io.Discard, "", 0),
 		pending: pending,
 		// events left nil: Emit's select falls through to drop, which is
@@ -209,5 +210,29 @@ func TestQueueForHooks(t *testing.T) {
 	pending := s.takePending()
 	if len(pending) != 1 || pending[0].Username != "charlie" {
 		t.Fatalf("expected 1 comment from charlie, got %v", pending)
+	}
+}
+
+// LSH-03: agy must receive every comment word for word, not the names-only
+// operator receipt, and receipts name the real agent.
+func TestAgyPreInvocationInjectsEveryCommentInFull(t *testing.T) {
+	s := testSidecar(
+		api.Comment{Username: "ana", Message: "please also update the README with the new flag"},
+		api.Comment{Username: "bo", Message: "and run the tests"},
+	)
+	s.Agent = AgentDisplayName("agy")
+	out := s.handleHook("pre-invocation", map[string]any{"prompt": "go"})
+	steps, _ := out["injectSteps"].([]any)
+	if len(steps) != 1 {
+		t.Fatalf("injectSteps = %v", out)
+	}
+	msg, _ := steps[0].(map[string]any)["ephemeralMessage"].(string)
+	for _, want := range []string{"ana: please also update the README with the new flag", "bo: and run the tests"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("ephemeralMessage missing %q: %q", want, msg)
+		}
+	}
+	if got := s.deliveredSummary([]api.Comment{{Username: "x", Message: "y"}}); !strings.Contains(got, "delivered to Antigravity") {
+		t.Fatalf("receipt = %q", got)
 	}
 }
