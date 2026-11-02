@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -158,8 +159,9 @@ func cmdPocketHook(args []string) {
 	os.Setenv("LIVE_SIDECAR", os.Getenv("LIVE_POCKET_HOOK_URL"))
 	os.Setenv("LIVE_TOKEN", os.Getenv("LIVE_POCKET_HOOK_TOKEN"))
 	os.Setenv("LIVE_HOOK_TIMEOUT", "540")
-	out := relay([]string{"pre-tool-use"})
-	if len(out) == 0 {
+	body, _ := io.ReadAll(io.LimitReader(os.Stdin, 16<<20))
+	out, err := relay("pre-tool-use", body)
+	if err != nil || !hasVerdict(out) {
 		out, _ = json.Marshal(pocketHookResult(args[0], "deny"))
 	}
 	fmt.Println(string(out))

@@ -138,8 +138,9 @@ func codexPermsWanted(userArgs []string) bool {
 // as-is. --dangerously-bypass-hook-trust skips the one-time trust prompt for
 // this automated, self-vetted hook. Nothing persists past the run.
 func codexPermArgs(self string) []string {
-	// The hook command codex runs: `"<live>" hook pre-tool-use`.
-	cmd := fmt.Sprintf("%q hook pre-tool-use", self)
+	// The hook command codex runs: `"<live>" hook pre-tool-use --gated`
+	// (--gated: deny, never allow, when the sidecar can't answer).
+	cmd := fmt.Sprintf("%q hook pre-tool-use --gated", self)
 	// codex normalizes its hook payloads to Claude's vocabulary (verified: a
 	// shell call arrives as tool_name="Bash", tool_input={"command":…}), so the
 	// matcher uses Claude's tool names and the existing sidecar handler is reused

@@ -37,9 +37,10 @@ func agyFlatHook(liveBin, event string, timeoutSec int) map[string]any {
 
 // WriteAgyPluginFiles writes plugin.json and hooks.json into targetDir.
 func WriteAgyPluginFiles(targetDir, liveBin string, webPerms bool) error {
-	preToolTimeout := 10
+	preToolTimeout, preToolEvent := 10, "pre-tool-use"
 	if webPerms {
-		preToolTimeout = 600
+		// --gated: `live hook` denies (fails closed) when the sidecar can't answer.
+		preToolTimeout, preToolEvent = 600, "pre-tool-use --gated"
 	}
 
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
@@ -62,7 +63,7 @@ func WriteAgyPluginFiles(targetDir, liveBin string, webPerms bool) error {
 	hooks := map[string]any{
 		"liveshortly": map[string]any{
 			"PreInvocation": []any{agyFlatHook(liveBin, "pre-invocation", 10)},
-			"PreToolUse":    []any{agyHook(liveBin, "pre-tool-use", preToolTimeout, "*")},
+			"PreToolUse":    []any{agyHook(liveBin, preToolEvent, preToolTimeout, "*")},
 			"PostToolUse":   []any{agyHook(liveBin, "post-tool-use", 10, "*")},
 			"Stop":          []any{agyFlatHook(liveBin, "stop", 15)},
 		},

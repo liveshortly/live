@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +37,9 @@ func TestWriteAgyPluginFiles(t *testing.T) {
 	hooksBytes, err := os.ReadFile(filepath.Join(tmp, "hooks.json"))
 	if err != nil {
 		t.Fatalf("reading hooks.json: %v", err)
+	}
+	if !strings.Contains(string(hooksBytes), `hook pre-tool-use --gated`) {
+		t.Error("web-perms PreToolUse hook must pass --gated so it fails closed")
 	}
 	var hooksObj struct {
 		LiveShortly struct {

@@ -147,7 +147,7 @@ func TestCodexPermArgs(t *testing.T) {
 	for _, want := range []string{
 		"hooks.PreToolUse=",
 		`matcher="Edit|Write|MultiEdit|Bash|WebFetch"`, // codex normalizes to Claude tool names
-		`hook pre-tool-use`,                            // reuses the existing sidecar handler
+		`hook pre-tool-use --gated`,                    // reuses the sidecar handler; fails closed
 	} {
 		if !strings.Contains(toml, want) {
 			t.Fatalf("perm TOML missing %q; got: %s", want, toml)
