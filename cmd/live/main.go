@@ -116,7 +116,8 @@ Options (before the command):
   --pre-digest               Pre-compress the handoff context with claude -p
 
 Environment:
-  LIVESHORTLY_API_URL        API base (default from ~/.liveshortly/host.json)
+  LIVESHORTLY_API_URL        Self-hosted server (default https://liveshortly.com;
+                             ~/.liveshortly/host.json wins over this)
   LIVESHORTLY_CRED_PATH      Credential file (default ~/.liveshortly/credentials.json)
   LIVE_CHANNEL=0             Disable the viewer channel (instant idle comment
                              delivery); comments then arrive at hook boundaries

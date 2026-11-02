@@ -67,17 +67,20 @@ func TestHostFileUsedWhenEnvUnset(t *testing.T) {
 	}
 }
 
-// A fresh install must not contact the retired hosted service.
-func TestDefaultsToSelfHostedStack(t *testing.T) {
+// A fresh install with no host.json and no env reaches the hosted service
+// (D131). Literal on purpose: v2.3.0 shipped localhost:8080 here, so
+// `live login` could not reach liveshortly.com.
+func TestDefaultsToHostedService(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LIVESHORTLY_API_URL", "")
 	t.Setenv("LIVESHORTLY_WEB_URL", "")
 	t.Setenv("LIVESHORTLY_FRONTEND_URL", "")
 
-	if got := APIURL(); got != DefaultAPIURL {
-		t.Errorf("APIURL = %q, want %q", got, DefaultAPIURL)
+	const want = "https://liveshortly.com"
+	if got := APIURL(); got != want {
+		t.Errorf("APIURL = %q, want %q", got, want)
 	}
-	if got := WebURL(); got != DefaultAPIURL {
-		t.Errorf("WebURL = %q, want %q", got, DefaultAPIURL)
+	if got := WebURL(); got != want {
+		t.Errorf("WebURL = %q, want %q", got, want)
 	}
 }
