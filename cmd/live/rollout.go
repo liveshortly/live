@@ -125,9 +125,32 @@ func codexChannelArgs(self, addr, token, sessionID string) []string {
 // LiveShortly web-permission flow. ON by default (like `live claude`): a
 // session-scoped PreToolUse hook sends approvals to the owner's browser and its
 // verdict is authoritative, so codex never shows a blocking native prompt.
-// Disable with LIVE_CODEX_PERMS=0; always off for headless -p runs.
+// Disable with LIVE_CODEX_PERMS=0; always off for headless -p runs, for
+// `live --no-permissions` (liveGating=false, also what a daemon bypass spawn
+// passes) and for codex's own "don't ask" flags.
 func codexPermsWanted(userArgs []string) bool {
-	return os.Getenv("LIVE_CODEX_PERMS") != "0" && !isPrintMode(userArgs)
+	return liveGating && os.Getenv("LIVE_CODEX_PERMS") != "0" && !isPrintMode(userArgs) && !codexApprovalsBypassed(userArgs)
+}
+
+// liveGating is false when the operator opted out of live's permission gating
+// (--no-permissions / --dangerously-skip-permissions before the agent). Set by
+// cmdRun before dispatching to a capture mode.
+var liveGating = true
+
+// codexApprovalsBypassed reports whether codex was told not to ask:
+// --dangerously-bypass-approvals-and-sandbox, --yolo, or -a/--ask-for-approval never.
+func codexApprovalsBypassed(args []string) bool {
+	for i, a := range args {
+		switch {
+		case a == "--dangerously-bypass-approvals-and-sandbox", a == "--yolo":
+			return true
+		case a == "--ask-for-approval=never", a == "-a=never":
+			return true
+		case (a == "-a" || a == "--ask-for-approval") && i+1 < len(args) && args[i+1] == "never":
+			return true
+		}
+	}
+	return false
 }
 
 // codexPermArgs returns the ephemeral launch overrides that gate codex tool use

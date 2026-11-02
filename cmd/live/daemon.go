@@ -397,6 +397,10 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 			agentArgs = append(agentArgs, "--dangerously-skip-permissions")
 		case "gemini":
 			agentArgs = append(agentArgs, "--yolo")
+		case "codex":
+			// No prompts, but keep codex's sandbox: anything outside it fails
+			// instead of asking, rather than running unsandboxed.
+			agentArgs = append(agentArgs, "--ask-for-approval", "never")
 		}
 	}
 

@@ -320,6 +320,7 @@ func cmdRun(args []string) int {
 	// attachOrWait is what keeps the session alive. Dropping tmux just because
 	// permissions were bypassed ran claude with no terminal, which exited
 	// instantly and archived the session the moment it was created.
+	liveGating = webPerms
 	tmuxMode := (webPerms || headless()) && tmuxWanted && hooks && hasTmux
 	if webPerms && hooks && !tmuxMode && !hasTmux {
 		fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m no tmux — approve tool runs from the session page (install tmux for in-terminal popups)\n\n")

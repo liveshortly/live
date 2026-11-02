@@ -117,7 +117,7 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, de
 func threadStartParams(cwd, devInstructions string) map[string]any {
 	p := map[string]any{
 		"cwd":            cwd,
-		"approvalPolicy": "on-request",
+		"approvalPolicy": appServerApprovalPolicy(),
 		"sandbox":        "workspace-write",
 	}
 	if devInstructions != "" {
@@ -337,4 +337,13 @@ func (c *codexApp) injectInput(text string) {
 			c.startTurn(text)
 		}
 	}()
+}
+
+// appServerApprovalPolicy is on-request (escalations come to the web) unless
+// the operator opted out of gating, in which case codex is told not to ask.
+func appServerApprovalPolicy() string {
+	if !liveGating {
+		return "never"
+	}
+	return "on-request"
 }

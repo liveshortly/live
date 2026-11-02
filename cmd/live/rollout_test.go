@@ -247,3 +247,36 @@ func TestValidModelName(t *testing.T) {
 		}
 	}
 }
+
+// LSH-02: codex gating honours every way of saying "don't ask".
+func TestCodexPermsWantedHonoursBypass(t *testing.T) {
+	t.Setenv("LIVE_CODEX_PERMS", "")
+	defer func() { liveGating = true }()
+
+	liveGating = true
+	if !codexPermsWanted(nil) {
+		t.Fatal("default: want gating on")
+	}
+	for _, args := range [][]string{
+		{"--dangerously-bypass-approvals-and-sandbox"},
+		{"--yolo"},
+		{"-a", "never"},
+		{"--ask-for-approval", "never"},
+		{"--ask-for-approval=never"},
+		{"-p", "hi"},
+	} {
+		if codexPermsWanted(args) {
+			t.Fatalf("%v: want gating off", args)
+		}
+	}
+	if !codexPermsWanted([]string{"-a", "on-request"}) {
+		t.Fatal("-a on-request: want gating on")
+	}
+	liveGating = false // live --no-permissions / daemon bypass spawn
+	if codexPermsWanted(nil) {
+		t.Fatal("--no-permissions: want gating off")
+	}
+	if appServerApprovalPolicy() != "never" {
+		t.Fatal("app-server under --no-permissions: want approvalPolicy never")
+	}
+}
