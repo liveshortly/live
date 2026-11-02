@@ -74,6 +74,11 @@ type agentCommand struct {
 	Name    string   `json:"name"`
 	Command string   `json:"command"`
 	Args    []string `json:"args"`
+	// TypeComments opts this agent into having viewer comments typed into it
+	// as a turn (sanitised, one line, like ollama). Off by default: in a TUI
+	// that is showing a yes/no dialog, the Enter that submits the line can
+	// accept the dialog's default, so only the operator can say it is safe.
+	TypeComments bool `json:"type_comments"`
 }
 
 var validAgentName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)

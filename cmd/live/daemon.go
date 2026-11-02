@@ -326,8 +326,10 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 		return fail("agent %q is not offered by this machine", cmd.Agent)
 	}
 	command, fixedArgs := cmd.Agent, []string(nil)
+	typeComments := false
 	if def, ok := custom[cmd.Agent]; ok {
 		command = def.Command
+		typeComments = def.TypeComments
 		// {prompt} is a Pocket (one-shot) substitution; an interactive session
 		// has no prompt to put there, so those args are left out rather than
 		// passed through with the placeholder intact.
@@ -407,6 +409,9 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 	child := exec.Command(self, append(append(liveArgs, bin), agentArgs...)...)
 	child.Dir = cwd
 	child.Env = os.Environ()
+	if typeComments {
+		child.Env = append(child.Env, "LIVE_TYPE_COMMENTS=1")
+	}
 	child.Stdin = nil // no tty — this is what selects the headless path
 	// Diagnostics land in the shared log; the daemon's own terminal stays quiet.
 	if logf, err := os.OpenFile(hostcfg.LogPath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
@@ -421,11 +426,21 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 		return fail("could not start %s: %v", cmd.Agent, err)
 	}
 	// Reap it in the background; we never block the command stream on an agent.
-	go func() { _ = child.Wait() }()
+	// The capture process ends the session itself on a clean exit; if it died
+	// without doing so (killed, crashed), end it here so it doesn't stay "live"
+	// forever. The tmux reaper only sees tmux panes, and pty agents have none.
+	go func() {
+		_ = child.Wait()
+		_, _ = client.Stop(cmd.SessionID)
+	}()
 
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m started %s in %s → %s/session/%s\n",
 		cmd.Agent, cwd, hostcfg.WebURL(), cmd.SessionID)
-	fmt.Fprintf(os.Stderr, "        attach locally: tmux -L %s attach -t live-%s\n", tmuxSocket, cmd.SessionID[:8])
+	if profileFor(bin).captureMode == "pty" {
+		fmt.Fprintf(os.Stderr, "        headless terminal session (pid %d) — watch it on the web; no local pane to attach\n", child.Process.Pid)
+	} else {
+		fmt.Fprintf(os.Stderr, "        attach locally: tmux -L %s attach -t live-%s\n", tmuxSocket, cmd.SessionID[:8])
+	}
 	return nil
 }
 

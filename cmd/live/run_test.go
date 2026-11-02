@@ -332,3 +332,29 @@ func TestTmuxPaneStatus(t *testing.T) {
 		})
 	}
 }
+
+// LSH-05: typed keystrokes become submitted lines for terminal agents.
+func TestInputLinesAssemblesSubmittedLines(t *testing.T) {
+	l := &inputLines{}
+	got := l.feed([]byte("helo\x7flo world\x1b[A\r"))
+	got = append(got, l.feed([]byte("  \r"))...)
+	got = append(got, l.feed([]byte("second"))...)
+	got = append(got, l.feed([]byte(" line\n"))...)
+	got = append(got, l.feed([]byte("abandoned\x03again\r"))...)
+	want := []string{"hello world", "second line", "again"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+// Comment typing is ollama-only unless the operator opts the agent in.
+func TestCanSubmitCommentsOptIn(t *testing.T) {
+	t.Setenv("LIVE_TYPE_COMMENTS", "")
+	if canSubmitComments("/usr/bin/aider") {
+		t.Fatal("aider without opt-in: want false")
+	}
+	t.Setenv("LIVE_TYPE_COMMENTS", "1")
+	if !canSubmitComments("/usr/bin/aider") {
+		t.Fatal("aider with type_comments: want true")
+	}
+}
