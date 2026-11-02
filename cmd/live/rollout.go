@@ -449,7 +449,7 @@ func (m *rolloutMapper) handleResponseItem(raw json.RawMessage) {
 			m.emit("tool_call", map[string]any{
 				"tool":    codexToolLabel(call.name),
 				"command": clip(call.command, 500),
-				"output":  clip(out, 300),
+				"output":  clip(out, codexOutputCap),
 				"ts":      isoNow(),
 			})
 			return
@@ -503,7 +503,7 @@ func (m *rolloutMapper) emitApplyPatch(arguments string) {
 		m.emit("file_write", map[string]any{
 			"tool":    "apply_patch",
 			"file":    fp.path,
-			"diff":    clip(fp.diff, 4000),
+			"diff":    clip(fp.diff, codexOutputCap),
 			"added":   fp.added,
 			"removed": fp.removed,
 			"ts":      isoNow(),
@@ -683,3 +683,8 @@ func clip(s string, n int) string {
 	}
 	return string(r[:n]) + "…"
 }
+
+// codexOutputCap bounds codex tool output, replies and diffs the same as the
+// Claude hook path (sidecar maxCaptureBytes), so codex sessions aren't cut
+// to a 300-char stub.
+const codexOutputCap = 256 * 1024
