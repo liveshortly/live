@@ -37,6 +37,16 @@ Homebrew formula and `live version` report.
     gemini's documented hook payloads (synthetic, see `testdata/README.md`);
     the old PTY fixture moved to `testdata/gemini-pty/0.65.0/`.
 
+### Fixed
+- **agy 1.4.9 sessions read correctly (LSH-10).** The newer tool names
+  `edit_file`, `write_file` and `read_file` now produce Edit/Write/View rows
+  (with the diff for edits and writes) and approvals name the file, instead of
+  "wants to run edit_file: edit_file". The old `replace_file_content` /
+  `write_to_file` / `view_file` names keep working. Command output no longer
+  starts with agy's `Created At… / Command output:` header (only that exact
+  leading header is removed), and the prompt row appears once per user turn
+  instead of on every model step.
+
 ### Security
 - **Approvals fail closed (LSH-07).** In web-permissions mode the agent's own
   prompt is skipped and `live hook pre-tool-use` is the only gate, yet it

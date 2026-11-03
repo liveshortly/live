@@ -63,13 +63,11 @@ carries the diff.
 - **codex app-server (LSH-02):** no model is reported, and
   `item/tool/requestUserInput` is answered with `{"decision":"denied"}`,
   which is not that request's response shape.
-- **agy 1.4.9 (LSH-03):** the newer tool names `read_file`, `edit_file`,
-  `write_file` fall through to the generic branch. No `file_write` row, and
-  approvals read "Antigravity wants to run edit_file: edit_file". Only the old
-  `replace_file_content`/`write_to_file` names produce diffs. `run_command`
-  output keeps the `Created At…/Command output:` header because
-  `cleanToolOutput` looks for `Output:\n`. Every PreInvocation re-emits the
-  transcript's last user prompt, so the prompt row repeats each model step.
+- **agy 1.4.9 (LSH-10, fixed):** `read_file`/`edit_file`/`write_file`
+  (args `Path`, `Target`/`Replacement`, `Content`) now map to View/Edit/Write
+  rows with a diff, alongside the old names. `run_command` output drops the
+  leading `Created At…/Command output:` header, and the prompt row is emitted
+  once per transcript `USER_INPUT` step, not on every PreInvocation.
 - **PTY agents (LSH-04/05):** the real ollama capture shows a slow model split
   into one `output` event per token (600 ms idle cut). The REPL's grey
   placeholder text ("Send a message (/? for help)") glues onto the typed

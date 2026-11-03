@@ -70,7 +70,7 @@ func TestNoCommentsMeansNoHookOutput(t *testing.T) {
 func TestAgyPreInvocation(t *testing.T) {
 	s := testSidecar(api.Comment{Username: "alice", Message: "can you check the tests?"})
 	payload := map[string]any{
-		"modelName": "gemini-3.7-flash-high",
+		"modelName":   "gemini-3.7-flash-high",
 		"userMessage": "implement feature X",
 	}
 	out := s.handleHook("pre-invocation", payload)
@@ -179,7 +179,7 @@ func TestAgyTranscriptExtraction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prompt := lastUserPromptFromTranscript(transcriptPath)
+	prompt, _ := lastUserPromptFromTranscript(transcriptPath)
 	if prompt != "make it work with agy" {
 		t.Errorf("prompt = %q, want %q", prompt, "make it work with agy")
 	}
@@ -234,5 +234,19 @@ func TestAgyPreInvocationInjectsEveryCommentInFull(t *testing.T) {
 	}
 	if got := s.deliveredSummary([]api.Comment{{Username: "x", Message: "y"}}); !strings.Contains(got, "delivered to Antigravity") {
 		t.Fatalf("receipt = %q", got)
+	}
+}
+
+func TestCleanToolOutputAgyHeader(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"Created At: 2026-11-03T11:30:04+05:30\nCompleted At: 2026-11-03T11:30:04+05:30\nCommand exited with code 0.\n\nCommand output:\nREADME.md\r\n", "README.md"},
+		{"Created At: x\nCompleted At: y\nCommand exited with code 2.\n\nCommand output:\nboom", "Command exited with code 2.\nboom"},
+		{"Created At: x\nCompleted At: y\n\nThe command exited with code 0.\nOutput:\nok", "ok"},
+		// Header text that isn't a leading prefix is real output: keep it.
+		{"line\nCreated At: x\nCommand output:\nmore", "line\nCreated At: x\nCommand output:\nmore"},
+	} {
+		if got := cleanToolOutput(c.in); got != c.want {
+			t.Errorf("cleanToolOutput(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }

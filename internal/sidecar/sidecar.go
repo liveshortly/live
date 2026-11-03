@@ -70,11 +70,12 @@ type Sidecar struct {
 	wg     sync.WaitGroup
 	cancel context.CancelFunc
 
-	mu            sync.Mutex
-	pending       []api.Comment
-	modelReported bool
-	quotaEnded    bool
-	httpSrv       *http.Server
+	mu             sync.Mutex
+	pending        []api.Comment
+	modelReported  bool
+	lastPromptTurn string // agy: transcript#step of the last emitted prompt
+	quotaEnded     bool
+	httpSrv        *http.Server
 
 	subMu sync.Mutex
 	subs  map[chan api.Comment]struct{}
