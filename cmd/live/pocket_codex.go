@@ -104,13 +104,7 @@ func runPocketCodex(parent context.Context, dir, prompt string) (string, error) 
 		return "", err
 	}
 	defer func() { cancel(); <-c.done }()
-	if _, err := c.request("initialize", map[string]any{"clientInfo": map[string]any{"name": "pocket_ai", "version": version}}); err != nil {
-		return "", err
-	}
-	if err := c.write(map[string]any{"method": "initialized"}); err != nil {
-		return "", err
-	}
-	thread, err := c.request("thread/start", threadStartParams(dir, ""))
+	thread, err := c.handshake("pocket_ai", dir, "")
 	if err != nil {
 		return "", err
 	}

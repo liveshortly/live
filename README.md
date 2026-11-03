@@ -360,12 +360,24 @@ live open <id>              # open its page in a browser
 
 ## Who works with what
 
-| Command | How it's captured | What shows up | Messages back |
-|---|---|---|---|
-| `live claude` | Claude Code hooks | prompts, tool calls, file diffs, replies, "waiting for you" pings, model auto-detect | straight into the agent |
-| `live gemini` | Gemini CLI hooks (0.26+, via a `liveshortly` extension that does nothing outside `live`); terminal recording on older versions | prompts, tool calls, file diffs, replies, permission pings, model | at tool and turn boundaries |
-| `live codex` | terminal recording (hooks planned — Codex has hooks too) | terminal output | shown to you |
-| `live <anything>` | terminal recording | terminal output | shown to you |
+Run any of these as `live <agent>`. The same table, with the live-run
+checklist, is in [docs/HARNESS-MATRIX.md](docs/HARNESS-MATRIX.md).
+
+<!-- harness-matrix:start -->
+| Agent | Capture | Approvals | Viewer comments | Model switch | Handoff | Min version | Golden replays | pocket.ai approvals | Known gaps |
+|---|---|---|---|---|---|---|---|---|---|
+| `claude` | ✅ Claude Code hooks | ✅ gated from the web or tmux popup; fails closed | ✅ injected (channel, hook boundaries, Stop) | ✅ `/model` from the session page | ✅ seed prompt injected | — | claude 2.1.316 | supported | — |
+| `codex` | ✅ rollout file, codex in tmux | ✅ gated (PreToolUse hook); fails closed. Off with `--no-permissions`, `--yolo`, `-a never` | ✅ typed into codex's composer | ❌ | ✅ seed prompt injected | — | codex 0.142.5, codex 0.166.0 | supported | no mid-session model switch |
+| `codex` (`LIVE_TMUX=0`) | ✅ rollout file, codex in a PTY | ✅ gated (PreToolUse hook); fails closed | ⚠ codex pulls them via the `poll_viewer_messages` channel tool (`LIVE_CHANNEL=0` turns it off) | ❌ | ✅ seed prompt injected | — | codex 0.142.5, codex 0.166.0 | supported | comments wait until codex calls the channel tool; no model switch |
+| `codex` (`LIVE_CODEX_APPSERVER=1`) | ✅ app-server JSON-RPC (headless) | ✅ answered from the web; deny on timeout | ✅ steer the running turn, or start a new one | ❌ | ✅ developer instructions | — | codex-appserver 0.166.0 | supported | file approvals say only "apply a file change"; no terminal UI; codex questions get no answers; no model switch |
+| `agy`, `antigravity` | ✅ hooks (`liveshortly` plugin) | ✅ gated; fails closed; live exits if the plugin can't install | ✅ every comment in full, at the next model step | ❌ | ✅ seed prompt injected | — | agy 1.4.9 | supported | reply arrives when the turn ends; no model switch |
+| `gemini` | ✅ hooks (`liveshortly` extension) | ⚠ gated, fails closed — but gemini's own prompt stays in charge when hooks may not fire (hooks/extensions disabled, allowlist, GitHub Actions, your own `--yolo`/`--approval-mode`) | ⚠ at tool and turn boundaries only | ❌ | ⚠ paste the printed seed prompt | 0.26 | gemini 0.65.0 | unsupported | untrusted folder: approve twice; env redaction strips `LIVE_TOKEN` (capture off, gated tools denied); comments wait while idle; no model switch |
+| `gemini` (gemini < 0.26) | ⚠ terminal recording | ❌ gemini's own prompt, in the terminal only | ⚠ shown to the operator only | ❌ | ⚠ paste the printed seed prompt | — | gemini-pty 0.65.0 | unsupported | no structure; upgrade to 0.26+ |
+| `ollama` | ⚠ terminal recording, whole lines | — no tools | ✅ typed in as one line | ❌ | ⚠ paste the printed seed prompt | — | ollama 0.30.10 | not-needed | no prompt/tool rows, no stream_end, no model |
+| `aider`, `cursor-agent`, `hermes`, `copilot`, `opencode`, `crush`, `goose`, `amp`, `qwen`, `pi` and any other command | ⚠ terminal recording (raw lines, no structure) | ❌ the agent's own prompt, in the terminal only | ⚠ shown to the operator only (opt in to typing with `type_comments` in agents.json or `LIVE_TYPE_COMMENTS=1`) | ❌ | ⚠ paste the printed seed prompt | — | aider 0.82.3, cursor-agent 2026.10.01, hermes 0.21.5 | unsupported | no prompt/reply/tool rows, no stream_end, no model |
+
+✅ works · ⚠ partial (reason given) · ❌ not supported. Generated from `internal/harness` by `go run ./scripts/harnessmatrix`; do not edit by hand.
+<!-- harness-matrix:end -->
 
 ## How it actually works
 
@@ -389,8 +401,10 @@ different hat: it just relays the hook's data to the sidecar and hands back
 the response. It always bails out cleanly in a few seconds, so even if
 something's broken on our end, Claude never hangs waiting on us.
 
-For non-Claude agents there's no hook system to lean on, so we run them inside
-a pseudo-terminal and record what scrolls by — mirroring it to you untouched.
+Gemini and Antigravity get the same treatment through their own hook systems,
+and codex is read from its structured rollout file (or driven over its
+app-server protocol). Everything else runs inside a pseudo-terminal and we
+record what scrolls by — mirroring it to you untouched.
 
 Want the deeper dive? [docs/DESIGN.md](docs/DESIGN.md). And the server side
 this client already talks to: [docs/SERVER-PROMPT.md](docs/SERVER-PROMPT.md).
@@ -436,12 +450,12 @@ internal/adapter/    Claude (hook injection) and the terminal-capture runner
 ## Where this is headed
 
 - [x] Proper hooks for Gemini CLI (real events instead of terminal scraping)
-- [ ] Same for Codex
+- [x] Same for Codex (rollout file, app-server) and Antigravity (hooks)
 - [x] Real-time viewer comments (live push, no more polling)
 - [x] Idle-viewer messages that reach Claude while it's waiting
 - [x] Homebrew tap
 - [x] Self-updating releases (`live update`)
-- [ ] Let viewers answer Claude's "can I run this?" prompts from the web
+- [x] Let the owner answer "can I run this?" prompts from the web
 - [ ] Visual asciinema-style replay alongside the event feed
 
 It's early and moving fast — if you try it and something's janky, that's
@@ -542,7 +556,8 @@ plugin under `~/.liveshortly/pocket-hook-plugin`; it is inert outside pocket-lau
 processes and does not replace the existing `liveshortly` plugin. Hook traffic uses
 a loopback-only listener and a random per-turn token. Failed relays deny the tool.
 
-Agent discovery reports `approvals: supported`, `unsupported`, or `not-needed`.
+Agent discovery reports `approvals: supported`, `unsupported`, or `not-needed`
+(the "pocket.ai approvals" column in [Who works with what](#who-works-with-what)).
 Gemini, Cursor, Aider and custom command adapters currently have no phone approval
 bridge; their existing CLI permission behavior remains in effect. Ollama's chat
 adapter does not execute tools. The app displays this support status in connection

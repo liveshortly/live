@@ -36,8 +36,23 @@ Homebrew formula and `live version` report.
   - `testdata/gemini/0.65.0/hooks.jsonl` is a golden replay built from
     gemini's documented hook payloads (synthetic, see `testdata/README.md`);
     the old PTY fixture moved to `testdata/gemini-pty/0.65.0/`.
+- **One support matrix (LSH-08).** What live supports per agent (capture,
+  approvals, comments, model switch, handoff, min version, golden replays,
+  pocket.ai approvals, known gaps) now lives in one table,
+  `internal/harness`, which the CLI also reads for its own decisions (display
+  names, `/model` switch, typed comments, pocket.ai approval status).
+  `go run ./scripts/harnessmatrix` writes it into the README,
+  `docs/HARNESS-MATRIX.md` and `docs/harness-matrix.json` (for the web docs and
+  new-session picker); `-check` and `go test ./...` fail when a copy drifts or
+  a fixture folder is added without regenerating. Stale README lines (codex as
+  "terminal recording", unchecked roadmap items) are gone.
 
 ### Fixed
+- **codex app-server sends `initialized` (LSH-12).** `LIVE_CODEX_APPSERVER=1`
+  went straight from the `initialize` response to `thread/start` without the
+  `initialized` notification the protocol requires. Both app-server clients
+  (`live codex` and the pocket.ai codex driver) now share one handshake:
+  initialize → initialized → thread/start, covered by a test.
 - **Terminal agents stream as readable rows (LSH-11).** PTY capture (ollama,
   aider, hermes, gemini < 0.26, any `live <cmd>`) now releases whole lines once
   output idles for 600 ms and holds the line still being written until its

@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -216,5 +218,46 @@ func TestCodexApp_LegacyApprovalAndModel(t *testing.T) {
 			t.Fatalf("reply = %q", s)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// LSH-12: the app-server protocol requires the `initialized` notification after
+// the initialize response and before thread/start.
+func TestCodexApp_HandshakeOrder(t *testing.T) {
+	app, _ := newTestApp()
+	toApp, fromTest := io.Pipe() // codex → live
+	fromApp, toTest := io.Pipe() // live → codex
+	app.stdin = bufio.NewWriter(toTest)
+	go app.readLoop(toApp)
+
+	var got []string
+	go func() {
+		sc := bufio.NewScanner(fromApp)
+		for sc.Scan() {
+			var m struct {
+				ID     json.RawMessage `json:"id"`
+				Method string          `json:"method"`
+			}
+			_ = json.Unmarshal(sc.Bytes(), &m)
+			got = append(got, m.Method)
+			if len(m.ID) > 0 {
+				result := `{}`
+				if m.Method == "thread/start" {
+					result = `{"thread":{"id":"t1"}}`
+				}
+				fmt.Fprintf(fromTest, `{"id":%s,"result":%s}`+"\n", m.ID, result)
+			}
+		}
+	}()
+
+	thread, err := app.handshake("live", "/tmp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if threadIDOf(thread) != "t1" {
+		t.Fatalf("thread = %s", thread)
+	}
+	if want := []string{"initialize", "initialized", "thread/start"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("order = %v, want %v", got, want)
 	}
 }
