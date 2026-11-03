@@ -105,12 +105,22 @@ func (s *Sidecar) hookPreInvocation(p map[string]any) map[string]any {
 	if prompt == "" {
 		prompt = str(p, "userMessage")
 	}
+	turn := prompt
 	if prompt == "" {
-		prompt = lastUserPromptFromTranscript(str(p, "transcriptPath"))
+		var step int
+		prompt, step = lastUserPromptFromTranscript(str(p, "transcriptPath"))
+		turn = fmt.Sprintf("%s#%d", str(p, "transcriptPath"), step)
 	}
 	prompt = cleanUserPrompt(prompt)
 
-	if prompt != "" && !isChannelTurn(prompt) && !isViewerTurn(prompt) {
+	// PreInvocation fires before every model step, not once per user turn:
+	// emit the prompt only when the turn (transcript USER_INPUT step) changes.
+	s.mu.Lock()
+	newTurn := turn != s.lastPromptTurn
+	s.lastPromptTurn = turn
+	s.mu.Unlock()
+
+	if newTurn && prompt != "" && !isChannelTurn(prompt) && !isViewerTurn(prompt) {
 		s.Emit("prompt", map[string]any{
 			"content": truncate(prompt, maxCaptureBytes),
 			"ts":      nowISO(),
@@ -181,8 +191,8 @@ func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
 			permTool = "Bash"
 			permDescStr = truncate(cmd, 300)
 			permMemoryKey = permKey("Bash", map[string]any{"command": cmd})
-		case "write_to_file":
-			path := str(in, "TargetFile")
+		case "write_to_file", "write_file":
+			path := agyPath(in)
 			s.Emit("pre_tool", map[string]any{
 				"tool":   "Write",
 				"action": "editing",
@@ -192,8 +202,8 @@ func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
 			permTool = "Write"
 			permDescStr = path
 			permMemoryKey = "Write"
-		case "replace_file_content":
-			path := str(in, "TargetFile")
+		case "replace_file_content", "edit_file":
+			path := agyPath(in)
 			s.Emit("pre_tool", map[string]any{
 				"tool":   "Edit",
 				"action": "editing",
@@ -203,8 +213,8 @@ func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
 			permTool = "Edit"
 			permDescStr = path
 			permMemoryKey = "Edit"
-		case "view_file":
-			path := str(in, "AbsolutePath")
+		case "view_file", "read_file":
+			path := agyPath(in)
 			s.Emit("pre_tool", map[string]any{
 				"tool":   "View",
 				"action": "viewing",
@@ -323,6 +333,17 @@ func (s *Sidecar) hookPreToolUse(p map[string]any) map[string]any {
 	return nil
 }
 
+// agyPath is the file an agy file tool targets: TargetFile / AbsolutePath on
+// the older tools, Path on the agy ≥ 1.4.9 edit_file / write_file / read_file.
+func agyPath(in map[string]any) string {
+	for _, k := range []string{"Path", "TargetFile", "AbsolutePath"} {
+		if v := str(in, k); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // permOutput builds a PreToolUse permission-decision hook response for Claude Code.
 func permOutput(decision, reason string) map[string]any {
 	return map[string]any{
@@ -392,9 +413,12 @@ func (s *Sidecar) hookPostToolUse(p map[string]any) map[string]any {
 		in := sub(tc, "args")
 
 		switch tool {
-		case "write_to_file":
-			path := str(in, "TargetFile")
+		case "write_to_file", "write_file":
+			path := agyPath(in)
 			content := str(in, "CodeContent")
+			if tool == "write_file" {
+				content = str(in, "Content")
+			}
 			diff, added, removed := writeDiff(path, content)
 			s.Emit("file_write", map[string]any{
 				"tool":    "Write",
@@ -404,10 +428,12 @@ func (s *Sidecar) hookPostToolUse(p map[string]any) map[string]any {
 				"removed": removed,
 				"ts":      nowISO(),
 			})
-		case "replace_file_content":
-			path := str(in, "TargetFile")
-			oldStr := str(in, "TargetContent")
-			newStr := str(in, "ReplacementContent")
+		case "replace_file_content", "edit_file":
+			path := agyPath(in)
+			oldStr, newStr := str(in, "TargetContent"), str(in, "ReplacementContent")
+			if tool == "edit_file" {
+				oldStr, newStr = str(in, "Target"), str(in, "Replacement")
+			}
 			diff, added, removed := unifiedDiff(path, oldStr, newStr)
 			s.Emit("file_write", map[string]any{
 				"tool":    "Edit",
@@ -636,13 +662,13 @@ func username(c api.Comment) string {
 
 // lastUserPromptFromTranscript scans a transcript JSONL file from the end
 // for the most recent USER_INPUT content.
-func lastUserPromptFromTranscript(path string) string {
+func lastUserPromptFromTranscript(path string) (prompt string, stepIdx int) {
 	if path == "" {
-		return ""
+		return "", 0
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return ""
+		return "", 0
 	}
 	defer f.Close()
 
@@ -656,14 +682,15 @@ func lastUserPromptFromTranscript(path string) string {
 	}
 	for i := len(lines) - 1; i >= 0; i-- {
 		var step struct {
-			Type    string `json:"type"`
-			Content string `json:"content"`
+			StepIndex int    `json:"step_index"`
+			Type      string `json:"type"`
+			Content   string `json:"content"`
 		}
 		if json.Unmarshal([]byte(lines[i]), &step) == nil && step.Type == "USER_INPUT" && step.Content != "" {
-			return cleanUserPrompt(step.Content)
+			return cleanUserPrompt(step.Content), step.StepIndex
 		}
 	}
-	return ""
+	return "", 0
 }
 
 // lastAssistantResponseFromTranscript scans a transcript JSONL file from the end
@@ -735,7 +762,34 @@ func toolOutputFromTranscript(path string, stepIdx int) string {
 	return ""
 }
 
+// cleanToolOutput strips agy's run_command step header. agy ≥ 1.4.9 writes
+// "Created At: …\nCompleted At: …\nCommand exited with code N.\n\nCommand output:\n";
+// only those exact leading lines are removed (a non-zero exit line is kept).
+// Older agy wrote "…The command exited with code N…\nOutput:\n".
 func cleanToolOutput(raw string) string {
+	rest, hdr := raw, false
+	for _, p := range []string{"Created At: ", "Completed At: "} {
+		if strings.HasPrefix(rest, p) {
+			_, rest, _ = strings.Cut(rest, "\n")
+			hdr = true
+		}
+	}
+	if hdr {
+		exit := ""
+		if strings.HasPrefix(rest, "Command exited with code ") {
+			exit, rest, _ = strings.Cut(rest, "\n")
+			if exit == "Command exited with code 0." {
+				exit = ""
+			}
+		}
+		if out, ok := strings.CutPrefix(strings.TrimLeft(rest, "\n"), "Command output:\n"); ok {
+			return strings.TrimSpace(exit + "\n" + out)
+		}
+		if exit != "" {
+			rest = exit + "\n" + rest
+		}
+		raw = rest
+	}
 	if idx := strings.Index(raw, "Output:\n"); idx >= 0 {
 		out := raw[idx+len("Output:\n"):]
 		out = strings.ReplaceAll(out, "\t", "")

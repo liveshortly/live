@@ -15,15 +15,16 @@
   {
     "type": "pre_tool",
     "payload": {
-      "action": "executing",
-      "tool": "read_file"
+      "action": "viewing",
+      "file": "/tmp/lsh-repo/README.md",
+      "tool": "View"
     }
   },
   {
     "type": "input_requested",
     "payload": {
       "kind": "permission",
-      "message": "Antigravity wants to run read_file: read_file"
+      "message": "Antigravity wants to run View: /tmp/lsh-repo/README.md"
     }
   },
   {
@@ -37,15 +38,16 @@
   {
     "type": "pre_tool",
     "payload": {
-      "action": "executing",
-      "tool": "edit_file"
+      "action": "editing",
+      "file": "/tmp/lsh-repo/README.md",
+      "tool": "Edit"
     }
   },
   {
     "type": "input_requested",
     "payload": {
       "kind": "permission",
-      "message": "Antigravity wants to run edit_file: edit_file"
+      "message": "Antigravity wants to run Edit: /tmp/lsh-repo/README.md"
     }
   },
   {
@@ -57,15 +59,19 @@
     }
   },
   {
-    "type": "_hook_output",
+    "type": "file_write",
     "payload": {
-      "hook": "post-tool-use"
+      "added": 1,
+      "diff": "--- /tmp/lsh-repo/README.md\n+++ /tmp/lsh-repo/README.md\n # lsh-repo\n+hello from agy",
+      "file": "/tmp/lsh-repo/README.md",
+      "removed": 0,
+      "tool": "Edit"
     }
   },
   {
-    "type": "prompt",
+    "type": "_hook_output",
     "payload": {
-      "content": "Read README.md, add a line 'hello from agy', then run `ls`."
+      "hook": "post-tool-use"
     }
   },
   {
@@ -107,7 +113,7 @@
     "type": "tool_call",
     "payload": {
       "command": "ls",
-      "output": "Created At: 2026-11-03T11:30:04+05:30\nCompleted At: 2026-11-03T11:30:04+05:30\nCommand exited with code 0.\n\nCommand output:\nREADME.md",
+      "output": "README.md",
       "tool": "Bash"
     }
   },
