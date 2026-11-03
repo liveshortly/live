@@ -100,7 +100,12 @@ Start sessions from the browser (no terminal needed):
   hooks, same permission gating. Take one over locally any time with
   "tmux -L liveshortly attach -t live-<first 8 chars of the session id>".
   Only the directories you pass to --dir (default: the current one) can ever be
-  used, and only claude / agy / codex / gemini can ever be started.
+  used. Agents offered: every harness on PATH that live knows by name, plus any
+  listed in ~/.liveshortly/agents.json (or --agents-file <path>).
+  live daemon --server --key <key> --dir <p>   Standalone Pocket server, no web
+    login. Also --listen <addr> (default :8787), --state-dir <p>,
+    --tls-cert <f> --tls-key <f> (HTTPS), --agents-file <p>.
+    "live daemon --help" has the details.
 
 Permission control (always ON for live claude and live agy):
   You approve tool runs from a tmux popup (if tmux is installed) or the

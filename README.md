@@ -200,8 +200,7 @@ phone or streaming it. Answer from whichever, first one wins.
 
 ```bash
 live claude                 # permission control on (tmux popup if tmux present)
-LIVE_WEB_PERMS=0 live claude # turn it off — plain native behavior
-LIVE_TMUX=0      live claude # keep gating, but answer only from the web (no popup)
+live --no-permissions claude  # turn it off for this run — plain native behavior
 ```
 
 Headless `-p`/`--print` runs are never gated.
@@ -438,7 +437,7 @@ this client already talks to: [docs/SERVER-PROMPT.md](docs/SERVER-PROMPT.md).
 | Your login | `~/.liveshortly/credentials.json` (0600) — point elsewhere with `LIVESHORTLY_CRED_PATH` |
 | Logs | `~/.liveshortly/live.log` (we never scribble over the agent's screen) |
 | Idle messages | On by default for `live claude` — a per-session channel lets viewer messages reach Claude even while it's idle. First run, Claude Code shows a one-time "load development channels?" prompt — just say yes. Set `LIVE_CHANNEL=0` to turn it off. Channel logs at `~/.liveshortly/channel.log` |
-| Approve tools from the web | `live --web-permissions claude` (or `LIVE_WEB_PERMS=1`). Off by default. When on, Claude pauses on each tool and waits for you to tap Approve/Deny on the session page instead of the keyboard — handy when you've stepped away. Only *you* (the owner) can answer; viewers just watch. Heads-up: while it's on, it gates every tool, so your local allowlist doesn't apply, and Claude sits paused until you answer (or it denies after a few minutes). |
+| Approve tools from the web | On by default for `live claude`, `live agy`, `live gemini` and `live codex`: each tool waits for Approve/Deny from a tmux popup or the session page. Only *you* (the owner) can answer; viewers just watch. While on, it gates every tool, so your local allowlist doesn't apply; an unanswered prompt denies after ~8 minutes. `live --no-permissions <agent>` turns it off for a run. |
 
 ## When something's off
 
