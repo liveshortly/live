@@ -239,6 +239,9 @@ func cmdRun(args []string) int {
 	}
 
 	prof := profileFor(bin)
+	if acpWanted() {
+		prof = agentProfile{framework: "acp", captureMode: "acp"}
+	}
 	if title == "" {
 		if wd, err := os.Getwd(); err == nil {
 			title = filepath.Base(wd)
@@ -348,20 +351,26 @@ func cmdRun(args []string) int {
 	// system context so the agent is oriented but idle until the operator types.
 	// Must run before dispatch so the (possibly augmented) userArgs reach the
 	// launcher.
-	if forked {
+	var devInstructions string
+	// ACP: userArgs is the agent's ACP argv, so the digest can't ride on it; it
+	// is prepended to the first prompt instead.
+	if forked && prof.captureMode == "acp" {
+		devInstructions = codexInstructions(bundle.Markdown)
+	} else if forked {
 		userArgs = seedHandoff(bundle, sessionID, userArgs, opts.preDigest, binPath)
 	}
 
 	// app-server mode ignores userArgs, so the digest cannot ride in on a `-c`
 	// override the way it does for the codex TUI. It is passed to thread/start as
 	// developerInstructions instead. Empty when this is not a fork.
-	var devInstructions string
 	if forked && filepath.Base(binPath) == "codex" {
 		devInstructions = codexInstructions(bundle.Markdown)
 	}
 
 	var exitCode int
 	switch {
+	case prof.captureMode == "acp":
+		exitCode = runACPMode(sc, binPath, userArgs, devInstructions)
 	case tmuxMode:
 		exitCode = runHooksTmuxMode(sc, binPath, userArgs)
 	case hooks:

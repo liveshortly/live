@@ -142,6 +142,24 @@
     },
     {
       "agents": [
+        "any ACP agent"
+      ],
+      "mode": "LIVE_ACP=1` or `\"acp\": true` in agents.json",
+      "framework": "acp",
+      "display": "The agent",
+      "summary": "Any agent that speaks ACP: structured feed, web approvals, comments as turns — no per-agent adapter.",
+      "capture": "✅ Agent Client Protocol over stdio (headless)",
+      "approvals": "✅ answered from the web; fails closed",
+      "comments": "✅ sent as the next turn (queued while one runs)",
+      "model_switch": false,
+      "handoff": "✅ digest prepended to the first turn",
+      "min_version": "ACP protocol v1",
+      "tested": "acp 1",
+      "pocket_approvals": "unsupported",
+      "gaps": "no terminal UI; comments wait for the running turn; no model switch"
+    },
+    {
+      "agents": [
         "aider",
         "cursor-agent",
         "hermes",
@@ -165,7 +183,7 @@
       "min_version": "—",
       "tested": "aider 0.82.3, cursor-agent 2026.10.01, hermes 0.21.5",
       "pocket_approvals": "unsupported",
-      "gaps": "no prompt/reply/tool rows, no stream_end, no model"
+      "gaps": "no prompt/reply/tool rows, no stream_end, no model. Speaks ACP? Run it in ACP mode (row above)"
     }
   ],
   "source": "github.com/liveshortly/live internal/harness (generated; do not edit)"

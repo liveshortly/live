@@ -54,7 +54,7 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, de
 			}()
 		},
 	}
-	if err := c.start(ctx, binPath); err != nil {
+	if err := c.start(ctx, binPath, "app-server"); err != nil {
 		fmt.Fprintf(os.Stderr, "live: codex app-server: %v\n", err)
 		return 1
 	}
@@ -166,9 +166,11 @@ type codexApp struct {
 	exit          int
 }
 
-func (c *codexApp) start(ctx context.Context, binPath string) error {
+// start launches binPath with args (codex: "app-server"; an ACP agent: its own
+// argv) and wires its stdio to the JSON-RPC client.
+func (c *codexApp) start(ctx context.Context, binPath string, args ...string) error {
 	c.done = make(chan struct{})
-	c.cmd = exec.CommandContext(ctx, binPath, "app-server")
+	c.cmd = exec.CommandContext(ctx, binPath, args...)
 	c.cmd.Env = envWithout(os.Environ(), "LIVE_POCKET_KEY")
 	c.cmd.Dir = c.directory
 	c.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

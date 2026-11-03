@@ -7,6 +7,13 @@ import (
 
 const maxDiffLines = 120
 
+// UnifiedDiff is unifiedDiff without the line counts, for agents that report
+// an edit as old/new text (ACP diff content).
+func UnifiedDiff(path, oldText, newText string) string {
+	d, _, _ := unifiedDiff(path, oldText, newText)
+	return d
+}
+
 // unifiedDiff renders an LCS-based line diff between old and new with +/-
 // markers (the web viewer colorizes by line prefix). Returns the diff text
 // and the added/removed line counts.

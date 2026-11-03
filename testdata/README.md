@@ -10,6 +10,7 @@ mapper and compare the result with the golden:
 | `hooks.jsonl` (+ `transcript.jsonl`) | claude, agy, gemini hooks | `sidecar.handleHook` (`internal/sidecar/hooks.go`) | `internal/sidecar/harness_replay_test.go` |
 | `rollout.jsonl` | codex rollout tail (tmux default, `LIVE_TMUX=0`) | `rolloutMapper` (`cmd/live/rollout.go`) | `cmd/live/harness_replay_test.go` |
 | `jsonrpc.jsonl` | codex app-server (`LIVE_CODEX_APPSERVER=1`) | `codexApp.readLoop` (`cmd/live/appserver*.go`) | same |
+| `jsonrpc.jsonl` under `acp/` | any ACP agent (`LIVE_ACP=1`) | `acpClient` via `codexApp.readLoop` (`cmd/live/acp.go`) | `cmd/live/acp_test.go` |
 | `pty.jsonl` | ollama, gemini < 0.26, any terminal agent | `adapter.Coalescer` (shared with `runPTYMode`) | same |
 
 A golden pins what the code does **today**, gaps included (see Findings). A
@@ -72,3 +73,4 @@ carries the diff.
   and pinned: a slow model's reply is whole lines, not one row per token; the
   ollama placeholder no longer glues onto the typed prompt; a soft-wrap redraw
   no longer duplicates a word.
+| `acp/1/jsonrpc.jsonl` | synthetic | Agent Client Protocol v1 schema (agentclientprotocol.com): `session/update` (`agent_message_chunk`, `tool_call`, `tool_call_update` with `content`/`diff`, `plan`), `session/request_permission`, and an `fs/read_text_file` live did not advertise. A real capture needs an ACP agent signed in to its provider; `TestACPEndToEnd` covers the stdio path against a fake agent. |

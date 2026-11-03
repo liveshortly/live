@@ -79,6 +79,9 @@ type agentCommand struct {
 	// that is showing a yes/no dialog, the Enter that submits the line can
 	// accept the dialog's default, so only the operator can say it is safe.
 	TypeComments bool `json:"type_comments"`
+	// ACP runs the agent over the Agent Client Protocol instead of a terminal
+	// (LSH-13): Command+Args must be its ACP entry point, e.g. `goose acp`.
+	ACP bool `json:"acp"`
 }
 
 var validAgentName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)

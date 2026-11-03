@@ -1,0 +1,69 @@
+[
+  {
+    "type": "response",
+    "payload": {
+      "content": "I'll list the files first."
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "ls -la",
+      "output": "README.md\nmain.go",
+      "tool": "Shell"
+    }
+  },
+  {
+    "type": "file_write",
+    "payload": {
+      "diff": "--- /tmp/acp-repo/README.md\n+++ /tmp/acp-repo/README.md\n # demo\n+hello from acp",
+      "file": "/tmp/acp-repo/README.md",
+      "tool": "Edit"
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "Read missing.txt (failed)",
+      "output": "{\"error\":\"no such file\"}",
+      "tool": "Read"
+    }
+  },
+  {
+    "type": "response",
+    "payload": {
+      "content": "Added the line."
+    }
+  },
+  {
+    "type": "_permission",
+    "payload": {
+      "detail": "ls -la",
+      "tool": "Shell"
+    }
+  },
+  {
+    "type": "_reply",
+    "payload": {
+      "error": {
+        "code": -32601,
+        "message": "not supported by live: fs/read_text_file"
+      },
+      "id": 7,
+      "jsonrpc": "2.0"
+    }
+  },
+  {
+    "type": "_reply",
+    "payload": {
+      "id": "perm_1",
+      "jsonrpc": "2.0",
+      "result": {
+        "outcome": {
+          "optionId": "yes",
+          "outcome": "selected"
+        }
+      }
+    }
+  }
+]
