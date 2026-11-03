@@ -6,7 +6,16 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.3.7 — 2026-11-03
+
 ### Added
+- **`live agents`** lists each builtin agent found (with its path) or not
+  found, and each `agents.json` entry (LSH-18).
+- **The daemon finds agents installed outside the system PATH (LSH-18).** It
+  probes and spawns with the inherited PATH plus the login shell's PATH and
+  the usual global-bin dirs (~/.local/bin, ~/.bun/bin, ~/.npm-global/bin,
+  pnpm, volta, mise/asdf shims, ~/go/bin, ~/.cargo/bin), and logs the
+  builtins it didn't find.
 - **`live daemon` sends its version when it registers** (`version`, LSH-19),
   so the server can flag an out-of-date daemon.
 - **Support matrix: "First message wakes idle agent" and "Model choice at
