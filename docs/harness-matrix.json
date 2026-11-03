@@ -1,0 +1,172 @@
+{
+  "rows": [
+    {
+      "agents": [
+        "claude"
+      ],
+      "framework": "claude-code",
+      "display": "Claude",
+      "summary": "Full support: structured feed, web approvals, live comments, model switch.",
+      "capture": "✅ Claude Code hooks",
+      "approvals": "✅ gated from the web or tmux popup; fails closed",
+      "comments": "✅ injected (channel, hook boundaries, Stop)",
+      "model_switch": true,
+      "handoff": "✅ seed prompt injected",
+      "min_version": "—",
+      "tested": "claude 2.1.316",
+      "pocket_approvals": "supported",
+      "gaps": "—"
+    },
+    {
+      "agents": [
+        "codex"
+      ],
+      "framework": "codex",
+      "display": "Codex",
+      "summary": "Structured feed from codex's rollout file, web approvals, live comments.",
+      "capture": "✅ rollout file, codex in tmux",
+      "approvals": "✅ gated (PreToolUse hook); fails closed. Off with `--no-permissions`, `--yolo`, `-a never`",
+      "comments": "✅ typed into codex's composer",
+      "model_switch": false,
+      "handoff": "✅ seed prompt injected",
+      "min_version": "—",
+      "tested": "codex 0.142.5, codex 0.166.0",
+      "pocket_approvals": "supported",
+      "gaps": "no mid-session model switch"
+    },
+    {
+      "agents": [
+        "codex"
+      ],
+      "mode": "LIVE_TMUX=0",
+      "framework": "codex",
+      "display": "Codex",
+      "summary": "Structured feed; comments arrive when codex polls for them.",
+      "capture": "✅ rollout file, codex in a PTY",
+      "approvals": "✅ gated (PreToolUse hook); fails closed",
+      "comments": "⚠ codex pulls them via the `poll_viewer_messages` channel tool (`LIVE_CHANNEL=0` turns it off)",
+      "model_switch": false,
+      "handoff": "✅ seed prompt injected",
+      "min_version": "—",
+      "tested": "codex 0.142.5, codex 0.166.0",
+      "pocket_approvals": "supported",
+      "gaps": "comments wait until codex calls the channel tool; no model switch"
+    },
+    {
+      "agents": [
+        "codex"
+      ],
+      "mode": "LIVE_CODEX_APPSERVER=1",
+      "framework": "codex",
+      "display": "Codex",
+      "summary": "Headless codex driven over app-server: structured feed, web approvals, comments as turns.",
+      "capture": "✅ app-server JSON-RPC (headless)",
+      "approvals": "✅ answered from the web; deny on timeout",
+      "comments": "✅ steer the running turn, or start a new one",
+      "model_switch": false,
+      "handoff": "✅ developer instructions",
+      "min_version": "—",
+      "tested": "codex-appserver 0.166.0",
+      "pocket_approvals": "supported",
+      "gaps": "file approvals say only \"apply a file change\"; no terminal UI; codex questions get no answers; no model switch"
+    },
+    {
+      "agents": [
+        "agy",
+        "antigravity"
+      ],
+      "framework": "agy",
+      "display": "Antigravity",
+      "summary": "Structured feed and web approvals; replies appear when the turn ends.",
+      "capture": "✅ hooks (`liveshortly` plugin)",
+      "approvals": "✅ gated; fails closed; live exits if the plugin can't install",
+      "comments": "✅ every comment in full, at the next model step",
+      "model_switch": false,
+      "handoff": "✅ seed prompt injected",
+      "min_version": "—",
+      "tested": "agy 1.4.9",
+      "pocket_approvals": "supported",
+      "gaps": "reply arrives when the turn ends; no model switch"
+    },
+    {
+      "agents": [
+        "gemini"
+      ],
+      "framework": "gemini-cli",
+      "display": "Gemini",
+      "summary": "Structured feed and web approvals via hooks; comments land at tool or turn boundaries.",
+      "capture": "✅ hooks (`liveshortly` extension)",
+      "approvals": "⚠ gated, fails closed — but gemini's own prompt stays in charge when hooks may not fire (hooks/extensions disabled, allowlist, GitHub Actions, your own `--yolo`/`--approval-mode`)",
+      "comments": "⚠ at tool and turn boundaries only",
+      "model_switch": false,
+      "handoff": "⚠ paste the printed seed prompt",
+      "min_version": "0.26",
+      "tested": "gemini 0.65.0",
+      "pocket_approvals": "unsupported",
+      "gaps": "untrusted folder: approve twice; env redaction strips `LIVE_TOKEN` (capture off, gated tools denied); comments wait while idle; no model switch"
+    },
+    {
+      "agents": [
+        "gemini"
+      ],
+      "mode": "gemini \u003c 0.26",
+      "framework": "gemini-cli",
+      "display": "Gemini",
+      "summary": "Old gemini: terminal recording only. Upgrade to 0.26+ for hooks.",
+      "capture": "⚠ terminal recording",
+      "approvals": "❌ gemini's own prompt, in the terminal only",
+      "comments": "⚠ shown to the operator only",
+      "model_switch": false,
+      "handoff": "⚠ paste the printed seed prompt",
+      "min_version": "—",
+      "tested": "gemini-pty 0.65.0",
+      "pocket_approvals": "unsupported",
+      "gaps": "no structure; upgrade to 0.26+"
+    },
+    {
+      "agents": [
+        "ollama"
+      ],
+      "framework": "ollama",
+      "display": "Ollama",
+      "summary": "Local chat REPL: replies stream as lines; comments are typed in.",
+      "capture": "⚠ terminal recording, whole lines",
+      "approvals": "— no tools",
+      "comments": "✅ typed in as one line",
+      "model_switch": false,
+      "handoff": "⚠ paste the printed seed prompt",
+      "min_version": "—",
+      "tested": "ollama 0.30.10",
+      "pocket_approvals": "not-needed",
+      "gaps": "no prompt/tool rows, no stream_end, no model"
+    },
+    {
+      "agents": [
+        "aider",
+        "cursor-agent",
+        "hermes",
+        "copilot",
+        "opencode",
+        "crush",
+        "goose",
+        "amp",
+        "qwen",
+        "pi",
+        "any command"
+      ],
+      "framework": "terminal",
+      "display": "The agent",
+      "summary": "Terminal recording only: viewers see raw output; approvals stay in the terminal.",
+      "capture": "⚠ terminal recording (raw lines, no structure)",
+      "approvals": "❌ the agent's own prompt, in the terminal only",
+      "comments": "⚠ shown to the operator only (opt in to typing with `type_comments` in agents.json or `LIVE_TYPE_COMMENTS=1`)",
+      "model_switch": false,
+      "handoff": "⚠ paste the printed seed prompt",
+      "min_version": "—",
+      "tested": "aider 0.82.3, cursor-agent 2026.10.01, hermes 0.21.5",
+      "pocket_approvals": "unsupported",
+      "gaps": "no prompt/reply/tool rows, no stream_end, no model"
+    }
+  ],
+  "source": "github.com/liveshortly/live internal/harness (generated; do not edit)"
+}

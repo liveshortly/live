@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/liveshortly/live/internal/harness"
 	"github.com/liveshortly/live/internal/hostcfg"
 	"io"
 	"log"
@@ -659,19 +660,7 @@ const maxCaptureBytes = 256 * 1024
 
 // AgentDisplayName is the user-facing name for a session framework.
 func AgentDisplayName(framework string) string {
-	switch framework {
-	case "claude-code":
-		return "Claude"
-	case "codex":
-		return "Codex"
-	case "agy":
-		return "Antigravity"
-	case "gemini-cli":
-		return "Gemini"
-	case "ollama":
-		return "Ollama"
-	}
-	return "The agent"
+	return harness.ForFramework(framework).Display
 }
 
 func (s *Sidecar) agentName() string {

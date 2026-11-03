@@ -63,15 +63,9 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, de
 	// approval + workspace-write sandbox means codex escalates risky actions as
 	// approval requests we can gate from the web.
 	cwd, _ := os.Getwd()
-	if _, err := c.request("initialize", map[string]any{
-		"clientInfo": map[string]any{"name": "live", "version": version},
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "live: codex initialize failed: %v\n", err)
-		return 1
-	}
-	thread, err := c.request("thread/start", threadStartParams(cwd, devInstructions))
+	thread, err := c.handshake("live", cwd, devInstructions)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "live: codex thread/start failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "live: codex %v\n", err)
 		return 1
 	}
 	c.threadID = threadIDOf(thread)
@@ -207,6 +201,25 @@ func (c *codexApp) start(ctx context.Context, binPath string) error {
 		close(c.done)
 	}()
 	return nil
+}
+
+// handshake runs the app-server opening sequence: initialize, then the
+// `initialized` notification the protocol requires before any other request,
+// then thread/start. It returns the thread/start result.
+func (c *codexApp) handshake(client, cwd, devInstructions string) (json.RawMessage, error) {
+	if _, err := c.request("initialize", map[string]any{
+		"clientInfo": map[string]any{"name": client, "version": version},
+	}); err != nil {
+		return nil, fmt.Errorf("initialize failed: %w", err)
+	}
+	if err := c.write(map[string]any{"method": "initialized"}); err != nil {
+		return nil, fmt.Errorf("initialized failed: %w", err)
+	}
+	thread, err := c.request("thread/start", threadStartParams(cwd, devInstructions))
+	if err != nil {
+		return nil, fmt.Errorf("thread/start failed: %w", err)
+	}
+	return thread, nil
 }
 
 // request sends a JSON-RPC request and blocks for its response.

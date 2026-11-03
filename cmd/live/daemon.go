@@ -19,6 +19,7 @@ import (
 
 	"github.com/liveshortly/live/internal/api"
 	"github.com/liveshortly/live/internal/auth"
+	"github.com/liveshortly/live/internal/harness"
 	"github.com/liveshortly/live/internal/hostcfg"
 )
 
@@ -742,7 +743,7 @@ func setSessionModel(cmd api.SpawnCommand) error {
 	// pane. Panes record their agent in LIVE_AGENT_NAME (older panes don't,
 	// and keep the previous behaviour).
 	if out, err := exec.Command("tmux", "-L", tmuxSocket, "show-environment", "-t", target, "LIVE_AGENT_NAME").Output(); err == nil {
-		if v := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(out)), "LIVE_AGENT_NAME=")); v != "" && v != "Claude" {
+		if v := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(out)), "LIVE_AGENT_NAME=")); v != "" && !harness.ForDisplay(v).ModelSwitch {
 			return fmt.Errorf("%s can't switch models mid-session", v)
 		}
 	}

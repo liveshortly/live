@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/liveshortly/live/internal/harness"
+
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -224,13 +226,7 @@ type pocketAgentStatus struct {
 func (s *pocketServer) agentStatuses() []pocketAgentStatus {
 	result := make([]pocketAgentStatus, 0, len(s.agents))
 	for _, agent := range s.agents {
-		status := pocketAgentStatus{ID: agent, Installed: contains(s.agents, agent), Approvals: "unsupported"}
-		if agent == "codex" || agent == "claude" || agent == "agy" || agent == "antigravity" {
-			status.Approvals = "supported"
-		}
-		if agent == "ollama" {
-			status.Approvals = "not-needed"
-		}
+		status := pocketAgentStatus{ID: agent, Installed: contains(s.agents, agent), Approvals: harness.ForAgent(agent).PocketApprovals}
 		var latest time.Time
 		for _, session := range s.sessions {
 			if session.Agent != agent {

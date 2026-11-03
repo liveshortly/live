@@ -23,6 +23,7 @@ import (
 	"github.com/liveshortly/live/internal/adapter"
 	"github.com/liveshortly/live/internal/api"
 	"github.com/liveshortly/live/internal/auth"
+	"github.com/liveshortly/live/internal/harness"
 	"github.com/liveshortly/live/internal/hostcfg"
 	"github.com/liveshortly/live/internal/perm"
 	"github.com/liveshortly/live/internal/sidecar"
@@ -1176,7 +1177,7 @@ func firstNonEmpty(vals ...string) string {
 // stranger's input on the operator's machine. So this is an allowlist of known
 // REPLs that read a line of prose, never a default.
 func canSubmitComments(binPath string) bool {
-	return profileFor(binPath).framework == "ollama" || os.Getenv("LIVE_TYPE_COMMENTS") == "1"
+	return harness.ForFramework(profileFor(binPath).framework).TypedComments || os.Getenv("LIVE_TYPE_COMMENTS") == "1"
 }
 
 // viewerLine flattens a comment into something safe to type into a REPL.
