@@ -21,6 +21,9 @@ type PTY struct {
 	mu   sync.Mutex
 	ptmx *os.File
 	done bool
+	// OnInput, when set, sees every chunk the operator types before it is
+	// forwarded to the agent (used to turn submitted lines into prompts).
+	OnInput func([]byte)
 }
 
 // Notify prints an overlay line (e.g. a viewer comment) to the outer
@@ -104,7 +107,25 @@ func (p *PTY) Run(bin string, args []string, onChunk func([]byte)) (int, error) 
 		}
 	}
 
-	go func() { _, _ = io.Copy(ptmx, os.Stdin) }()
+	go func() {
+		if p.OnInput == nil {
+			_, _ = io.Copy(ptmx, os.Stdin)
+			return
+		}
+		in := make([]byte, 4096)
+		for {
+			n, err := os.Stdin.Read(in)
+			if n > 0 {
+				p.OnInput(in[:n])
+				if _, werr := ptmx.Write(in[:n]); werr != nil {
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
 
 	buf := make([]byte, 8192)
 	for {

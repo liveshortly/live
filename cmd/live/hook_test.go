@@ -56,6 +56,7 @@ func TestHookFailsClosedWhenGated(t *testing.T) {
 		{"malformed JSON", reply(200, `{"hookSpecific`, 0), claudeBody, true, "deny"},
 		{"no verdict", reply(200, `{}`, 0), claudeBody, true, "deny"},
 		{"no sidecar env", "", claudeBody, true, "deny"},
+		{"no sidecar env agy", "", agyBody, true, "deny"},
 		{"unreachable agy", deadURL, agyBody, true, "deny"},
 		{"explicit deny", reply(200, deny, 0), claudeBody, true, "deny"},
 		{"explicit allow", reply(200, allow, 0), claudeBody, true, "allow"},
@@ -63,6 +64,7 @@ func TestHookFailsClosedWhenGated(t *testing.T) {
 		// Ungated (bypass / agent's own prompt in charge): unchanged behaviour.
 		{"bypass unreachable", deadURL, claudeBody, false, "allow"},
 		{"bypass 5xx", reply(500, "boom", 0), claudeBody, false, "allow"},
+		{"bypass no sidecar env", "", claudeBody, false, "allow"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("LIVE_SIDECAR", tc.addr)
@@ -74,5 +76,13 @@ func TestHookFailsClosedWhenGated(t *testing.T) {
 				t.Fatalf("decision = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// relay with no LIVE_SIDECAR is a no-op (nil, nil); hookOutput decides.
+func TestRelayWithoutSidecarIsEmpty(t *testing.T) {
+	t.Setenv("LIVE_SIDECAR", "")
+	if out, err := relay("pre-tool-use", []byte(`{}`)); out != nil || err != nil {
+		t.Fatalf("relay = %q, %v; want nil, nil", out, err)
 	}
 }

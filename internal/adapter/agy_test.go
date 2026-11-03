@@ -65,3 +65,41 @@ func TestWriteAgyPluginFiles(t *testing.T) {
 		t.Errorf("Stop len = %d, want 1", len(hooksObj.LiveShortly.Stop))
 	}
 }
+
+// fakeAgy writes an executable named name into a temp dir that exits with
+// code for `plugin <verb>` when verb == failVerb, else 0.
+func fakeAgy(t *testing.T, name, failVerb string) string {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\n[ \"$2\" = \"" + failVerb + "\" ] && { echo boom >&2; exit 3; }\nexit 0\n"
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// LSH-03: a failed install/enable must abort, never fall through to an
+// ungated agy run.
+func TestEnsureAgyPluginFailsWhenInstallOrEnableFails(t *testing.T) {
+	for _, verb := range []string{"install", "enable"} {
+		bin := fakeAgy(t, "agy", verb)
+		if cleanup, err := EnsureAgyPlugin(bin, "/usr/local/bin/live", true); err == nil {
+			cleanup()
+			t.Fatalf("plugin %s failing: EnsureAgyPlugin returned nil error", verb)
+		}
+	}
+}
+
+// The plugin goes into the binary the user launched, e.g. `antigravity`.
+func TestEnsureAgyPluginUsesLaunchedBinary(t *testing.T) {
+	bin := fakeAgy(t, "antigravity", "none")
+	cleanup, err := EnsureAgyPlugin(bin, "/usr/local/bin/live", true)
+	if err != nil {
+		t.Fatalf("EnsureAgyPlugin(antigravity) = %v", err)
+	}
+	cleanup()
+	if _, err := EnsureAgyPlugin(filepath.Join(t.TempDir(), "missing-agy"), "/x/live", true); err == nil {
+		t.Fatal("missing binary: want error")
+	}
+}

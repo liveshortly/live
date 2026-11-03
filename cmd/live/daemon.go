@@ -326,8 +326,10 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 		return fail("agent %q is not offered by this machine", cmd.Agent)
 	}
 	command, fixedArgs := cmd.Agent, []string(nil)
+	typeComments := false
 	if def, ok := custom[cmd.Agent]; ok {
 		command = def.Command
+		typeComments = def.TypeComments
 		// {prompt} is a Pocket (one-shot) substitution; an interactive session
 		// has no prompt to put there, so those args are left out rather than
 		// passed through with the placeholder intact.
@@ -397,12 +399,19 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 			agentArgs = append(agentArgs, "--dangerously-skip-permissions")
 		case "gemini":
 			agentArgs = append(agentArgs, "--yolo")
+		case "codex":
+			// No prompts, but keep codex's sandbox: anything outside it fails
+			// instead of asking, rather than running unsandboxed.
+			agentArgs = append(agentArgs, "--ask-for-approval", "never")
 		}
 	}
 
 	child := exec.Command(self, append(append(liveArgs, bin), agentArgs...)...)
 	child.Dir = cwd
 	child.Env = os.Environ()
+	if typeComments {
+		child.Env = append(child.Env, "LIVE_TYPE_COMMENTS=1")
+	}
 	child.Stdin = nil // no tty — this is what selects the headless path
 	// Diagnostics land in the shared log; the daemon's own terminal stays quiet.
 	if logf, err := os.OpenFile(hostcfg.LogPath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
@@ -417,11 +426,21 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 		return fail("could not start %s: %v", cmd.Agent, err)
 	}
 	// Reap it in the background; we never block the command stream on an agent.
-	go func() { _ = child.Wait() }()
+	// The capture process ends the session itself on a clean exit; if it died
+	// without doing so (killed, crashed), end it here so it doesn't stay "live"
+	// forever. The tmux reaper only sees tmux panes, and pty agents have none.
+	go func() {
+		_ = child.Wait()
+		_, _ = client.Stop(cmd.SessionID)
+	}()
 
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m started %s in %s → %s/session/%s\n",
 		cmd.Agent, cwd, hostcfg.WebURL(), cmd.SessionID)
-	fmt.Fprintf(os.Stderr, "        attach locally: tmux -L %s attach -t live-%s\n", tmuxSocket, cmd.SessionID[:8])
+	if profileFor(bin).captureMode == "pty" {
+		fmt.Fprintf(os.Stderr, "        headless terminal session (pid %d) — watch it on the web; no local pane to attach\n", child.Process.Pid)
+	} else {
+		fmt.Fprintf(os.Stderr, "        attach locally: tmux -L %s attach -t live-%s\n", tmuxSocket, cmd.SessionID[:8])
+	}
 	return nil
 }
 
@@ -718,6 +737,14 @@ func setSessionModel(cmd api.SpawnCommand) error {
 	// ending anything over — just report and move on.
 	if err := exec.Command("tmux", "-L", tmuxSocket, "has-session", "-t", target).Run(); err != nil {
 		return fmt.Errorf("session %s is not hosted on this machine", id[:8])
+	}
+	// `/model` is Claude Code's command; never type it into another agent's
+	// pane. Panes record their agent in LIVE_AGENT_NAME (older panes don't,
+	// and keep the previous behaviour).
+	if out, err := exec.Command("tmux", "-L", tmuxSocket, "show-environment", "-t", target, "LIVE_AGENT_NAME").Output(); err == nil {
+		if v := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(out)), "LIVE_AGENT_NAME=")); v != "" && v != "Claude" {
+			return fmt.Errorf("%s can't switch models mid-session", v)
+		}
 	}
 	// Literal text first (-l so "/model" is not interpreted), then Enter.
 	if err := exec.Command("tmux", "-L", tmuxSocket, "send-keys", "-t", target, "-l", "/model "+model).Run(); err != nil {

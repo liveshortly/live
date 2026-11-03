@@ -125,8 +125,17 @@ func TestParseCodexFileChanges(t *testing.T) {
 		t.Fatalf("map form: %v", got)
 	}
 	got = parseCodexFileChanges(json.RawMessage(`[{"path":"c.go"}]`))
-	if len(got) != 1 || got[0] != "c.go" {
+	if len(got) != 1 || got[0].path != "c.go" {
 		t.Fatalf("array form: %v", got)
+	}
+	// LSH-02: keep the diff when codex sends one, under either key.
+	got = parseCodexFileChanges(json.RawMessage(`[{"path":"d.go","unified_diff":"@@ -1 +1 @@\n-a\n+b"}]`))
+	if len(got) != 1 || !strings.Contains(got[0].diff, "+b") {
+		t.Fatalf("array diff: %v", got)
+	}
+	got = parseCodexFileChanges(json.RawMessage(`{"e.go":{"diff":"+x"}}`))
+	if len(got) != 1 || got[0].diff != "+x" {
+		t.Fatalf("map diff: %v", got)
 	}
 }
 

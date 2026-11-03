@@ -320,6 +320,7 @@ func cmdRun(args []string) int {
 	// attachOrWait is what keeps the session alive. Dropping tmux just because
 	// permissions were bypassed ran claude with no terminal, which exited
 	// instantly and archived the session the moment it was created.
+	liveGating = webPerms
 	tmuxMode := (webPerms || headless()) && tmuxWanted && hooks && hasTmux
 	if webPerms && hooks && !tmuxMode && !hasTmux {
 		fmt.Fprint(os.Stderr, "\x1b[33m● live\x1b[0m no tmux — approve tool runs from the session page (install tmux for in-terminal popups)\n\n")
@@ -330,6 +331,7 @@ func cmdRun(args []string) int {
 		SessionID:      sessionID,
 		WebURL:         hostcfg.WebURL(),
 		WebPermissions: webPerms && hooks,
+		Agent:          sidecar.AgentDisplayName(prof.framework),
 		Log:            logger,
 	}
 	if sc.WebPermissions {
@@ -416,7 +418,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	isAgyAgent := isAgy(binPath)
 	var agentArgs []string
 	if isAgyAgent {
-		cleanup, err := adapter.EnsureAgyPlugin(self, true)
+		cleanup, err := adapter.EnsureAgyPlugin(binPath, self, true)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "live: %v\n", err)
 			return 1
@@ -484,7 +486,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		"-e", "LIVE_SIDECAR=" + addr, "-e", "LIVE_TOKEN=" + token, "-e", "LIVE_SESSION_ID=" + sc.SessionID,
 		// The PreToolUse relay blocks on the broker (popup or web); its HTTP
 		// client must outlast the 8m decision grace, under the 10m hook.
-		"-e", "LIVE_HOOK_TIMEOUT=590"}
+		"-e", "LIVE_HOOK_TIMEOUT=590", "-e", "LIVE_AGENT_NAME=" + sc.Agent}
 	newArgs = append(newArgs, pinnedEnvArgs()...)
 	newArgs = append(newArgs, agent...)
 	if out, err := tmux(newArgs...).CombinedOutput(); err != nil {
@@ -804,7 +806,7 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 
 	var args []string
 	if isAgy(binPath) {
-		cleanup, err := adapter.EnsureAgyPlugin(self, sc.WebPermissions)
+		cleanup, err := adapter.EnsureAgyPlugin(binPath, self, sc.WebPermissions)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "live: %v\n", err)
 			return 1
@@ -1157,7 +1159,7 @@ func firstNonEmpty(vals ...string) string {
 // stranger's input on the operator's machine. So this is an allowlist of known
 // REPLs that read a line of prose, never a default.
 func canSubmitComments(binPath string) bool {
-	return profileFor(binPath).framework == "ollama"
+	return profileFor(binPath).framework == "ollama" || os.Getenv("LIVE_TYPE_COMMENTS") == "1"
 }
 
 // viewerLine flattens a comment into something safe to type into a REPL.
@@ -1283,6 +1285,17 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		}
 	}()
 
+	// Lines the operator types become `prompt` events, so a terminal session
+	// gets turns and a title like a hooked one. Pending output is flushed
+	// first so the prompt lands after what the agent printed before it.
+	lines := &inputLines{}
+	p.OnInput = func(b []byte) {
+		for _, line := range lines.feed(b) {
+			flush()
+			sc.Emit("prompt", map[string]any{"content": line, "ts": time.Now().UTC().Format(time.RFC3339)})
+		}
+	}
+
 	code, err := p.Run(binPath, userArgs, func(chunk []byte) {
 		mu.Lock()
 		now := time.Now()
@@ -1303,4 +1316,49 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		fmt.Fprintf(os.Stderr, "live: %v\n", err)
 	}
 	return code
+}
+
+// inputLines assembles raw keystrokes into submitted lines: printable text
+// accumulates, backspace edits, escape sequences (arrows, function keys) are
+// dropped, and CR/LF submits. ponytail: line-editing only; cursor movement
+// inside a line or a TUI's own history recall won't be reflected.
+type inputLines struct {
+	cur []rune
+	esc int // >0 while inside an escape sequence
+}
+
+func (l *inputLines) feed(b []byte) []string {
+	var out []string
+	for _, r := range string(b) {
+		switch {
+		case l.esc == 1:
+			if r == '[' || r == 'O' {
+				l.esc = 2
+			} else {
+				l.esc = 0
+			}
+		case l.esc == 2:
+			if r >= 0x40 && r <= 0x7e {
+				l.esc = 0
+			}
+		case r == 0x1b:
+			l.esc = 1
+		case r == '\r' || r == '\n':
+			if s := strings.TrimSpace(string(l.cur)); s != "" {
+				out = append(out, s)
+			}
+			l.cur = l.cur[:0]
+		case r == 0x7f || r == 0x08:
+			if len(l.cur) > 0 {
+				l.cur = l.cur[:len(l.cur)-1]
+			}
+		case r == 0x15: // Ctrl-U clears the line
+			l.cur = l.cur[:0]
+		case r == 0x03 || r == 0x04: // Ctrl-C / Ctrl-D abandon it
+			l.cur = l.cur[:0]
+		case r >= 0x20:
+			l.cur = append(l.cur, r)
+		}
+	}
+	return out
 }

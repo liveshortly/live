@@ -125,9 +125,32 @@ func codexChannelArgs(self, addr, token, sessionID string) []string {
 // LiveShortly web-permission flow. ON by default (like `live claude`): a
 // session-scoped PreToolUse hook sends approvals to the owner's browser and its
 // verdict is authoritative, so codex never shows a blocking native prompt.
-// Disable with LIVE_CODEX_PERMS=0; always off for headless -p runs.
+// Disable with LIVE_CODEX_PERMS=0; always off for headless -p runs, for
+// `live --no-permissions` (liveGating=false, also what a daemon bypass spawn
+// passes) and for codex's own "don't ask" flags.
 func codexPermsWanted(userArgs []string) bool {
-	return os.Getenv("LIVE_CODEX_PERMS") != "0" && !isPrintMode(userArgs)
+	return liveGating && os.Getenv("LIVE_CODEX_PERMS") != "0" && !isPrintMode(userArgs) && !codexApprovalsBypassed(userArgs)
+}
+
+// liveGating is false when the operator opted out of live's permission gating
+// (--no-permissions / --dangerously-skip-permissions before the agent). Set by
+// cmdRun before dispatching to a capture mode.
+var liveGating = true
+
+// codexApprovalsBypassed reports whether codex was told not to ask:
+// --dangerously-bypass-approvals-and-sandbox, --yolo, or -a/--ask-for-approval never.
+func codexApprovalsBypassed(args []string) bool {
+	for i, a := range args {
+		switch {
+		case a == "--dangerously-bypass-approvals-and-sandbox", a == "--yolo":
+			return true
+		case a == "--ask-for-approval=never", a == "-a=never":
+			return true
+		case (a == "-a" || a == "--ask-for-approval") && i+1 < len(args) && args[i+1] == "never":
+			return true
+		}
+	}
+	return false
 }
 
 // codexPermArgs returns the ephemeral launch overrides that gate codex tool use
@@ -426,7 +449,7 @@ func (m *rolloutMapper) handleResponseItem(raw json.RawMessage) {
 			m.emit("tool_call", map[string]any{
 				"tool":    codexToolLabel(call.name),
 				"command": clip(call.command, 500),
-				"output":  clip(out, 300),
+				"output":  clip(out, codexOutputCap),
 				"ts":      isoNow(),
 			})
 			return
@@ -480,7 +503,7 @@ func (m *rolloutMapper) emitApplyPatch(arguments string) {
 		m.emit("file_write", map[string]any{
 			"tool":    "apply_patch",
 			"file":    fp.path,
-			"diff":    clip(fp.diff, 4000),
+			"diff":    clip(fp.diff, codexOutputCap),
 			"added":   fp.added,
 			"removed": fp.removed,
 			"ts":      isoNow(),
@@ -660,3 +683,8 @@ func clip(s string, n int) string {
 	}
 	return string(r[:n]) + "…"
 }
+
+// codexOutputCap bounds codex tool output, replies and diffs the same as the
+// Claude hook path (sidecar maxCaptureBytes), so codex sessions aren't cut
+// to a 300-char stub.
+const codexOutputCap = 256 * 1024

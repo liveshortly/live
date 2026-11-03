@@ -75,7 +75,7 @@ func (c *codexApp) emitItem(raw json.RawMessage) {
 	case "agentMessage":
 		if t := strings.TrimSpace(it.Text); t != "" {
 			c.cliEcho("\x1b[32m🤖\x1b[0m " + clip(t, 800))
-			c.emit("response", map[string]any{"content": clip(t, 8000), "ts": isoNow()})
+			c.emit("response", map[string]any{"content": clip(t, codexOutputCap), "ts": isoNow()})
 		}
 	case "commandExecution":
 		out := it.AggregatedOutput
@@ -86,16 +86,16 @@ func (c *codexApp) emitItem(raw json.RawMessage) {
 		c.emit("tool_call", map[string]any{
 			"tool":    "Shell",
 			"command": clip(it.Command, 500),
-			"output":  clip(strings.TrimSpace(out), 300),
+			"output":  clip(strings.TrimSpace(out), codexOutputCap),
 			"ts":      isoNow(),
 		})
 	case "fileChange":
 		for _, f := range parseCodexFileChanges(it.Changes) {
-			c.emit("file_write", map[string]any{
-				"tool": "apply_patch",
-				"file": f,
-				"ts":   isoNow(),
-			})
+			ev := map[string]any{"tool": "apply_patch", "file": f.path, "ts": isoNow()}
+			if f.diff != "" {
+				ev["diff"] = clip(f.diff, codexOutputCap)
+			}
+			c.emit("file_write", ev)
 		}
 	}
 }
@@ -192,27 +192,45 @@ func looksLikeViewerInput(text string) bool {
 
 // parseCodexFileChanges extracts touched file paths from a fileChange item's
 // changes payload, which is a map of path → change or an array of {path}.
-func parseCodexFileChanges(raw json.RawMessage) []string {
+// codexFileChange is one file of an app-server fileChange item; diff is the
+// unified diff when codex sends one.
+type codexFileChange struct{ path, diff string }
+
+// changeDiff pulls a diff out of one change entry, whichever key codex used.
+type changeDiff struct {
+	Path        string `json:"path"`
+	Diff        string `json:"diff"`
+	UnifiedDiff string `json:"unified_diff"`
+}
+
+func (c changeDiff) text() string {
+	if c.UnifiedDiff != "" {
+		return c.UnifiedDiff
+	}
+	return c.Diff
+}
+
+func parseCodexFileChanges(raw json.RawMessage) []codexFileChange {
 	if len(raw) == 0 {
 		return nil
 	}
-	var asMap map[string]json.RawMessage
-	if json.Unmarshal(raw, &asMap) == nil {
-		out := make([]string, 0, len(asMap))
-		for path := range asMap {
-			out = append(out, path)
+	var asArr []changeDiff
+	if json.Unmarshal(raw, &asArr) == nil {
+		out := make([]codexFileChange, 0, len(asArr))
+		for _, e := range asArr {
+			if e.Path != "" {
+				out = append(out, codexFileChange{e.Path, e.text()})
+			}
 		}
 		return out
 	}
-	var asArr []struct {
-		Path string `json:"path"`
-	}
-	if json.Unmarshal(raw, &asArr) == nil {
-		out := make([]string, 0, len(asArr))
-		for _, e := range asArr {
-			if e.Path != "" {
-				out = append(out, e.Path)
-			}
+	var asMap map[string]json.RawMessage
+	if json.Unmarshal(raw, &asMap) == nil {
+		out := make([]codexFileChange, 0, len(asMap))
+		for path, v := range asMap {
+			var d changeDiff
+			_ = json.Unmarshal(v, &d)
+			out = append(out, codexFileChange{path, d.text()})
 		}
 		return out
 	}
