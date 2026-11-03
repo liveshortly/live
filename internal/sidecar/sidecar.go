@@ -317,6 +317,21 @@ func (s *Sidecar) QueueForHooks(comments ...api.Comment) {
 	s.mu.Unlock()
 }
 
+// Unqueue takes c back off the hook queue and reports whether it was still
+// there. It and the hooks' takePending share mu, so exactly one of them gets
+// a queued comment: whoever wins delivers it, the other must not.
+func (s *Sidecar) Unqueue(c api.Comment) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, p := range s.pending {
+		if p == c {
+			s.pending = append(s.pending[:i], s.pending[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Sidecar) queueForHooks(comments []api.Comment) {
 	s.QueueForHooks(comments...)
 }

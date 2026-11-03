@@ -104,18 +104,18 @@
       ],
       "framework": "gemini-cli",
       "display": "Gemini",
-      "summary": "Structured feed and web approvals via hooks; comments land at tool or turn boundaries.",
+      "summary": "Structured feed and web approvals via hooks; comments are typed in when idle, else land at tool or turn boundaries.",
       "capture": "✅ hooks (`liveshortly` extension)",
       "approvals": "⚠ gated, fails closed — but gemini's own prompt stays in charge when hooks may not fire (hooks/extensions disabled, allowlist, GitHub Actions, your own `--yolo`/`--approval-mode`)",
-      "comments": "⚠ at tool and turn boundaries only",
+      "comments": "✅ typed into the composer while idle; at tool and turn boundaries while busy (tmux runs; without tmux, boundaries only)",
       "model_switch": false,
       "model_choice": "✅ `--model` (shipped list + your default)",
-      "first_message": "❌ queued for the next hook; an idle gemini fires none until someone types in the terminal",
+      "first_message": "✅ typed in once gemini is idle at its composer (waits up to 20 s, confirms, retries once; notice names trust/sign-in); mid-turn it waits for the next hook",
       "handoff": "⚠ paste the printed seed prompt",
       "min_version": "0.26",
       "tested": "gemini 0.65.0",
       "pocket_approvals": "unsupported",
-      "gaps": "untrusted folder: approve twice; env redaction strips `LIVE_TOKEN` (capture off, gated tools denied); comments wait while idle; no model switch"
+      "gaps": "untrusted folder: approve twice; env redaction strips `LIVE_TOKEN` (capture off, gated tools denied); without tmux comments wait while idle; no model switch"
     },
     {
       "agents": [

@@ -93,7 +93,7 @@ func TestAgyFirstPromptDuringBoot(t *testing.T) {
 }
 
 // TestAgyUnacceptedIsReported: text agy never takes must come back as
-// errAgyUnaccepted (so it is surfaced, not silently queued twice).
+// errUnaccepted (so it is surfaced, not silently queued twice).
 func TestAgyUnacceptedIsReported(t *testing.T) {
 	tmuxBin, err := exec.LookPath("tmux")
 	if err != nil {
@@ -112,7 +112,7 @@ func TestAgyUnacceptedIsReported(t *testing.T) {
 	if out, err := p.output("new-session", "-d", "-s", p.sess, "-x", "100", "-y", "20", script); err != nil {
 		t.Fatalf("new-session: %v: %s", err, out)
 	}
-	if _, ok := p.injectAgy("bob (live viewer): stuck").(errAgyUnaccepted); !ok {
-		t.Fatalf("want errAgyUnaccepted; pane:\n%s", p.capture())
+	if _, ok := p.injectAgy("bob (live viewer): stuck").(errUnaccepted); !ok {
+		t.Fatalf("want errUnaccepted; pane:\n%s", p.capture())
 	}
 }

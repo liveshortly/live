@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/liveshortly/live/internal/adapter"
+	"github.com/liveshortly/live/internal/api"
 	"github.com/liveshortly/live/internal/sidecar"
 )
 
@@ -69,4 +71,98 @@ func geminiLaunch(sc *sidecar.Sidecar, self string, userArgs []string) (args, en
 		}
 	}
 	return args, env, nil
+}
+
+// ── viewer messages into gemini's composer (LSH-17) ─────────────────────────
+//
+// gemini takes viewer messages at hook boundaries (BeforeTool/AfterTool/
+// AfterAgent), and an idle gemini fires no hook, so a message sent to a
+// web-started gemini waited until someone typed in the terminal. Like agy
+// (LSH-15), an idle gemini now has the message typed into its composer; a
+// busy one still gets it at its next hook.
+//
+// gemini 0.66 at rest (captured with network blocked, see the tests):
+//
+//	────────────────────────────────────
+//	 Shift+Tab to accept edits
+//
+//	 >   Type your message or @path/to/file
+//
+// and while a turn runs a spinner line ends in "(esc to cancel, 3s)" above
+// that rule. Older releases drew the composer in a ╭─╮ │ > … │ box.
+
+const geminiPlaceholder = "Type your message"
+
+// geminiBusy reports that a turn is running (the spinner's cancel hint).
+func geminiBusy(pane string) bool { return strings.Contains(pane, "esc to cancel") }
+
+// geminiStartupBlocker names a screen that needs the operator, or "".
+func geminiStartupBlocker(pane string) string {
+	low := strings.ToLower(pane)
+	switch {
+	case strings.Contains(low, "do you trust"):
+		return "gemini is waiting for you to trust this folder in the terminal"
+	case strings.Contains(low, "how would you like to authenticate") || strings.Contains(low, "waiting for auth"):
+		return "gemini is waiting for sign-in — check the terminal"
+	case strings.Contains(low, "allow execution") || strings.Contains(low, "apply this change") || strings.Contains(low, "do you want to proceed"):
+		return "gemini is waiting for a tool approval in the terminal"
+	}
+	return ""
+}
+
+// geminiComposerLine returns the text in gemini's composer and whether gemini
+// is idle at it: the bottom-most "> " line, with a rule at most three lines
+// above, no dialog and no running turn. "" is the empty (placeholder) composer.
+func geminiComposerLine(pane string) (text string, ok bool) {
+	if geminiBusy(pane) || geminiStartupBlocker(pane) != "" {
+		return "", false
+	}
+	lines := strings.Split(pane, "\n")
+	for i := len(lines) - 1; i > 0; i-- {
+		l := strings.TrimSpace(strings.Trim(strings.TrimSpace(lines[i]), "│"))
+		if !strings.HasPrefix(l, ">") {
+			continue
+		}
+		for j := i - 1; j >= 0 && j >= i-3; j-- {
+			if strings.Contains(lines[j], "───") {
+				s := strings.TrimSpace(strings.TrimPrefix(l, ">"))
+				if strings.HasPrefix(s, geminiPlaceholder) {
+					s = ""
+				}
+				return s, true
+			}
+		}
+		return "", false // the bottom-most "> " is scrollback, not the composer
+	}
+	return "", false
+}
+
+func geminiComposerReady(pane string) bool { _, ok := geminiComposerLine(pane); return ok }
+
+// geminiTurnWait bounds how long a message queued during a busy turn is
+// watched for a turn end that no hook delivered it at.
+// ponytail: fixed cap; past it the message just stays queued for the next hook.
+var geminiTurnWait = 10 * time.Minute
+
+// deliverGemini gets c to gemini exactly once. Idle at its composer: type it
+// in. Busy: queue it for the next hook — and if the turn ends without one
+// taking it (the turn's last hook fired just before it was queued), take it
+// back and type it. Unqueue and the hooks share a lock, so only one wins.
+// Returns errUnaccepted when the text was typed but never left the composer.
+func (t *tmuxPane) deliverGemini(sc *sidecar.Sidecar, c api.Comment, text string) error {
+	var pane string
+	if !t.waitFor(func(p string) bool { pane = p; return geminiBusy(p) || geminiComposerReady(p) }, agyReadyWait) {
+		if why := geminiStartupBlocker(pane); why != "" {
+			return fmt.Errorf("%s", why)
+		}
+		return fmt.Errorf("gemini's composer never appeared")
+	}
+	if geminiBusy(pane) {
+		sc.QueueForHooks(c)
+		if !t.waitFor(geminiComposerReady, geminiTurnWait) || !sc.Unqueue(c) {
+			return nil // a hook delivered it, or one still will
+		}
+		sc.Log.Printf("live gemini tmux: turn ended with a viewer comment undelivered; typing it")
+	}
+	return t.injectComposer("gemini", geminiComposerLine, geminiStartupBlocker, text)
 }
