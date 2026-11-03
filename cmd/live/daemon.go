@@ -241,6 +241,7 @@ func cmdDaemon(args []string) int {
 		Models:   models,
 		// Per-agent model choice (LSH-16); spawnSession checks against it.
 		AgentModels: buildModelCatalog(agents, custom, models),
+		Version:     version,
 	}
 	client := api.New()
 
@@ -345,10 +346,10 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 		return fail("agent %q is not offered by this machine", cmd.Agent)
 	}
 	command, fixedArgs := cmd.Agent, []string(nil)
-	typeComments, acp := false, false
+	typeComments, acp, readyPattern := false, false, ""
 	if def, ok := custom[cmd.Agent]; ok {
 		command = def.Command
-		typeComments, acp = def.TypeComments, def.ACP
+		typeComments, acp, readyPattern = def.TypeComments, def.ACP, def.ReadyPattern
 		// {prompt} is a Pocket (one-shot) substitution; an interactive session
 		// has no prompt to put there, so those args are left out rather than
 		// passed through with the placeholder intact.
@@ -430,12 +431,15 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 
 	child := exec.Command(self, append(append(liveArgs, bin), agentArgs...)...)
 	child.Dir = cwd
-	child.Env = envWithout(os.Environ(), "LIVE_ACP") // ACP is per agent, never inherited
+	child.Env = envWithout(os.Environ(), "LIVE_ACP", "LIVE_READY_PATTERN") // per agent, never inherited
 	if typeComments {
 		child.Env = append(child.Env, "LIVE_TYPE_COMMENTS=1")
 	}
 	if acp {
 		child.Env = append(child.Env, "LIVE_ACP=1")
+	}
+	if readyPattern != "" {
+		child.Env = append(child.Env, "LIVE_READY_PATTERN="+readyPattern)
 	}
 	child.Stdin = nil // no tty — this is what selects the headless path
 	// Diagnostics land in the shared log; the daemon's own terminal stays quiet.

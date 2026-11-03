@@ -307,6 +307,10 @@ func (c *Client) GetDecision(id string) (string, error) {
 // callers should fall back to polling DrainPending.
 var ErrAgentStreamUnsupported = fmt.Errorf("agent stream not supported by server")
 
+// ErrSessionEnded means the server ended the session (it sent session_ended
+// before closing the stream). Reconnecting only gets the same answer again.
+var ErrSessionEnded = fmt.Errorf("session ended on the server")
+
 // AgentStream connects to the agent-facing SSE channel and invokes wake for
 // every pushed message (the caller then drains the pending queue as the ack).
 // Blocks until the stream closes or ctx is done.
@@ -353,7 +357,7 @@ func (c *Client) AgentStream(ctx context.Context, id string, wake func(msgType s
 		case "viewer_comment", "viewer_decision":
 			wake(msg.Type)
 		case "session_ended":
-			return nil
+			return ErrSessionEnded
 		}
 	}
 	return sc.Err()
@@ -380,6 +384,9 @@ type HostRegistration struct {
 	// offer for each agent. Built locally; a spawn's model is re-checked
 	// against it. A separate field so servers that predate it ignore it.
 	AgentModels []AgentModels `json:"agent_models,omitempty"`
+	// Version is this daemon's `live` version (LSH-19), so the server and UIs
+	// can tell an out-of-date daemon apart. Servers that predate it ignore it.
+	Version string `json:"version,omitempty"`
 }
 
 // AgentModels lists the models one agent on this machine may be started with.

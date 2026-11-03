@@ -39,6 +39,9 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, de
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sig)
+	if headless() {
+		sc.OnEnded = func() { endOnSignal(sig) }
+	}
 
 	c := &codexApp{
 		emit:        sc.Emit,

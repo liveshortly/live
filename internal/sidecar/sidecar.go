@@ -65,6 +65,11 @@ type Sidecar struct {
 	// prompts and receipts. Empty reads as "The agent"; see AgentDisplayName.
 	Agent string
 
+	// OnEnded, when set, is called (once, on its own goroutine) when the server
+	// says the session has ended. The comment receiver has already stopped;
+	// this is where the run mode ends the agent so the process can exit.
+	OnEnded func()
+
 	Log *log.Logger
 
 	events chan event
@@ -212,6 +217,13 @@ func (s *Sidecar) receiveComments(ctx context.Context) {
 				continue
 			}
 			if ctx.Err() != nil {
+				return
+			}
+			if err == api.ErrSessionEnded {
+				s.Log.Printf("session ended on the server — no longer receiving viewer comments")
+				if s.OnEnded != nil {
+					go s.OnEnded()
+				}
 				return
 			}
 			s.Log.Printf("agent stream dropped (%v), retrying in %s", err, backoff)
