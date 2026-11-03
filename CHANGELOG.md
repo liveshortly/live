@@ -22,6 +22,23 @@ Homebrew formula and `live version` report.
   agent started is delivered** instead of dropped.
 - **agy handoff seed uses `-i`.** agy 1.4.12 exits on a bare positional prompt.
 
+## v2.3.6 — 2026-11-03
+
+### Fixed
+- **The first message from the web reaches every agent (LSH-17 and the LSH-15
+  audit).** gemini in tmux gets viewer messages typed into its composer when
+  idle (held during boot, verified, never delivered twice). codex in tmux waits
+  up to 20 s for its composer and reports failures; codex app-server no longer
+  sends the daemon's `--model`/approval values as the first prompt and sets the
+  model on `thread/start`; pty agents (ollama and others) hold messages that
+  arrive before the terminal exists.
+- agy's handoff seed is passed with `-i` (a bare argument makes agy exit).
+
+### Changed
+- The support matrix gains "First message wakes idle agent" and "Model choice
+  at start" columns (`first_message`, `model_choice` in harness-matrix.json);
+  the daemon's `model_switchable` comes from the matrix.
+
 ## v2.3.5 — 2026-11-03
 
 ### Added
