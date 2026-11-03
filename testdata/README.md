@@ -49,25 +49,26 @@ a remote box, not Qwen Code. It takes the same PTY path as aider.
 
 ## Findings the goldens pin (link each fix to its card)
 
+Already fixed by #27, and pinned here as fixed: agy gets every comment's
+text, asks and receipts name the real agent, and app-server `file_write`
+carries the diff.
+
 - **codex ≥ 0.163 (LSH-02):** the rollout mapper only knows `function_call`
   `exec_command`/`apply_patch`. Current codex runs shell and patches inside
   `custom_tool_call` `exec` and reports them as `item_completed`
   `CommandExecution`/`FileChange`, so `codex/0.166.0` produces **no tool or
   file rows**, and the `wait` helper call becomes a bogus `tool_call` named
   `wait`. (0.142.5 also shows the apply_patch result as a stray `output` row.)
-- **codex app-server (LSH-02):** `file_write` has no diff, though 0.166.0 sends
-  one per change; no model is reported; `item/tool/requestUserInput` is
-  answered with `{"decision":"denied"}`, which is not that request's response
-  shape.
+- **codex app-server (LSH-02):** no model is reported, and
+  `item/tool/requestUserInput` is answered with `{"decision":"denied"}`,
+  which is not that request's response shape.
 - **agy 1.4.9 (LSH-03):** the newer tool names `read_file`, `edit_file`,
   `write_file` fall through to the generic branch. No `file_write` row, and
-  approvals read "agy wants to run edit_file: edit_file". Only the old
+  approvals read "Antigravity wants to run edit_file: edit_file". Only the old
   `replace_file_content`/`write_to_file` names produce diffs. `run_command`
   output keeps the `Created At…/Command output:` header because
-  `cleanToolOutput` looks for `Output:\n`. Two comments together inject only
-  "2 viewer messages (viewer1, viewer2)", not their text. Every PreInvocation
-  re-emits the transcript's last user prompt, so the prompt row repeats each
-  model step. Receipts say "delivered to Claude" (LSH-06).
+  `cleanToolOutput` looks for `Output:\n`. Every PreInvocation re-emits the
+  transcript's last user prompt, so the prompt row repeats each model step.
 - **PTY agents (LSH-04/05):** the real ollama capture shows a slow model split
   into one `output` event per token (600 ms idle cut). The REPL's grey
   placeholder text ("Send a message (/? for help)") glues onto the typed

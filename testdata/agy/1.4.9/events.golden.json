@@ -23,7 +23,7 @@
     "type": "input_requested",
     "payload": {
       "kind": "permission",
-      "message": "agy wants to run read_file: read_file"
+      "message": "Antigravity wants to run read_file: read_file"
     }
   },
   {
@@ -45,7 +45,7 @@
     "type": "input_requested",
     "payload": {
       "kind": "permission",
-      "message": "agy wants to run edit_file: edit_file"
+      "message": "Antigravity wants to run edit_file: edit_file"
     }
   },
   {
@@ -74,7 +74,7 @@
       "hook": "pre-invocation",
       "injectSteps": [
         {
-          "ephemeralMessage": "[live] 💬 2 viewer messages (viewer1, viewer2) → delivered to Claude"
+          "ephemeralMessage": "[live] Viewer message(s) (respond if relevant):\n  • viewer1: also show hidden files\n  • viewer2: and the git log"
         }
       ]
     }
@@ -92,7 +92,7 @@
     "type": "input_requested",
     "payload": {
       "kind": "permission",
-      "message": "agy wants to run Bash: ls"
+      "message": "Antigravity wants to run Bash: ls"
     }
   },
   {
@@ -129,7 +129,7 @@
     "type": "input_requested",
     "payload": {
       "kind": "permission",
-      "message": "agy wants to run Edit: /tmp/lsh-repo/README.md"
+      "message": "Antigravity wants to run Edit: /tmp/lsh-repo/README.md"
     }
   },
   {

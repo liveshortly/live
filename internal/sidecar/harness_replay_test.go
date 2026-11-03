@@ -112,6 +112,7 @@ func replayHooks(t *testing.T, dir string) {
 		WebURL:         "http://localhost:8080",
 		Broker:         broker,
 		WebPermissions: true,
+		Agent:          AgentDisplayName(fixtureFramework[filepath.Base(filepath.Dir(dir))]),
 		Log:            log.New(io.Discard, "", 0),
 		events:         make(chan event, 1024),
 	}
@@ -170,6 +171,10 @@ func replayHooks(t *testing.T, dir string) {
 	}
 	checkGolden(t, dir, out)
 }
+
+// fixtureFramework maps a testdata/<agent> dir to the session framework `live`
+// sets for it (profileFor in cmd/live/run.go), which names the agent in asks.
+var fixtureFramework = map[string]string{"claude": "claude-code", "agy": "agy"}
 
 func dropTS(p map[string]any) map[string]any {
 	clean := map[string]any{}

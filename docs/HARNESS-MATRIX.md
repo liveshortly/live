@@ -35,10 +35,10 @@ re-check them with a real capture.
 | Agent (fixture) | Prompt row | Reply row | Tool rows | File edit + diff | Approval ask text | Comments injected | stream_end | Model | Card |
 |---|---|---|---|---|---|---|---|---|---|
 | claude 2.1.316 (synthetic) | ✅ | ✅ | ✅ | ✅ | ✅ full command | ✅ text, at hook boundary and Stop | ✅ | ✅ from transcript | baseline |
-| agy 1.4.9 (synthetic) | ⚠ repeated on every PreInvocation | ⚠ only at Stop | ⚠ `read_file`/`edit_file` generic; `run_command` output keeps the `Created At…` header | ❌ for `edit_file`/`write_file` (✅ only for old `replace_file_content`) | ⚠ "agy wants to run edit_file: edit_file" | ⚠ 2+ comments → names only | ✅ | ✅ | LSH-03 |
+| agy 1.4.9 (synthetic) | ⚠ repeated on every PreInvocation | ⚠ only at Stop | ⚠ `read_file`/`edit_file` generic; `run_command` output keeps the `Created At…` header | ❌ for `edit_file`/`write_file` (✅ only for old `replace_file_content`) | ⚠ "Antigravity wants to run edit_file: edit_file" | ✅ full text of every comment | ✅ | ✅ | LSH-03 |
 | codex 0.142.5 rollout (synthetic) | ✅ | ✅ | ✅ "Shell" | ✅ | (hook, as claude) | (channel / tmux) | ✅ | ✅ | LSH-02 |
 | codex 0.166.0 rollout (synthetic, real shapes) | ✅ | ✅ | ❌ none (`custom_tool_call exec` ignored); bogus `wait` row | ❌ none (`FileChange` ignored) | (hook, as claude) | (channel / tmux) | ✅ | ✅ | LSH-02 |
-| codex 0.166.0 app-server (synthetic, schema-checked) | ✅ | ✅ | ✅ "Shell" | ⚠ file only, no diff | ⚠ "apply a file change" | — | ✅ | ❌ | LSH-02 |
+| codex 0.166.0 app-server (synthetic, schema-checked) | ✅ | ✅ | ✅ "Shell" | ✅ | ⚠ "apply a file change" | — | ✅ | ❌ | LSH-02 |
 | ollama 0.30.10 (**real**) | ❌ (raw output) | ⚠ one row per token on a slow model; placeholder text glued to the prompt | ❌ | ❌ | ❌ | typed line (ollama only) | ❌ | ❌ | LSH-05 |
 | gemini 0.65.0 (synthetic) | ❌ raw TUI | ❌ raw TUI | ❌ | ❌ | ❌ | ❌ overlay | ❌ | ❌ | LSH-04 |
 | aider / cursor-agent / hermes (synthetic) | ❌ raw | ❌ raw | ❌ | ❌ | ❌ | ❌ overlay | ❌ | ❌ | LSH-05 |
