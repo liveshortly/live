@@ -90,10 +90,9 @@ type runOpts struct {
 // everything after it (including any --session) goes verbatim to the agent.
 // --handoff and --session are mutually exclusive. Split out for unit-testing.
 func parseRunFlags(args []string) (runOpts, []string, error) {
-	// tmux popups + web permission control are hardcoded ON for live claude
-	// (equivalent to LIVE_TMUX=1 LIVE_WEB_PERMS=1). --no-permissions turns
-	// permission control off for a single run; headless -p/--print disables it
-	// automatically in cmdRun.
+	// tmux popups + web permission control are hardcoded ON for live claude.
+	// --no-permissions turns permission control off for a single run; headless
+	// -p/--print disables it automatically in cmdRun.
 	o := runOpts{webPerms: true}
 
 	// forkFlag consumes a fork option at args[i], advancing the index. Shared by
@@ -317,7 +316,7 @@ func cmdRun(args []string) int {
 	// Resolve the permission mode. Default: tmux popups when tmux is present;
 	// otherwise, on a pure default (no LIVE_* set), fall back to Claude's
 	// native terminal prompts rather than stranding a solo keyboard user on
-	// web-only. Explicit LIVE_WEB_PERMS=1 forces web-only even without tmux.
+	// web-only.
 	//
 	// A HEADLESS run (web-spawned: stdin is not a tty) needs tmux regardless of
 	// permission gating — the pane is what hosts the agent at all, and
@@ -343,7 +342,7 @@ func cmdRun(args []string) int {
 		if tmuxMode {
 			where = "a CLI popup or the session page"
 		}
-		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m permission control ON — approve tool runs from %s (LIVE_WEB_PERMS=0 to disable)\n\n", where)
+		fmt.Fprintf(os.Stderr, "\x1b[33m● live\x1b[0m permission control ON — approve tool runs from %s (--no-permissions to disable)\n\n", where)
 	}
 
 	// Seed the new agent with the prior context. The operator reads the history
