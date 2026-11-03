@@ -158,6 +158,7 @@ func cmdDaemon(args []string) int {
 		return 2
 	}
 
+	widenPATH() // probe AND spawn with the login-shell PATH (LSH-18)
 	if opts.server {
 		return cmdPocketServer(opts)
 	}
@@ -245,6 +246,15 @@ func cmdDaemon(args []string) int {
 
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m daemon ready as \x1b[1m%s\x1b[0m — start sessions from %s\n", name, hostcfg.WebURL())
 	fmt.Fprintf(os.Stderr, "        agents: %s\n", strings.Join(agents, ", "))
+	var missing []string
+	for _, b := range spawnableBuiltins {
+		if !contains(agents, b) {
+			missing = append(missing, b)
+		}
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(os.Stderr, "        not found: %s (installed? see `live agents`)\n", strings.Join(missing, ", "))
+	}
 	for _, am := range reg.AgentModels {
 		if len(am.Models) > 0 {
 			ids := make([]string, len(am.Models))

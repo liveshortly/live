@@ -543,6 +543,13 @@ that CLI requires a command-line prompt. No shell is used. These commands are
 configured only by the server operator; API clients cannot supply arbitrary
 executables or arguments. Custom agents appear when their command is executable.
 
+`live agents` lists every agent the daemon finds (with its path), the ones it
+probed but did not find, and the agents.json entries. The daemon searches your
+login shell's PATH plus the usual global-bin directories (`~/.local/bin`,
+`~/.bun/bin`, `~/.npm-global/bin`, pnpm, volta, mise/asdf shims, `~/go/bin`,
+`~/.cargo/bin`). A CLI that live does not know by name (for example `pig`) needs
+an agents.json entry.
+
 ### API and lifecycle
 
 | Method | Route | Purpose |
