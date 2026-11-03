@@ -378,6 +378,7 @@ checklist, is in [docs/HARNESS-MATRIX.md](docs/HARNESS-MATRIX.md).
 | `aider`, `cursor-agent`, `hermes`, `copilot`, `opencode`, `crush`, `goose`, `amp`, `qwen`, `pi` and any other command | ⚠ terminal recording (raw lines, no structure) | ❌ the agent's own prompt, in the terminal only | ⚠ shown to the operator only (opt in to typing with `type_comments` in agents.json or `LIVE_TYPE_COMMENTS=1`) | ❌ | ⚠ paste the printed seed prompt | — | aider 0.82.3, cursor-agent 2026.10.01, hermes 0.21.5 | unsupported | no prompt/reply/tool rows, no stream_end, no model. Speaks ACP? Run it in ACP mode (row above) |
 
 ✅ works · ⚠ partial (reason given) · ❌ not supported. Generated from `internal/harness` by `go run ./scripts/harnessmatrix`; do not edit by hand.
+<!-- harness-matrix:end -->
 
 ### Any agent that speaks ACP
 
@@ -398,7 +399,6 @@ For web-spawned sessions, mark it in `~/.liveshortly/agents.json`:
 ```
 
 The session is headless: send the first instruction from the session page.
-<!-- harness-matrix:end -->
 
 ## How it actually works
 
