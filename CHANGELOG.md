@@ -4,7 +4,7 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
-## Unreleased
+## v2.3.2 — 2026-11-03
 
 ### Added
 - **Gemini CLI runs on its hooks, not a raw terminal (LSH-04).** `live gemini`
@@ -356,7 +356,7 @@ terminal.
 No server change was needed for any of it: the listing, streaming, comment and
 share endpoints already existed for the web client.
 
-## Unreleased
+## v2.3.2 — 2026-11-03
 
 ### Fixed
 - **A fresh `live` reaches liveshortly.com again.** v2.3.0 defaulted to
