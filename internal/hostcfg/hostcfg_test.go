@@ -84,3 +84,28 @@ func TestDefaultsToHostedService(t *testing.T) {
 		t.Errorf("WebURL = %q, want %q", got, want)
 	}
 }
+
+// `live host set` / `reset` (LSI-15): set wins over env, reset returns to the
+// default, and junk URLs are refused.
+func TestSetAndResetHost(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LIVESHORTLY_API_URL", "")
+	if err := SetHost("ftp://nope"); err == nil {
+		t.Fatal("SetHost accepted a non-http URL")
+	}
+	if err := SetHost("http://localhost:8080/"); err != nil {
+		t.Fatal(err)
+	}
+	if APIURL() != "http://localhost:8080" || WebURL() != "http://localhost:8080" || Source() != "host.json" {
+		t.Fatalf("after set: %s %s %s", APIURL(), WebURL(), Source())
+	}
+	if err := ResetHost(); err != nil {
+		t.Fatal(err)
+	}
+	if err := ResetHost(); err != nil {
+		t.Fatal("second reset:", err)
+	}
+	if APIURL() != DefaultAPIURL || Source() != "default" {
+		t.Fatalf("after reset: %s %s", APIURL(), Source())
+	}
+}

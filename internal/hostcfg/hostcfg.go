@@ -6,6 +6,8 @@ package hostcfg
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,9 +26,11 @@ func home() string {
 	return h
 }
 
+func hostPath() string { return filepath.Join(home(), ".liveshortly", "host.json") }
+
 func loadHost() hostFile {
 	var h hostFile
-	b, err := os.ReadFile(filepath.Join(home(), ".liveshortly", "host.json"))
+	b, err := os.ReadFile(hostPath())
 	if err == nil {
 		_ = json.Unmarshal(b, &h)
 	}
@@ -51,6 +55,42 @@ func APIURL() string {
 		return strings.TrimRight(v, "/")
 	}
 	return DefaultAPIURL
+}
+
+// Source names where APIURL came from: "host.json", "LIVESHORTLY_API_URL" or
+// "default" — shown by `live host` / `live login` so a stale override is visible.
+func Source() string {
+	if loadHost().APIURL != "" {
+		return "host.json"
+	}
+	if strings.TrimSpace(os.Getenv("LIVESHORTLY_API_URL")) != "" {
+		return "LIVESHORTLY_API_URL"
+	}
+	return "default"
+}
+
+// SetHost points this machine at a single-origin server by writing host.json
+// (`live host set <url>`). The URL must be absolute http(s).
+func SetHost(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("not an http(s) URL: %q", raw)
+	}
+	origin := strings.TrimRight(u.String(), "/")
+	b, _ := json.Marshal(hostFile{APIURL: origin, WebURL: origin})
+	if err := os.MkdirAll(filepath.Dir(hostPath()), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(hostPath(), append(b, '\n'), 0o600)
+}
+
+// ResetHost removes host.json so the hosted default applies again
+// (`live host reset`). A missing file is already reset.
+func ResetHost() error {
+	if err := os.Remove(hostPath()); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // WebURL returns the explicit browser origin, or the API origin for a
