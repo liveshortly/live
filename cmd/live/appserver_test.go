@@ -157,7 +157,7 @@ func TestCodexAppServerIntegration(t *testing.T) {
 	app, cap := newTestApp()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := app.start(ctx, bin); err != nil {
+	if err := app.start(ctx, bin, "app-server"); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	if _, err := app.request("initialize", map[string]any{

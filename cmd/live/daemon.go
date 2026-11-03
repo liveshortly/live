@@ -327,10 +327,10 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 		return fail("agent %q is not offered by this machine", cmd.Agent)
 	}
 	command, fixedArgs := cmd.Agent, []string(nil)
-	typeComments := false
+	typeComments, acp := false, false
 	if def, ok := custom[cmd.Agent]; ok {
 		command = def.Command
-		typeComments = def.TypeComments
+		typeComments, acp = def.TypeComments, def.ACP
 		// {prompt} is a Pocket (one-shot) substitution; an interactive session
 		// has no prompt to put there, so those args are left out rather than
 		// passed through with the placeholder intact.
@@ -409,9 +409,12 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 
 	child := exec.Command(self, append(append(liveArgs, bin), agentArgs...)...)
 	child.Dir = cwd
-	child.Env = os.Environ()
+	child.Env = envWithout(os.Environ(), "LIVE_ACP") // ACP is per agent, never inherited
 	if typeComments {
 		child.Env = append(child.Env, "LIVE_TYPE_COMMENTS=1")
+	}
+	if acp {
+		child.Env = append(child.Env, "LIVE_ACP=1")
 	}
 	child.Stdin = nil // no tty — this is what selects the headless path
 	// Diagnostics land in the shared log; the daemon's own terminal stays quiet.
@@ -437,7 +440,7 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m started %s in %s → %s/session/%s\n",
 		cmd.Agent, cwd, hostcfg.WebURL(), cmd.SessionID)
-	if profileFor(bin).captureMode == "pty" {
+	if acp || profileFor(bin).captureMode == "pty" {
 		fmt.Fprintf(os.Stderr, "        headless terminal session (pid %d) — watch it on the web; no local pane to attach\n", child.Process.Pid)
 	} else {
 		fmt.Fprintf(os.Stderr, "        attach locally: tmux -L %s attach -t live-%s\n", tmuxSocket, cmd.SessionID[:8])

@@ -100,7 +100,7 @@ func runPocketCodex(parent context.Context, dir, prompt string) (string, error) 
 			}
 		}()
 	}
-	if err := c.start(ctx, "codex"); err != nil {
+	if err := c.start(ctx, "codex", "app-server"); err != nil {
 		return "", err
 	}
 	defer func() { cancel(); <-c.done }()

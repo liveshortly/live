@@ -46,7 +46,7 @@ var generic = Row{
 	Comments:   "⚠ shown to the operator only (opt in to typing with `type_comments` in agents.json or `LIVE_TYPE_COMMENTS=1`)",
 	Handoff:    "⚠ paste the printed seed prompt",
 	MinVersion: "—",
-	Gaps:       "no prompt/reply/tool rows, no stream_end, no model",
+	Gaps:       "no prompt/reply/tool rows, no stream_end, no model. Speaks ACP? Run it in ACP mode (row above)",
 	Summary:    "Terminal recording only: viewers see raw output; approvals stay in the terminal.",
 
 	PocketApprovals: "unsupported",
@@ -150,6 +150,18 @@ var Rows = []Row{
 		Summary:    "Local chat REPL: replies stream as lines; comments are typed in.",
 
 		TypedComments: true, PocketApprovals: "not-needed", Fixtures: []string{"ollama"},
+	},
+	{
+		Agents: []string{"any ACP agent"}, Mode: "`LIVE_ACP=1` or `\"acp\": true` in agents.json", Framework: "acp", Display: "The agent",
+		Capture:    "✅ Agent Client Protocol over stdio (headless)",
+		Approvals:  "✅ answered from the web; fails closed",
+		Comments:   "✅ sent as the next turn (queued while one runs)",
+		Handoff:    "✅ digest prepended to the first turn",
+		MinVersion: "ACP protocol v1",
+		Gaps:       "no terminal UI; comments wait for the running turn; no model switch",
+		Summary:    "Any agent that speaks ACP: structured feed, web approvals, comments as turns — no per-agent adapter.",
+
+		PocketApprovals: "unsupported", Fixtures: []string{"acp"},
 	},
 	generic,
 }
