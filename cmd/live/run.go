@@ -413,6 +413,41 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	}, 8*time.Minute)
 	sc.Broker = broker
 
+	const sock = "liveshortly"
+	sess := "live-" + sc.SessionID[:8]
+	t := &tmuxPane{bin: tmuxBin, sock: sock, sess: sess}
+	_ = t.run("kill-session", "-t", sess) // clear any stale session
+
+	// agy has no channel, so an idle agy only hears a viewer by having the text
+	// typed into its composer. OnComment must be set BEFORE sc.Start: a comment
+	// drained earlier (the first prompt, sent while the plugin installs) went
+	// to the hook queue, and an idle agy fires no hooks (LSH-15). injectAgy
+	// waits for the pane and composer, so early comments simply block here and
+	// are delivered in order once agy is up.
+	isAgyAgent := isAgy(binPath)
+	if isAgyAgent {
+		sc.OnComment = func(c api.Comment) {
+			who := c.Username
+			if who == "" {
+				who = "viewer"
+			}
+			err := t.injectAgy(viewerTurn(who, c.Message))
+			if err == nil {
+				sc.Log.Printf("live agy tmux: injected comment from %s into composer", who)
+				return
+			}
+			sc.Log.Printf("live agy tmux: inject failed (%v)", err)
+			if _, typed := err.(errAgyUnaccepted); !typed {
+				sc.QueueForHooks(c) // nothing typed: deliver at the next hook instead
+			}
+			sc.Emit("input_requested", map[string]any{
+				"message": fmt.Sprintf("%s — open the terminal (`tmux -L %s attach -t %s`) to continue", err, sock, sess),
+				"kind":    "input",
+				"ts":      time.Now().UTC().Format(time.RFC3339),
+			})
+		}
+	}
+
 	sc.Start(context.Background())
 	addr, token, err := sc.StartHookServer()
 	if err != nil {
@@ -424,7 +459,6 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		fmt.Fprintf(os.Stderr, "live: %v\n", err)
 		return 1
 	}
-	isAgyAgent := isAgy(binPath)
 	var agentArgs, agentEnv []string
 	if isAgyAgent {
 		cleanup, err := adapter.EnsureAgyPlugin(binPath, self, true)
@@ -464,27 +498,6 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		}
 		claudeArgs = append(claudeArgs, userArgs...)
 		agentArgs = claudeArgs
-	}
-
-	const sock = "liveshortly"
-	sess := "live-" + sc.SessionID[:8]
-	t := &tmuxPane{bin: tmuxBin, sock: sock, sess: sess}
-	_ = t.run("kill-session", "-t", sess) // clear any stale session
-
-	if isAgyAgent {
-		sc.OnComment = func(c api.Comment) {
-			who := c.Username
-			if who == "" {
-				who = "viewer"
-			}
-			turn := viewerTurn(who, c.Message)
-			if err := t.inject(turn); err != nil {
-				sc.Log.Printf("live agy tmux: inject failed (%v) — queuing for hook", err)
-				sc.QueueForHooks(c)
-			} else {
-				sc.Log.Printf("live agy tmux: injected comment from %s into composer", who)
-			}
-		}
 	}
 
 	tmux := func(args ...string) *exec.Cmd {
