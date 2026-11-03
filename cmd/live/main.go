@@ -53,6 +53,7 @@ Usage:
   live agy [args...]         Run Antigravity CLI, captured via lifecycle hooks
   live <command> [args...]   Run any agent/CLI, captured via PTY recording
   live daemon [--dir <p>]    Let this machine start sessions from the web
+  live agents                Which agent CLIs the daemon finds, and where
   live -- <command> [...]    Same, unambiguous form
   live handoff <session-id>  Print the copyable command to continue a session
   live context [<id>]        Reprint a fork's prior-context digest
@@ -166,6 +167,8 @@ func main() {
 		cmdChannel()
 	case "daemon":
 		os.Exit(cmdDaemon(os.Args[2:]))
+	case "agents":
+		os.Exit(cmdAgents(os.Args[2:]))
 	case "ls", "list", "sessions":
 		os.Exit(cmdLs(os.Args[2:], "mine"))
 	case "shared":

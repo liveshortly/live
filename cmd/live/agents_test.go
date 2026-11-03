@@ -100,3 +100,32 @@ func TestPocketBuiltinsAreSpawnable(t *testing.T) {
 		}
 	}
 }
+
+// LSH-18: a daemon started with a minimal PATH must still find harnesses the
+// user's login shell sees (pi from the builtin probe, pig via agents.json by
+// bare name), plus the well-known global-bin dirs.
+func TestAgentPATHUsesLoginShell(t *testing.T) {
+	bin := stubBins(t, "pi", "pig")
+	shell := filepath.Join(t.TempDir(), "fakesh")
+	os.WriteFile(shell, []byte("#!/bin/sh\necho rc noise\nPATH="+bin+" exec /bin/sh -c \"$2\"\n"), 0o700)
+	home := t.TempDir()
+
+	path := agentPATH(shell, home, "/usr/bin")
+	if !strings.Contains(path, bin) || !strings.Contains(path, filepath.Join(home, ".bun/bin")) {
+		t.Fatalf("PATH %q", path)
+	}
+	t.Setenv("PATH", path)
+	cfg := filepath.Join(home, "agents.json")
+	os.WriteFile(cfg, []byte(`[{"name":"pig"}]`), 0o600)
+	custom, err := loadAgentCommands(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(discoverAgents(spawnableBuiltins, custom), ","); got != "pi,pig" {
+		t.Fatalf("discovered %q", got)
+	}
+	// A broken shell contributes nothing rather than failing.
+	if got := agentPATH("/nonexistent", home, "/usr/bin"); !strings.HasPrefix(got, "/usr/bin:") {
+		t.Fatalf("PATH %q", got)
+	}
+}

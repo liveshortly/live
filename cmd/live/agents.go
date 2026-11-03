@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/liveshortly/live/internal/hostcfg"
 )
@@ -168,4 +172,102 @@ func discoverAgents(builtins []string, custom map[string]agentCommand) []string 
 	}
 	sort.Strings(extra)
 	return append(result, extra...)
+}
+
+// agentPATH is the PATH agents are probed and spawned with (LSH-18). A daemon
+// started by the Mac app or launchd inherits a minimal PATH, so harnesses
+// installed by npm, bun, pnpm, volta, mise and friends were invisible to it.
+// It joins the inherited PATH, the user's login-shell PATH and the usual
+// global-bin dirs, keeping the first copy of each. A shell that hangs or fails
+// just contributes nothing.
+func agentPATH(shell, home, inherited string) string {
+	parts := filepath.SplitList(inherited)
+	parts = append(parts, filepath.SplitList(loginShellPATH(shell))...)
+	pnpm := os.Getenv("PNPM_HOME")
+	if pnpm == "" {
+		pnpm = filepath.Join(home, "Library", "pnpm")
+	}
+	// ponytail: no `npm prefix -g` — it costs a node start; Homebrew's prefix is
+	// already on the login PATH and ~/.npm-global covers the usual custom one.
+	for _, d := range []string{".local/bin", ".bun/bin", ".npm-global/bin", ".volta/bin",
+		".local/share/mise/shims", ".asdf/shims", "go/bin", ".cargo/bin", ".local/share/pnpm"} {
+		parts = append(parts, filepath.Join(home, d))
+	}
+	parts = append(parts, pnpm)
+	seen := map[string]bool{}
+	out := []string{}
+	for _, p := range parts {
+		if p != "" && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return strings.Join(out, string(os.PathListSeparator))
+}
+
+// loginShellPATH asks the user's shell for the PATH their terminal sees. The
+// marker skips whatever an interactive rc file prints first.
+func loginShellPATH(shell string) string {
+	if shell == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, shell, "-lic", `printf '\n__LIVE_PATH__%s' "$PATH"`)
+	cmd.WaitDelay = time.Second // a backgrounded rc child must not hold us past the timeout
+	out, _ := cmd.Output()
+	if i := bytes.LastIndex(out, []byte("__LIVE_PATH__")); i >= 0 {
+		return strings.TrimSpace(string(out[i+len("__LIVE_PATH__"):]))
+	}
+	return ""
+}
+
+// widenPATH sets this process's PATH to agentPATH, so exec.LookPath and every
+// spawned agent (which inherits the environment) see the same directories.
+func widenPATH() {
+	home, _ := os.UserHomeDir()
+	os.Setenv("PATH", agentPATH(os.Getenv("SHELL"), home, os.Getenv("PATH")))
+}
+
+// cmdAgents prints what discovery sees on this machine: each builtin found
+// (with its path) or not, and each agents.json entry.
+func cmdAgents(args []string) int {
+	file := ""
+	if len(args) == 2 && args[0] == "--agents-file" {
+		file = args[1]
+	} else if len(args) > 0 {
+		fmt.Fprintln(os.Stderr, "usage: live agents [--agents-file <path>]")
+		return 2
+	}
+	widenPATH()
+	custom, err := loadAgentCommands(file)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "live:", err)
+		return 2
+	}
+	for _, name := range spawnableBuiltins {
+		if _, shadowed := custom[name]; shadowed {
+			continue
+		}
+		if p, err := exec.LookPath(name); err == nil {
+			fmt.Printf("  found      %-14s %s\n", name, p)
+		} else {
+			fmt.Printf("  not found  %s\n", name)
+		}
+	}
+	names := make([]string, 0, len(custom))
+	for n := range custom {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		if p, err := exec.LookPath(custom[n].Command); err == nil {
+			fmt.Printf("  agents.json %-13s %s\n", n, p)
+		} else {
+			fmt.Printf("  agents.json %-13s %s (not executable)\n", n, custom[n].Command)
+		}
+	}
+	fmt.Printf("\nAny other CLI (e.g. pig): add it to %s as\n", hostcfg.AgentsPath())
+	fmt.Println(`  [{"name":"pig","command":"/full/path/to/pig"}]` + "\nthen restart `live daemon`.")
+	return 0
 }
