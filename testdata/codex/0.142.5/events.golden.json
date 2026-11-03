@@ -1,0 +1,55 @@
+[
+  {
+    "type": "_model",
+    "payload": {
+      "model": "gpt-5.5-codex"
+    }
+  },
+  {
+    "type": "prompt",
+    "payload": {
+      "content": "Read README.md, add a line 'hello from codex', then run `ls`."
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "cat README.md",
+      "output": "# lsh-repo",
+      "tool": "Shell"
+    }
+  },
+  {
+    "type": "file_write",
+    "payload": {
+      "added": 1,
+      "diff": "@@\n # lsh-repo\n+hello from codex",
+      "file": "README.md",
+      "removed": 0,
+      "tool": "apply_patch"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "Success. Updated the following files:\nM README.md"
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "ls -a",
+      "output": ".\n..\n.git\nREADME.md",
+      "tool": "Shell"
+    }
+  },
+  {
+    "type": "response",
+    "payload": {
+      "content": "Added 'hello from codex' to README.md and listed the files (including hidden ones)."
+    }
+  },
+  {
+    "type": "stream_end"
+  }
+]

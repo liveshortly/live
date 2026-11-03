@@ -1,0 +1,84 @@
+[
+  {
+    "type": "prompt",
+    "payload": {
+      "content": "Read README.md, add a line 'hello from codex', then run `ls`."
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "/bin/zsh -lc 'cat README.md'",
+      "output": "# lsh-repo",
+      "tool": "Shell"
+    }
+  },
+  {
+    "type": "file_write",
+    "payload": {
+      "file": "/tmp/lsh-repo/README.md",
+      "tool": "apply_patch"
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "/bin/zsh -lc ls",
+      "output": "README.md",
+      "tool": "Shell"
+    }
+  },
+  {
+    "type": "response",
+    "payload": {
+      "content": "Added 'hello from codex' to README.md and ran ls."
+    }
+  },
+  {
+    "type": "stream_end"
+  },
+  {
+    "type": "_permission",
+    "payload": {
+      "detail": "apply a file change",
+      "tool": "Edit"
+    }
+  },
+  {
+    "type": "_permission",
+    "payload": {
+      "detail": "ls",
+      "tool": "Shell"
+    }
+  },
+  {
+    "type": "_reply",
+    "payload": {
+      "id": 0,
+      "jsonrpc": "2.0",
+      "result": {
+        "decision": "approved"
+      }
+    }
+  },
+  {
+    "type": "_reply",
+    "payload": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "decision": "approved"
+      }
+    }
+  },
+  {
+    "type": "_reply",
+    "payload": {
+      "id": 2,
+      "jsonrpc": "2.0",
+      "result": {
+        "decision": "denied"
+      }
+    }
+  }
+]

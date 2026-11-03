@@ -1,0 +1,12 @@
+{"t_ms": 0, "data": "\u001b[?25l\u001b[2J\u001b[H\u001b[38;2;71;150;228m ███ GEMINI\u001b[39m\r\n\r\nTips for getting started:\r\n1. Ask questions, edit files, or run commands.\r\n"}
+{"t_ms": 40, "data": "\u001b[2K\u001b[1G╭──────────────────────────────────────────╮\r\n│ > Type your message or @path/to/file     │\r\n╰──────────────────────────────────────────╯\r\n"}
+{"t_ms": 3000, "data": "\u001b[3A\u001b[2K\u001b[1G│ > Read README.md, add a line 'hello from gemini', then run `ls`. │\r\n"}
+{"t_ms": 3600, "data": "\u001b[2K\u001b[1G⠋ Thinking... (esc to cancel, 1s)"}
+{"t_ms": 3700, "data": "\r\u001b[2K⠙ Thinking... (esc to cancel, 1s)"}
+{"t_ms": 3800, "data": "\r\u001b[2K⠹ Thinking... (esc to cancel, 1s)"}
+{"t_ms": 5200, "data": "\r\u001b[2K ✓  ReadFile README.md\r\n"}
+{"t_ms": 5400, "data": "╭────────────────────────────────────────────────────╮\r\n│ ?  Edit README.md                                  │\r\n│    1   # lsh-repo                                  │\r\n│    2 + hello from gemini                           │\r\n│ Apply this change?                                 │\r\n│ ● 1. Allow once                                    │\r\n│   2. Allow always                                  │\r\n│   3. No, suggest changes (esc)                     │\r\n╰────────────────────────────────────────────────────╯\r\n"}
+{"t_ms": 9000, "data": "\u001b[10A\u001b[J ✓  Edit README.md\r\n"}
+{"t_ms": 9300, "data": " ✓  Shell ls\r\n    README.md\r\n"}
+{"t_ms": 10500, "data": "✦ Added 'hello from gemini' to README.md and ran `ls`.\r\n"}
+{"t_ms": 10600, "data": "\r\n│ > Type your message or @path/to/file     │\r\n"}

@@ -1,0 +1,10 @@
+{"t_ms": 0, "data": "Aider v0.82.3\r\nMain model: gpt-5.5 with diff edit format\r\nGit repo: .git with 1 files\r\nRepo-map: using 1024 tokens, auto refresh\r\n"}
+{"t_ms": 20, "data": "\u001b[32m>\u001b[0m "}
+{"t_ms": 2000, "data": "Read README.md, add a line 'hello from aider', then run `ls`.\r\n"}
+{"t_ms": 2100, "data": "\r\nAdd README.md to the chat? (Y)es/(N)o/(D)on't ask again [Yes]: "}
+{"t_ms": 4000, "data": "y\r\n"}
+{"t_ms": 6000, "data": "README.md\r\n<<<<<<< SEARCH\r\n# lsh-repo\r\n=======\r\n# lsh-repo\r\nhello from aider\r\n>>>>>>> REPLACE\r\n"}
+{"t_ms": 6050, "data": "\r\nApplied edit to README.md\r\nCommit 1a2b3c4 docs: add hello from aider\r\n"}
+{"t_ms": 6300, "data": "\r\nls\r\nRun shell command? (Y)es/(N)o/(D)on't ask again [Yes]: "}
+{"t_ms": 8000, "data": "y\r\n\r\nRunning ls\r\nREADME.md\r\n"}
+{"t_ms": 8100, "data": "\r\n\u001b[32m>\u001b[0m "}

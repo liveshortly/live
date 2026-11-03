@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"c0ffee00-0000-4000-8000-000000000001","cwd":"/tmp/lsh-repo","version":"2.1.316","message":{"role":"user","content":"Read README.md, add a line 'hello from claude', then run `ls`."}}
+{"type":"assistant","sessionId":"c0ffee00-0000-4000-8000-000000000001","cwd":"/tmp/lsh-repo","version":"2.1.316","message":{"id":"msg_01","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Added 'hello from claude' to README.md and listed the files."}]}}

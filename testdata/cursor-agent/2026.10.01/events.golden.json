@@ -1,0 +1,32 @@
+[
+  {
+    "type": "output",
+    "payload": {
+      "text": "Cursor Agent\n  ~/tmp/lsh-repo · main\n\n  → Plan, search, build anything"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "Read README.md, add a line 'hello from cursor-agent', then run `ls`.\n⬢ Reading README.md⬡ Reading README.md"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "Read README.md\n  Edit README.md +1\n  Run command: ls\n  Run this command? (y) run · (n) skip · (a) always"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "$ ls\n  README.md"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "Added 'hello from cursor-agent' to README.md and listed the files."
+    }
+  }
+]
