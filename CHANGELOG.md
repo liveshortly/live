@@ -38,6 +38,15 @@ Homebrew formula and `live version` report.
     the old PTY fixture moved to `testdata/gemini-pty/0.65.0/`.
 
 ### Fixed
+- **Terminal agents stream as readable rows (LSH-11).** PTY capture (ollama,
+  aider, hermes, gemini < 0.26, any `live <cmd>`) now releases whole lines once
+  output idles for 600 ms and holds the line still being written until its
+  newline, so a slow model no longer produces one feed row per token. A line
+  that keeps streaming is released at a word boundary every 45 s; operator
+  input and agent exit flush everything at once. Cursor motion and erase
+  sequences (`CSI D/C/G/K`) are now replayed instead of stripped, so ollama's
+  grey "Send a message" placeholder no longer glues onto the typed prompt and a
+  soft-wrapped line no longer repeats the word that moved down ("be be of").
 - **agy 1.4.9 sessions read correctly (LSH-10).** The newer tool names
   `edit_file`, `write_file` and `read_file` now produce Edit/Write/View rows
   (with the diff for edits and writes) and approvals name the file, instead of

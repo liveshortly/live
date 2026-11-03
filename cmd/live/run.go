@@ -1223,40 +1223,13 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 	}
 	sc.Start(context.Background())
 
-	// Batch output into `output` events, ANSI-stripped.
-	//
-	// The boundary is IDLE, not a clock. A fixed interval cuts wherever the tick
-	// lands, which for a token-streaming agent is mid-word: one reply arrived as
-	// ten events reading "checking are you co" / "nnected to the cli". Waiting
-	// for the stream to go quiet puts the boundary where the agent actually
-	// stopped talking, so a reply becomes one block.
-	const (
-		// Long enough to bridge the gaps between tokens, short enough that the
-		// feed still feels live.
-		idleGap = 600 * time.Millisecond
-		// Safety valve for a reply that never pauses. Generous because the
-		// working heartbeat below tells viewers the agent is mid-answer — without
-		// that signal this had to be short, which split long replies in half.
-		maxHold = 45 * time.Second
-		// Memory guard only. Deliberately far above the old 8KB, which was small
-		// enough to cut a normal reply in half.
-		hardCap = 64 * 1024
-		// One event is now a whole turn rather than a 2s slice, so the cap has to
-		// fit a real answer instead of truncating it.
-		maxText = 8000
-	)
+	// Coalesce output into `output` events, ANSI-rendered: whole lines on an
+	// idle cut, the line being written held until its newline (see
+	// adapter.Coalescer). maxText caps one event; a row is a whole turn at most.
+	const maxText = 8000
 	var mu sync.Mutex
-	var buf []byte
-	var firstWrite, lastWrite time.Time
-	flush := func() {
-		mu.Lock()
-		chunk := buf
-		buf = nil
-		mu.Unlock()
-		if len(chunk) == 0 {
-			return
-		}
-		text := adapter.StripANSI(chunk)
+	co := adapter.NewCoalescer()
+	emit := func(text string) {
 		if text == "" {
 			return
 		}
@@ -1265,7 +1238,13 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		}
 		sc.Emit("output", map[string]any{"text": text, "ts": time.Now().UTC().Format(time.RFC3339)})
 	}
-	// While output is buffered the session emits nothing, so the viewer sees a
+	flush := func() {
+		mu.Lock()
+		text := co.Flush()
+		mu.Unlock()
+		emit(text)
+	}
+	// While output is held the session emits nothing, so the viewer sees a
 	// dead page for the whole generation and only then a blob. Heartbeat
 	// `stream_start` — a content-free boundary marker the web already hides from
 	// the log — so the "<agent> IS WORKING" badge stays lit until the answer
@@ -1281,18 +1260,13 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 			select {
 			case <-t.C:
 				mu.Lock()
-				pending := len(buf) > 0
-				idle := time.Since(lastWrite)
-				held := time.Since(firstWrite)
-				ping := pending && time.Since(lastPing) >= workingPing
+				text := co.Tick(time.Now())
+				ping := co.Pending() && time.Since(lastPing) >= workingPing
 				if ping {
 					lastPing = time.Now()
 				}
 				mu.Unlock()
-				if pending && (idle >= idleGap || held >= maxHold) {
-					flush()
-					continue
-				}
+				emit(text)
 				if ping {
 					sc.Emit("stream_start", map[string]any{"ts": time.Now().UTC().Format(time.RFC3339)})
 				}
@@ -1315,17 +1289,9 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 
 	code, err := p.Run(binPath, userArgs, func(chunk []byte) {
 		mu.Lock()
-		now := time.Now()
-		if len(buf) == 0 {
-			firstWrite = now
-		}
-		lastWrite = now
-		buf = append(buf, chunk...)
-		full := len(buf) >= hardCap
+		text := co.Write(chunk, time.Now())
 		mu.Unlock()
-		if full {
-			flush()
-		}
+		emit(text)
 	})
 	close(stopFlusher)
 	flush()

@@ -39,7 +39,7 @@ re-check them with a real capture.
 | codex 0.142.5 rollout (synthetic) | ✅ | ✅ | ✅ "Shell" | ✅ | (hook, as claude) | (channel / tmux) | ✅ | ✅ | LSH-09 ✅ |
 | codex 0.166.0 rollout (synthetic, real shapes) | ✅ | ✅ | ✅ "Shell" from `item_completed CommandExecution` | ✅ from `FileChange` | (hook, as claude) | (channel / tmux) | ✅ | ✅ | LSH-09 ✅ |
 | codex 0.166.0 app-server (synthetic, schema-checked) | ✅ | ✅ | ✅ "Shell" | ✅ | ⚠ "apply a file change" | — | ✅ | ✅ from `thread/started` / `thread/start` | LSH-09 ✅ |
-| ollama 0.30.10 (**real**) | ❌ (raw output) | ⚠ one row per token on a slow model; placeholder text glued to the prompt | ❌ | ❌ | ❌ | typed line (ollama only) | ❌ | ❌ | LSH-05 |
+| ollama 0.30.10 (**real**) | ❌ (raw output) | ✅ whole lines (a very slow model: a row per ~45 s, cut at a word) | ❌ | ❌ | ❌ | typed line (ollama only) | ❌ | ❌ | LSH-05, LSH-11 ✅ |
 | gemini 0.65.0 hooks (synthetic) | ✅ | ✅ | ✅ shell as Bash; others by gemini name | ✅ `replace`/`write_file` | ✅ full command | ✅ text, at tool boundary and AfterAgent | ✅ | ✅ from BeforeModel | LSH-04 |
 | gemini < 0.26 PTY (`gemini-pty`, synthetic) | ❌ raw TUI | ❌ raw TUI | ❌ | ❌ | ❌ | ❌ overlay | ❌ | ❌ | LSH-04 |
 | aider / cursor-agent / hermes (synthetic) | ❌ raw | ❌ raw | ❌ | ❌ | ❌ | ❌ overlay | ❌ | ❌ | LSH-05 |

@@ -8,13 +8,13 @@
   {
     "type": "output",
     "payload": {
-      "text": "Read README.md, add a line 'hello from cursor-agent', then run `ls`.\n⬢ Reading README.md⬡ Reading README.md"
+      "text": "Read README.md, add a line 'hello from cursor-agent', then run `ls`."
     }
   },
   {
     "type": "output",
     "payload": {
-      "text": "Read README.md\n  Edit README.md +1\n  Run command: ls\n  Run this command? (y) run · (n) skip · (a) always"
+      "text": "⬢ Reading README.md⬡ Reading README.md  Read README.md\n  Edit README.md +1\n  Run command: ls\n  Run this command? (y) run · (n) skip · (a) always"
     }
   },
   {

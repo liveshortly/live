@@ -1,6 +1,9 @@
 package adapter
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // A bare \r returns the cursor to column 0 and the next write overwrites. If it
 // is treated as a newline instead, every frame of an in-place redraw survives —
@@ -27,5 +30,77 @@ func TestStripANSIResolvesCarriageReturns(t *testing.T) {
 		if got := StripANSI([]byte(c.in)); got != c.want {
 			t.Errorf("%s: StripANSI(%q) = %q, want %q", c.name, c.in, got, c.want)
 		}
+	}
+}
+
+// ollama 0.30.10 (testdata/ollama/0.30.10): the REPL prints a grey hint, steps
+// back over it, and erases it on the first keystroke; a soft wrap steps back
+// over the half-written word, erases it and reprints it on the next line.
+func TestStripANSIAppliesCursorMotion(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"placeholder is erased by the first keystroke",
+			">>> \x1b[38;5;245mSend a message (/? for help)\x1b[28D\x1b[0m\x1b[KIn one short sentence.", ">>> In one short sentence."},
+		{"soft wrap does not duplicate the moved word", "How can I be\x1b[2D\x1b[K\r\nbe of service?", "How can I\nbe of service?"},
+		{"column move then erase", "spinning\x1b[1G\x1b[Kdone", "done"},
+		{"erase whole line", "abc\x1b[2K\rxy", "xy"},
+		{"private modes are ignored", "\x1b[?25lhi\x1b[?25h", "hi"},
+	}
+	for _, c := range cases {
+		if got := StripANSI([]byte(c.in)); got != c.want {
+			t.Errorf("%s: StripANSI(%q) = %q, want %q", c.name, c.in, got, c.want)
+		}
+	}
+}
+
+func TestCoalescer(t *testing.T) {
+	t0 := time.Unix(0, 0)
+	at := func(s float64) time.Time { return t0.Add(time.Duration(s * float64(time.Second))) }
+	c := NewCoalescer()
+	var rows []string
+	tick := func(s float64) {
+		if r := c.Tick(at(s)); r != "" {
+			rows = append(rows, r)
+		}
+	}
+
+	// Slow tokens on one line: held through idle gaps, no row per token.
+	c.Write([]byte("Hello"), at(0))
+	tick(5)
+	c.Write([]byte(" there, how"), at(10))
+	tick(20)
+	if len(rows) != 0 {
+		t.Fatalf("held line released early: %q", rows)
+	}
+	// MaxHold releases it up to the last word boundary.
+	tick(45)
+	// Soft-wrap redraw of text already sent: "how" must not repeat.
+	c.Write([]byte("\x1b[3D\x1b[K\r\nhow are you?\r\n\r\n>>> \x1b[38;5;245mSend a message\x1b[14D\x1b[0m"), at(50))
+	tick(51)
+	// The prompt is never force-released while nothing new is written to it.
+	tick(200)
+	if c.Pending() {
+		t.Error("idle prompt still reported as pending")
+	}
+	if len(rows) != 2 || rows[0] != "Hello there," || rows[1] != "how are you?" {
+		t.Fatalf("rows = %q", rows)
+	}
+	// Exit flushes the rest, up to the cursor (not the placeholder).
+	if got := c.Flush(); got != ">>>" {
+		t.Errorf("final flush = %q, want %q", got, ">>>")
+	}
+}
+
+// A word already sent, then moved to the next line by a soft-wrap redraw, is
+// not sent twice.
+func TestCoalescerWrapAfterSend(t *testing.T) {
+	t0 := time.Unix(0, 0)
+	c := NewCoalescer()
+	c.Write([]byte("How can I be"), t0)
+	if got := c.Flush(); got != "How can I be" {
+		t.Fatalf("flush = %q", got)
+	}
+	c.Write([]byte("\x1b[2D\x1b[K\r\nbe of service?\r\n"), t0.Add(time.Second))
+	if got := c.Tick(t0.Add(2 * time.Second)); got != "of service?" {
+		t.Errorf("after wrap = %q, want %q", got, "of service?")
 	}
 }

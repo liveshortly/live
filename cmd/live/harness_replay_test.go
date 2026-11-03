@@ -214,33 +214,17 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 }
 
 // PTY agents (gemini, ollama, aider, cursor-agent, hermes, …): raw terminal
-// bytes with their recorded arrival times, batched and scrubbed into `output`
-// events.
-//
-// The batching below MIRRORS runPTYMode's flusher (run.go) on the recorded
-// clock instead of a wall-clock ticker: flush when output has been idle for
-// idleGap or held for maxHold, or the buffer reaches hardCap; each flush is
-// StripANSI'd and clipped to maxText. stream_start heartbeats are omitted.
-// Keep these in sync when that policy changes (LSH-04/05).
+// bytes with their recorded arrival times, pushed through the same
+// adapter.Coalescer runPTYMode uses, ticked every 100 ms on the recorded clock
+// as its flusher goroutine is, and flushed at exit. Events are clipped to
+// maxText as runPTYMode does; stream_start heartbeats are omitted.
 func TestReplayPTY(t *testing.T) {
-	const (
-		idleGap = 600 * time.Millisecond
-		maxHold = 45 * time.Second
-		hardCap = 64 * 1024
-		maxText = 8000
-	)
+	const tick = 100 * time.Millisecond
+	const maxText = 8000
 	for _, dir := range fixtureDirs(t, "*", "pty.jsonl") {
 		t.Run(fixtureName(dir), func(t *testing.T) {
 			r := &recorder{}
-			var buf []byte
-			var first, last time.Duration
-			flush := func() {
-				chunk := buf
-				buf = nil
-				if len(chunk) == 0 {
-					return
-				}
-				text := adapter.StripANSI(chunk)
+			emit := func(text string) {
 				if text == "" {
 					return
 				}
@@ -249,6 +233,9 @@ func TestReplayPTY(t *testing.T) {
 				}
 				r.emit("output", map[string]any{"text": text})
 			}
+			co := adapter.NewCoalescer()
+			t0 := time.Unix(0, 0)
+			var clock time.Duration
 			for _, l := range readLines(t, filepath.Join(dir, "pty.jsonl")) {
 				var c struct {
 					TMs  int64  `json:"t_ms"`
@@ -258,19 +245,15 @@ func TestReplayPTY(t *testing.T) {
 					t.Fatalf("bad chunk %s: %v", l, err)
 				}
 				at := time.Duration(c.TMs) * time.Millisecond
-				if len(buf) > 0 && (at-last >= idleGap || at-first >= maxHold) {
-					flush()
+				for ; clock+tick <= at; clock += tick {
+					emit(co.Tick(t0.Add(clock + tick)))
 				}
-				if len(buf) == 0 {
-					first = at
-				}
-				last = at
-				buf = append(buf, c.Data...)
-				if len(buf) >= hardCap {
-					flush()
-				}
+				emit(co.Write([]byte(c.Data), t0.Add(at)))
 			}
-			flush() // process exit
+			for end := clock + 2*time.Second; clock < end; clock += tick {
+				emit(co.Tick(t0.Add(clock + tick)))
+			}
+			emit(co.Flush()) // process exit
 			checkGolden(t, dir, r.events)
 		})
 	}
