@@ -229,11 +229,14 @@ func cmdHandoff(args []string) int {
 }
 
 func cmdLogin() {
-	if c := auth.Load(); c != nil && c.User != nil {
+	api := hostcfg.APIURL()
+	// Credentials minted by another server (host switched since) don't count:
+	// signing in here replaces them instead of refusing.
+	if c := auth.Load(); c != nil && c.User != nil &&
+		(c.APIURL == "" || strings.TrimRight(c.APIURL, "/") == api) {
 		fmt.Printf("already signed in as %s — `live logout` first to switch accounts\n", c.User.Email)
 		return
 	}
-	api := hostcfg.APIURL()
 	fmt.Printf("Server: %s (%s)\n", api, hostcfg.Source())
 	c, err := auth.DeviceLogin()
 	if err != nil {
