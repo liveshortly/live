@@ -36,9 +36,11 @@ func claudeHook(liveBin, event string, timeoutSec int, matcher string) map[strin
 func WriteClaudeSettings(liveBin string, webPerms bool) (path string, cleanup func(), err error) {
 	// PreToolUse normally returns instantly; in web-permissions mode it blocks
 	// on a human verdict (awaitDecision grace is 8m), so give it 10m headroom.
-	preToolTimeout := 8
+	preToolTimeout, preToolEvent := 8, "pre-tool-use"
 	if webPerms {
-		preToolTimeout = 600
+		// --gated: the hook is the only approval gate, so `live hook` denies
+		// (fails closed) when the sidecar can't answer.
+		preToolTimeout, preToolEvent = 600, "pre-tool-use --gated"
 	}
 	settings := map[string]any{
 		"enabledPlugins": map[string]any{
@@ -53,7 +55,7 @@ func WriteClaudeSettings(liveBin string, webPerms bool) (path string, cleanup fu
 		"hooks": map[string]any{
 			"SessionStart":     []any{claudeHook(liveBin, "session-start", 15, "")},
 			"UserPromptSubmit": []any{claudeHook(liveBin, "user-prompt-submit", 10, "")},
-			"PreToolUse":       []any{claudeHook(liveBin, "pre-tool-use", preToolTimeout, "Edit|Write|MultiEdit|Bash|WebFetch")},
+			"PreToolUse":       []any{claudeHook(liveBin, preToolEvent, preToolTimeout, "Edit|Write|MultiEdit|Bash|WebFetch")},
 			"PostToolUse":      []any{claudeHook(liveBin, "post-tool-use", 10, "Edit|Write|MultiEdit|Bash")},
 			"Notification":     []any{claudeHook(liveBin, "notification", 10, "")},
 			"Stop":             []any{claudeHook(liveBin, "stop", 15, "")},

@@ -4,6 +4,20 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## Unreleased
+
+### Security
+- **Approvals fail closed (LSH-07).** In web-permissions mode the agent's own
+  prompt is skipped and `live hook pre-tool-use` is the only gate, yet it
+  answered `allow` whenever the sidecar was unreachable, timed out, returned a
+  non-200, or sent an unreadable reply, so a crashed sidecar let every gated
+  tool run unreviewed (Claude, codex, agy). The gated hook is now installed as
+  `live hook pre-tool-use --gated` and denies in all of those cases, telling the
+  agent approvals are offline and printing the cause to stderr. Sessions where
+  the owner opted into bypass (`--dangerously-skip-permissions`,
+  `bypass_permissions`, `LIVE_CODEX_PERMS=0`) behave as before. Sessions already
+  running keep their old hook until restarted.
+
 ## v2.3.1 — 2026-11-02
 
 ### Fixed
