@@ -4,6 +4,22 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v2.3.4 — 2026-11-03
+
+### Added
+- **`live host`, `live host set <url>`, `live host reset` (LSI-15).** See which
+  server live talks to and where that comes from, point it at a self-hosted
+  server, or go back to https://liveshortly.com.
+
+### Fixed
+- `live login` prints the server first and, when it can't reach it, says why
+  (for example a host.json left pointing at a local server that isn't running)
+  and how to fix it. Credentials from a different server no longer block
+  signing in to the current one.
+- The permission banner's "LIVE_WEB_PERMS=0 to disable" hint (nothing reads
+  that variable) now points at `--no-permissions`; `live --help` lists what the
+  daemon really offers and the `daemon --server` options (LSH-14).
+
 ## v2.3.3 — 2026-11-03
 
 ### Added
