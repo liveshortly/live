@@ -5,10 +5,10 @@ name: CI
 # required status check on main: release.yml tags only after vet/test pass, but
 # a red PR should never reach main in the first place.
 
+# Manual only (owner, 2026-11-03): GitHub free plan minutes. Push freely;
+# run this from the Actions tab or `gh workflow run` when ready.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

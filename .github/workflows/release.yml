@@ -1,16 +1,16 @@
 name: release
 
-# Releases on a push to main, gated by the VERSION file: if the tag vX.Y.Z named
-# in VERSION does not exist yet, this builds it, tags it, and publishes it.
-# Bumping VERSION *is* the release. Any other push to main is a no-op.
+# Run manually, gated by the VERSION file: if the tag vX.Y.Z named in VERSION
+# does not exist yet, this builds it, tags it, and publishes it. Bump VERSION on
+# main, then `gh workflow run release.yml`. Re-running with no bump is a no-op.
 #
 # Publishes platform binaries and latest.txt on live-dist, then updates the tap.
 # No website deployment or website-hosted mirror is required.
 # RELEASE_TOKEN needs Contents: read+write on live-dist and homebrew-tap.
 
+# Manual only (owner, 2026-11-03): GitHub free plan minutes. Push freely;
+# run this from the Actions tab or `gh workflow run` when ready.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       force_version:
