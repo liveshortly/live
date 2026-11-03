@@ -4,6 +4,18 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v2.3.3 — 2026-11-03
+
+### Added
+- **Any agent that speaks the Agent Client Protocol gets full capture (LSH-13).**
+  `LIVE_ACP=1 live <agent> <its ACP args>` (for example `goose acp` or
+  `gemini --experimental-acp`) drives the agent over ACP instead of recording
+  its terminal: replies, tool steps and file edits with diffs stream as
+  structured events, permission requests are answered from the web and fail
+  closed, and viewer comments are sent as the next turn. For web-started
+  sessions, add `"acp": true` to the agent's entry in agents.json. This works
+  for agents live has no adapter for, including ones released later.
+
 ## v2.3.2 — 2026-11-03
 
 ### Added
