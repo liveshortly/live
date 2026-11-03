@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -49,10 +50,10 @@ var generic = Row{
 	Display:      "The agent",
 	Capture:      "⚠ terminal recording (raw lines, no structure)",
 	Approvals:    "❌ the agent's own prompt, in the terminal only",
-	Comments:     "⚠ shown to the operator only (opt in to typing with `type_comments` in agents.json or `LIVE_TYPE_COMMENTS=1`)",
+	Comments:     "⚠ typed in at the agent's prompt when it is idle (the named agents; any other command only with `type_comments` in agents.json or `LIVE_TYPE_COMMENTS=1`)",
 	Handoff:      "⚠ not given to the agent — prior context shown in the terminal and saved as a digest file",
 	ModelChoice:  "⚠ `cursor-agent` (`--model`), or any agent given `models` + `model_flag` in agents.json",
-	FirstMessage: "❌ shown to the operator only; ⚠ with `type_comments` it is typed in, ready or not",
+	FirstMessage: "⚠ typed in once output is quiet and no dialog is on screen (echo confirmed, Enter retried once; session notice after 20 s). A heuristic, not yet checked per agent; `ready_pattern` in agents.json pins the prompt",
 	MinVersion:   "—",
 	Gaps:         "no prompt/reply/tool rows, no stream_end, no model. Speaks ACP? Run it in ACP mode (row above)",
 	Summary:      "Terminal recording only: viewers see raw output; approvals stay in the terminal.",
@@ -168,7 +169,7 @@ var Rows = []Row{
 		Comments:     "✅ typed in as one line",
 		Handoff:      "⚠ not given to the agent — prior context shown in the terminal and saved as a digest file",
 		ModelChoice:  "✅ `ollama run <model>` (pulled models; required)",
-		FirstMessage: "✅ typed in as one line; an early one waits in the terminal's input buffer",
+		FirstMessage: "✅ typed in as one line once ollama is idle at its prompt; an early one waits for it",
 		MinVersion:   "—",
 		Gaps:         "no prompt/tool rows, no stream_end, no model",
 		Summary:      "Local chat REPL: replies stream as lines; comments are typed in.",
@@ -203,6 +204,13 @@ func ForAgent(name string) Row {
 		}
 	}
 	return generic
+}
+
+// TypesComments reports whether name is a known agent CLI whose viewer
+// comments are typed into its prompt by default (LSH-19). Any other command
+// may be a shell, so it is typed into only when the operator opts it in.
+func TypesComments(name string) bool {
+	return name != "any command" && slices.Contains(generic.Agents, name)
 }
 
 // ForFramework returns the default-mode row for a framework, or the fallback.

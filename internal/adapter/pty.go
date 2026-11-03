@@ -24,12 +24,14 @@ import (
 type PTY struct {
 	mu   sync.Mutex
 	ptmx *os.File
+	cmd  *exec.Cmd
 	done bool
-	// early holds lines submitted before the agent started (a web message
-	// drained in the gap between the sidecar and pty starting). They are
-	// written the moment the pty exists; the tty buffers them until the
-	// agent reads its input.
-	early []string
+	// tail is the most recent output and outN the total output so far; with
+	// lastOut they tell TypeLine whether the agent is idle at its prompt and
+	// whether a typed line was echoed.
+	tail    []byte
+	outN    int
+	lastOut time.Time
 	// OnInput, when set, sees every chunk the operator types before it is
 	// forwarded to the agent (used to turn submitted lines into prompts).
 	OnInput func([]byte)
@@ -41,29 +43,6 @@ func (p *PTY) Notify(msg string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	os.Stdout.WriteString("\r\n\x1b[33m[live] " + msg + "\x1b[0m\r\n")
-}
-
-// Submit writes one line to the agent's stdin, as if it had been typed, and
-// presses Enter. Serialized against Notify so an overlay cannot land mid-write.
-//
-// Callers must have decided that THIS agent accepts a typed line. Doing it for
-// an arbitrary pty agent would be a command-injection hole: the pane may be a
-// shell, and text arriving from a viewer would run on the operator's machine.
-// Only known REPLs qualify — see canSubmitComments in the run path.
-//
-// text must already be a single sanitized line; a CR is appended here.
-func (p *PTY) Submit(text string) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.done {
-		return nil // agent gone; nothing to type into
-	}
-	if p.ptmx == nil {
-		p.early = append(p.early, text)
-		return nil
-	}
-	_, err := p.ptmx.WriteString(text + "\r")
-	return err
 }
 
 // headlessSize is the terminal geometry used when there is no real terminal to
@@ -97,11 +76,7 @@ func (p *PTY) Run(bin string, args []string, onChunk func([]byte)) (int, error) 
 		return 1, err
 	}
 	p.mu.Lock()
-	p.ptmx = ptmx
-	for _, line := range p.early {
-		_, _ = ptmx.WriteString(line + "\r")
-	}
-	p.early = nil
+	p.ptmx, p.cmd = ptmx, cmd
 	p.mu.Unlock()
 	defer ptmx.Close()
 
@@ -150,6 +125,7 @@ func (p *PTY) Run(bin string, args []string, onChunk func([]byte)) (int, error) 
 		if n > 0 {
 			p.mu.Lock()
 			os.Stdout.Write(buf[:n])
+			p.record(buf[:n], time.Now())
 			p.mu.Unlock()
 			if onChunk != nil {
 				chunk := make([]byte, n)
@@ -161,6 +137,9 @@ func (p *PTY) Run(bin string, args []string, onChunk func([]byte)) (int, error) 
 			break // EIO on child exit is the normal end
 		}
 	}
+	p.mu.Lock()
+	p.done = true
+	p.mu.Unlock()
 
 	if err := cmd.Wait(); err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {

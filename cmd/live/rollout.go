@@ -25,6 +25,9 @@ import (
 // replies, tool calls, and file edits show up as clean feed rows.
 func runRolloutMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 	p := &adapter.PTY{}
+	if headless() {
+		sc.OnEnded = p.Stop
+	}
 
 	// Viewer comments always ECHO in the CLI (DisplayComment) so the operator
 	// sees them live; when the channel is on they ALSO route to codex via the

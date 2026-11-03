@@ -50,6 +50,9 @@ func runACPMode(sc *sidecar.Sidecar, binPath string, agentArgs []string, preambl
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sig)
+	if headless() {
+		sc.OnEnded = func() { endOnSignal(sig) }
+	}
 
 	a := newACPClient(sc.Emit, sc.Log.Printf, sc.RequestPermission)
 	a.echo = func(s string) { fmt.Fprintln(os.Stderr, s) }

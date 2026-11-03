@@ -347,15 +347,23 @@ func TestInputLinesAssemblesSubmittedLines(t *testing.T) {
 	}
 }
 
-// Comment typing is ollama-only unless the operator opts the agent in.
+// Comment typing is on for ollama and the known agent CLIs (LSH-19); any
+// other command may be a shell, so it needs the operator's opt-in.
 func TestCanSubmitCommentsOptIn(t *testing.T) {
 	t.Setenv("LIVE_TYPE_COMMENTS", "")
-	if canSubmitComments("/usr/bin/aider") {
-		t.Fatal("aider without opt-in: want false")
+	for _, bin := range []string{"/usr/bin/aider", "/opt/bin/cursor-agent", "pi", "ollama"} {
+		if !canSubmitComments(bin) {
+			t.Errorf("%s: known REPL, want typed comments by default", bin)
+		}
+	}
+	for _, bin := range []string{"/bin/bash", "mytool", "any command"} {
+		if canSubmitComments(bin) {
+			t.Errorf("%s without opt-in: want false", bin)
+		}
 	}
 	t.Setenv("LIVE_TYPE_COMMENTS", "1")
-	if !canSubmitComments("/usr/bin/aider") {
-		t.Fatal("aider with type_comments: want true")
+	if !canSubmitComments("mytool") {
+		t.Fatal("mytool with type_comments: want true")
 	}
 }
 

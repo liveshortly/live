@@ -83,6 +83,10 @@ type agentCommand struct {
 	// that is showing a yes/no dialog, the Enter that submits the line can
 	// accept the dialog's default, so only the operator can say it is safe.
 	TypeComments bool `json:"type_comments"`
+	// ReadyPattern is a regexp for this agent's prompt (LSH-19): a typed
+	// comment waits until it matches the last lines on screen, on top of the
+	// idle and dialog checks every terminal agent gets.
+	ReadyPattern string `json:"ready_pattern"`
 	// ACP runs the agent over the Agent Client Protocol instead of a terminal
 	// (LSH-13): Command+Args must be its ACP entry point, e.g. `goose acp`.
 	ACP bool `json:"acp"`

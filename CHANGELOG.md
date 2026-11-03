@@ -7,11 +7,24 @@ Homebrew formula and `live version` report.
 ## Unreleased
 
 ### Added
+- **`live daemon` sends its version when it registers** (`version`, LSH-19),
+  so the server can flag an out-of-date daemon.
 - **Support matrix: "First message wakes idle agent" and "Model choice at
   start" columns (LSH-15, LSH-16).** Also `first_message` and `model_choice` in
   `docs/harness-matrix.json`; existing fields are unchanged.
 
 ### Fixed
+- **Terminal agents get the first viewer message without anyone typing in the
+  CLI (LSH-19).** aider, cursor-agent, hermes, copilot, opencode, crush, goose,
+  amp, qwen and pi now have messages typed in once they are idle at their
+  prompt, with no dialog on screen. The message is submitted only after the
+  agent echoes it, and Enter is retried once. After 20 s the session page
+  says what is blocking. ollama and `type_comments` adapters use the same
+  path, so they are no longer typed into blind. The agents.json field
+  `ready_pattern` pins an agent's prompt.
+- **Ended sessions stop reconnecting (LSH-19).** On `session_ended` the
+  sidecar stops instead of retrying `agent/stream` forever. A web-started
+  session also ends its agent, so the process exits.
 - **codex app-server: a web-picked model no longer becomes the opening turn.**
   The daemon's `--model <id>` (and `--ask-for-approval never`) values were read
   as the initial prompt; the model now goes on `thread/start`.

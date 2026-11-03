@@ -12,9 +12,11 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -341,6 +343,18 @@ func cmdRun(args []string) int {
 		Agent:          sidecar.AgentDisplayName(prof.framework),
 		Log:            logger,
 	}
+	// The server ended the session (from the web, or reaped). A headless run
+	// has nobody to close the agent, so end it and let this process exit
+	// instead of reconnecting forever (LSH-19). tmux modes end here; pty, ACP
+	// and app-server modes replace this with their own stop. An operator at a
+	// terminal keeps their agent.
+	if headless() {
+		sc.OnEnded = func() {
+			kill := exec.Command("tmux", "-L", tmuxSocket, "kill-session", "-t", "live-"+sessionID[:8])
+			kill.Env = envWithout(os.Environ(), "TMUX", "TMUX_PANE")
+			_ = kill.Run()
+		}
+	}
 	if sc.WebPermissions {
 		where := "the session page"
 		if tmuxMode {
@@ -567,6 +581,14 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 // daemon` starts a web-requested session in. It is the single discriminator
 // between "the human drives the pane" and "the browser drives the pane".
 func headless() bool { return !term.IsTerminal(int(os.Stdin.Fd())) }
+
+// endOnSignal ends a run mode that waits on sig as though it got SIGTERM.
+func endOnSignal(sig chan os.Signal) {
+	select {
+	case sig <- syscall.SIGTERM:
+	default:
+	}
+}
 
 // startupPrompts are the blocking prompts Claude shows before it will accept
 // input, each identified by markers that must ALL appear on screen. Claude asks
@@ -1213,9 +1235,26 @@ func firstNonEmpty(vals ...string) string {
 // pty mode is the universal fallback: it also runs `live <anything>`, where the
 // pane may be a shell. Typing viewer-supplied text into that would execute a
 // stranger's input on the operator's machine. So this is an allowlist of known
-// REPLs that read a line of prose, never a default.
+// REPLs that read a line of prose (ollama and the known agent CLIs, LSH-19),
+// and any other command only when the operator opts it in.
 func canSubmitComments(binPath string) bool {
-	return harness.ForFramework(profileFor(binPath).framework).TypedComments || os.Getenv("LIVE_TYPE_COMMENTS") == "1"
+	return harness.ForFramework(profileFor(binPath).framework).TypedComments ||
+		harness.TypesComments(filepath.Base(binPath)) || os.Getenv("LIVE_TYPE_COMMENTS") == "1"
+}
+
+// readyPattern is the agent's prompt marker from agents.json (`ready_pattern`,
+// passed by the daemon as LIVE_READY_PATTERN), or nil.
+func readyPattern(sc *sidecar.Sidecar) *regexp.Regexp {
+	expr := os.Getenv("LIVE_READY_PATTERN")
+	if expr == "" {
+		return nil
+	}
+	re, err := regexp.Compile(expr)
+	if err != nil {
+		sc.Log.Printf("ready_pattern %q ignored: %v", expr, err)
+		return nil
+	}
+	return re
 }
 
 // viewerLine flattens a comment into something safe to type into a REPL.
@@ -1244,20 +1283,36 @@ func viewerLine(who, message string) string {
 // the way a hooks-mode agent does.
 func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 	p := &adapter.PTY{}
-	submit := canSubmitComments(binPath)
+	if headless() {
+		sc.OnEnded = p.Stop
+	}
+	// Viewer comments are typed in by one worker, in order, each once the
+	// agent is idle at its prompt (LSH-19), so a slow turn never stalls the
+	// comment stream.
+	var typing atomic.Bool // the operator has a half-typed line
+	ready := adapter.Ready{Pattern: readyPattern(sc), Hold: typing.Load}
+	var queue chan api.Comment
+	if canSubmitComments(binPath) {
+		queue = make(chan api.Comment, 64)
+		go func() {
+			for c := range queue {
+				typeComment(sc, p, ready, c)
+			}
+		}()
+	}
 	sc.OnComment = func(c api.Comment) {
 		who := c.Username
 		if who == "" {
 			who = "viewer"
 		}
 		p.Notify("💬 " + who + ": " + c.Message)
-		if !submit {
+		if queue == nil {
 			return
 		}
-		if line := viewerLine(who, c.Message); line != "" {
-			if err := p.Submit(line); err != nil {
-				p.Notify("could not deliver that message to the agent: " + err.Error())
-			}
+		select {
+		case queue <- c:
+		default:
+			p.Notify("too many messages waiting; this one was not sent to the agent")
 		}
 	}
 	sc.Start(context.Background())
@@ -1324,6 +1379,7 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 			flush()
 			sc.Emit("prompt", map[string]any{"content": line, "ts": time.Now().UTC().Format(time.RFC3339)})
 		}
+		typing.Store(len(lines.cur) > 0)
 	}
 
 	code, err := p.Run(binPath, userArgs, func(chunk []byte) {
@@ -1338,6 +1394,33 @@ func runPTYMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		fmt.Fprintf(os.Stderr, "live: %v\n", err)
 	}
 	return code
+}
+
+// typeComment types one viewer comment into a terminal agent once it is ready,
+// telling the session page when it can't be.
+func typeComment(sc *sidecar.Sidecar, p *adapter.PTY, ready adapter.Ready, c api.Comment) {
+	who := c.Username
+	if who == "" {
+		who = "viewer"
+	}
+	line := viewerLine(who, c.Message)
+	if line == "" {
+		return
+	}
+	notice := func(msg string) {
+		sc.Emit("input_requested", map[string]any{"message": msg, "kind": "input", "ts": time.Now().UTC().Format(time.RFC3339)})
+	}
+	stuck := func(why string) {
+		sc.Log.Printf("live pty: comment from %s waiting: %s", who, why)
+		notice(why + " — the viewer message is typed in once it is idle at its prompt")
+	}
+	if err := p.TypeLine(line, ready, stuck); err != nil {
+		sc.Log.Printf("live pty: comment from %s not delivered: %v", who, err)
+		p.Notify("could not deliver that message to the agent: " + err.Error())
+		notice("message not delivered to the agent: " + err.Error())
+		return
+	}
+	sc.Log.Printf("live pty: delivered comment from %s", who)
 }
 
 // inputLines assembles raw keystrokes into submitted lines: printable text
