@@ -165,7 +165,7 @@ anything private: tokens, emails, real paths outside `/tmp/lsh-repo`.
 - **PTY agents** (`pty.jsonl`): `scripts/record-pty.py`, e.g.
   `scripts/record-pty.py testdata/ollama/<v>/pty.jsonl --prompt '>>> ' --input 'Say hello.\r' --input '/bye\r' -- ollama run phi4-mini`.
   It records output only, with arrival times. The replay depends on those
-  times: the feed batches on 600 ms of idle.
+  times: the feed releases whole lines after 600 ms of idle (`adapter.Coalescer`).
 
 Then:
 

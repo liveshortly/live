@@ -8,7 +8,7 @@ optionally types scripted input (each --input is sent once --prompt has been
 printed since the previous input, or output has been idle for --idle seconds
 when no --prompt is given, or after --wait seconds at the latest), and writes
 one JSON line per output chunk: {"t_ms": <ms since start>, "data": "<text>"}.
-Replay tests feed these chunks through the same idle batching + ANSI scrubbing
+Replay tests feed these chunks through the same adapter.Coalescer
 as runPTYMode (cmd/live/harness_replay_test.go).
 
 No network, no LiveShortly server: this captures what the agent prints, nothing

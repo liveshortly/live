@@ -10,7 +10,7 @@ mapper and compare the result with the golden:
 | `hooks.jsonl` (+ `transcript.jsonl`) | claude, agy, gemini hooks | `sidecar.handleHook` (`internal/sidecar/hooks.go`) | `internal/sidecar/harness_replay_test.go` |
 | `rollout.jsonl` | codex rollout tail (tmux default, `LIVE_TMUX=0`) | `rolloutMapper` (`cmd/live/rollout.go`) | `cmd/live/harness_replay_test.go` |
 | `jsonrpc.jsonl` | codex app-server (`LIVE_CODEX_APPSERVER=1`) | `codexApp.readLoop` (`cmd/live/appserver*.go`) | same |
-| `pty.jsonl` | ollama, gemini < 0.26, any terminal agent | idle batching + `adapter.StripANSI` (mirrors `runPTYMode`) | same |
+| `pty.jsonl` | ollama, gemini < 0.26, any terminal agent | `adapter.Coalescer` (shared with `runPTYMode`) | same |
 
 A golden pins what the code does **today**, gaps included (see Findings). A
 fix that changes what viewers see shows up as a golden diff to review:
@@ -66,10 +66,9 @@ carries the diff.
   rows with a diff, alongside the old names. `run_command` output drops the
   leading `Created At…/Command output:` header, and the prompt row is emitted
   once per transcript `USER_INPUT` step, not on every PreInvocation.
-- **PTY agents (LSH-04/05):** the real ollama capture shows a slow model split
-  into one `output` event per token (600 ms idle cut). The REPL's grey
-  placeholder text ("Send a message (/? for help)") glues onto the typed
-  prompt, because cursor-back/erase sequences are dropped, not replayed. A
-  wrapped-line redraw duplicates a word ("be be of"). Full-screen TUIs
-  (gemini, cursor-agent) arrive as box-drawing text, with prompt and reply
-  mixed into one block.
+- **PTY agents (LSH-04/05):** full-screen TUIs (gemini < 0.26, cursor-agent)
+  arrive as box-drawing text, with prompt and reply mixed into one block;
+  cursor-addressed redraws (`CSI row;col H`) are not replayed. Fixed by LSH-11
+  and pinned: a slow model's reply is whole lines, not one row per token; the
+  ollama placeholder no longer glues onto the typed prompt; a soft-wrap redraw
+  no longer duplicates a word.

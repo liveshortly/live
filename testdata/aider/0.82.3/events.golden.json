@@ -2,31 +2,37 @@
   {
     "type": "output",
     "payload": {
-      "text": "Aider v0.82.3\nMain model: gpt-5.5 with diff edit format\nGit repo: .git with 1 files\nRepo-map: using 1024 tokens, auto refresh\n\u003e"
+      "text": "Aider v0.82.3\nMain model: gpt-5.5 with diff edit format\nGit repo: .git with 1 files\nRepo-map: using 1024 tokens, auto refresh"
     }
   },
   {
     "type": "output",
     "payload": {
-      "text": "Read README.md, add a line 'hello from aider', then run `ls`.\n\nAdd README.md to the chat? (Y)es/(N)o/(D)on't ask again [Yes]:"
+      "text": "\u003e Read README.md, add a line 'hello from aider', then run `ls`."
     }
   },
   {
     "type": "output",
     "payload": {
-      "text": "y"
+      "text": "Add README.md to the chat? (Y)es/(N)o/(D)on't ask again [Yes]: y"
     }
   },
   {
     "type": "output",
     "payload": {
-      "text": "README.md\n\u003c\u003c\u003c\u003c\u003c\u003c\u003c SEARCH\n# lsh-repo\n=======\n# lsh-repo\nhello from aider\n\u003e\u003e\u003e\u003e\u003e\u003e\u003e REPLACE\n\nApplied edit to README.md\nCommit 1a2b3c4 docs: add hello from aider\n\nls\nRun shell command? (Y)es/(N)o/(D)on't ask again [Yes]:"
+      "text": "README.md\n\u003c\u003c\u003c\u003c\u003c\u003c\u003c SEARCH\n# lsh-repo\n=======\n# lsh-repo\nhello from aider\n\u003e\u003e\u003e\u003e\u003e\u003e\u003e REPLACE\n\nApplied edit to README.md\nCommit 1a2b3c4 docs: add hello from aider\n\nls"
     }
   },
   {
     "type": "output",
     "payload": {
-      "text": "y\n\nRunning ls\nREADME.md\n\n\u003e"
+      "text": "Run shell command? (Y)es/(N)o/(D)on't ask again [Yes]: y\n\nRunning ls\nREADME.md"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "\u003e"
     }
   }
 ]

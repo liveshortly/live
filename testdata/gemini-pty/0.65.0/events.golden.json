@@ -14,12 +14,6 @@
   {
     "type": "output",
     "payload": {
-      "text": "Thinking... (esc to cancel, 1s)"
-    }
-  },
-  {
-    "type": "output",
-    "payload": {
       "text": "✓  ReadFile README.md\n╭────────────────────────────────────────────────────╮\n│ ?  Edit README.md                                  │\n│    1   # lsh-repo                                  │\n│    2 + hello from gemini                           │\n│ Apply this change?                                 │\n│ ● 1. Allow once                                    │\n│   2. Allow always                                  │\n│   3. No, suggest changes (esc)                     │\n╰────────────────────────────────────────────────────╯"
     }
   },
