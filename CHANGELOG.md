@@ -4,6 +4,21 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## v2.3.5 — 2026-11-03
+
+### Added
+- **Pick a model per agent when starting a session from the web (LSH-16).**
+  `live daemon` now advertises each agent's models (claude aliases, codex's
+  model cache, agy, cursor-agent, gemini, ollama, and `models`/`model_flag` in
+  agents.json). The daemon re-checks the choice against its own list and passes
+  it as a fixed flag; anything else is refused.
+
+### Fixed
+- **agy no longer drops the first message of a web- or Mac-started session
+  (LSH-15).** live waits for agy's real input box before typing, holds early
+  messages in order, checks delivery and retries once, and tells the session
+  page why if it still can't deliver.
+
 ## v2.3.4 — 2026-11-03
 
 ### Added
