@@ -1,38 +1,181 @@
 [
   {
-    "type": "output",
+    "type": "_hook_output",
     "payload": {
-      "text": "███ GEMINI\n\nTips for getting started:\n1. Ask questions, edit files, or run commands.\n╭──────────────────────────────────────────╮\n│ \u003e Type your message or @path/to/file     │\n╰──────────────────────────────────────────╯"
+      "hook": "gemini-session-start",
+      "systemMessage": "You are live-streaming on 😍liveshortly. Viewers are watching at: http://localhost:8080/session/replay — acknowledge viewer messages when they arrive and keep coding."
     }
   },
   {
-    "type": "output",
+    "type": "prompt",
     "payload": {
-      "text": "│ \u003e Read README.md, add a line 'hello from gemini', then run `ls`. │"
+      "content": "Read README.md, add a line 'hello from gemini', then run `ls`."
     }
   },
   {
-    "type": "output",
+    "type": "pre_tool",
     "payload": {
-      "text": "Thinking... (esc to cancel, 1s)"
+      "action": "using",
+      "tool": "read_file"
     }
   },
   {
-    "type": "output",
+    "type": "_hook_output",
     "payload": {
-      "text": "✓  ReadFile README.md\n╭────────────────────────────────────────────────────╮\n│ ?  Edit README.md                                  │\n│    1   # lsh-repo                                  │\n│    2 + hello from gemini                           │\n│ Apply this change?                                 │\n│ ● 1. Allow once                                    │\n│   2. Allow always                                  │\n│   3. No, suggest changes (esc)                     │\n╰────────────────────────────────────────────────────╯"
+      "decision": "allow",
+      "hook": "gemini-before-tool"
     }
   },
   {
-    "type": "output",
+    "type": "pre_tool",
     "payload": {
-      "text": "✓  Edit README.md\n ✓  Shell ls\n    README.md"
+      "action": "editing",
+      "file": "/tmp/lsh-repo/README.md",
+      "tool": "Edit"
     }
   },
   {
-    "type": "output",
+    "type": "input_requested",
     "payload": {
-      "text": "✦ Added 'hello from gemini' to README.md and ran `ls`.\n\n│ \u003e Type your message or @path/to/file     │"
+      "kind": "permission",
+      "message": "Gemini wants to run Edit: /tmp/lsh-repo/README.md"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "allow",
+      "hook": "gemini-before-tool",
+      "reason": "Answered by the session owner via LiveShortly"
+    }
+  },
+  {
+    "type": "file_write",
+    "payload": {
+      "added": 1,
+      "diff": "--- /tmp/lsh-repo/README.md\n+++ /tmp/lsh-repo/README.md\n # lsh\n+hello from gemini",
+      "file": "/tmp/lsh-repo/README.md",
+      "removed": 0,
+      "tool": "Edit"
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "running",
+      "command": "ls",
+      "dangerous": false,
+      "tool": "Bash"
+    }
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "permission",
+      "message": "Gemini wants to run Bash: ls"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "allow",
+      "hook": "gemini-before-tool",
+      "reason": "Allowed via LiveShortly — won't ask again for Bash:ls"
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "ls",
+      "output": "README.md",
+      "tool": "Bash"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "gemini-after-tool",
+      "hookSpecificOutput": {
+        "additionalContext": "[live] Viewer message(s) (respond if relevant):\n  • rohit: also say hi in the reply",
+        "hookEventName": "AfterTool"
+      },
+      "systemMessage": "[live] 💬 rohit: also say hi in the reply → delivered to Gemini"
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "running",
+      "command": "ls -la",
+      "dangerous": false,
+      "tool": "Bash"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "allow",
+      "hook": "gemini-before-tool",
+      "reason": "Allowed earlier via LiveShortly (don't ask again)"
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "using",
+      "tool": "mcp_github_create_pull_request"
+    }
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "permission",
+      "message": "Gemini wants to run mcp_github_create_pull_request"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "deny",
+      "hook": "gemini-before-tool",
+      "reason": "The session owner denied this tool call via LiveShortly"
+    }
+  },
+  {
+    "type": "response",
+    "payload": {
+      "content": "Added 'hello from gemini' to README.md and ran ls: README.md. Hi!"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "deny",
+      "hook": "gemini-after-agent",
+      "reason": "[live] Viewer message(s) (respond if relevant):\n  • maya: nice",
+      "systemMessage": "[live] 💬 maya: nice → delivered to Gemini"
+    }
+  },
+  {
+    "type": "response",
+    "payload": {
+      "content": "Thanks, maya!"
+    }
+  },
+  {
+    "type": "stream_end"
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "permission",
+      "message": "Gemini CLI needs your permission to run run_shell_command"
+    }
+  },
+  {
+    "type": "_model",
+    "payload": {
+      "model": "gemini-2.5-pro"
     }
   }
 ]

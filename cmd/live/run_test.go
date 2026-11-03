@@ -358,3 +358,14 @@ func TestCanSubmitCommentsOptIn(t *testing.T) {
 		t.Fatal("aider with type_comments: want true")
 	}
 }
+
+func TestGeminiOwnApproval(t *testing.T) {
+	for _, args := range [][]string{{"--yolo"}, {"-y"}, {"--approval-mode", "auto_edit"}, {"--approval-mode=yolo"}} {
+		if !geminiOwnApproval(args) {
+			t.Errorf("%v: operator picked gemini's approval mode; live must stand down", args)
+		}
+	}
+	if geminiOwnApproval([]string{"-m", "gemini-2.5-pro"}) {
+		t.Error("plain run must keep live's gate")
+	}
+}

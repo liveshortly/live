@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/liveshortly/live/internal/adapter"
 	"github.com/liveshortly/live/internal/auth"
 )
 
@@ -71,6 +72,9 @@ func cmdUninstall(args []string) int {
 		auth.Delete()
 		fmt.Println("✓ signed out (removed credentials.json)")
 	}
+
+	// The gemini hooks extension (inert without live, but ours).
+	_ = adapter.RemoveGeminiExtension()
 
 	// Clean up agy plugin if agy is present
 	if agyBin, err := exec.LookPath("agy"); err == nil {

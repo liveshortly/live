@@ -45,7 +45,7 @@ func profileFor(bin string) agentProfile {
 	case "agy", "antigravity":
 		return agentProfile{framework: "agy", captureMode: "hooks", acceptsInitialPrompt: true}
 	case "gemini":
-		return agentProfile{framework: "gemini-cli", captureMode: "pty"}
+		return geminiProfile(bin)
 	case "codex":
 		return agentProfile{framework: "codex", captureMode: "rollout", acceptsInitialPrompt: true}
 	case "ollama":
@@ -300,7 +300,7 @@ func cmdRun(args []string) int {
 	// --permission-mode bypassPermissions). Otherwise live's PreToolUse hook would
 	// re-gate every tool from the web/popup even though the agent was told to skip,
 	// so the flag looks ignored.
-	if isPrintMode(userArgs) || permissionsBypassed(userArgs) {
+	if isPrintMode(userArgs) || permissionsBypassed(userArgs) || (isGemini(bin) && geminiOwnApproval(userArgs)) {
 		webPerms = false
 	}
 	hasTmux := false
@@ -416,7 +416,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		return 1
 	}
 	isAgyAgent := isAgy(binPath)
-	var agentArgs []string
+	var agentArgs, agentEnv []string
 	if isAgyAgent {
 		cleanup, err := adapter.EnsureAgyPlugin(binPath, self, true)
 		if err != nil {
@@ -428,6 +428,13 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		if !hasFlag(agentArgs, "--dangerously-skip-permissions") {
 			agentArgs = append([]string{"--dangerously-skip-permissions"}, agentArgs...)
 		}
+	} else if isGemini(binPath) {
+		a, e, err := geminiLaunch(sc, self, userArgs)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "live: %v\n", err)
+			return 1
+		}
+		agentArgs, agentEnv = a, e
 	} else {
 		// Permission hooks follow the resolved gating, not the tmux choice: a
 		// bypassed run (sc.WebPermissions=false) still captures events but must
@@ -488,6 +495,9 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		// client must outlast the 8m decision grace, under the 10m hook.
 		"-e", "LIVE_HOOK_TIMEOUT=590", "-e", "LIVE_AGENT_NAME=" + sc.Agent}
 	newArgs = append(newArgs, pinnedEnvArgs()...)
+	for _, e := range agentEnv {
+		newArgs = append(newArgs, "-e", e)
+	}
 	newArgs = append(newArgs, agent...)
 	if out, err := tmux(newArgs...).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "live: tmux new-session failed: %v: %s\n", err, out)
@@ -498,7 +508,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 
 	// Web-started run: nobody can answer the channel warning, so do it here.
 	// An operator at a real terminal answers it themselves.
-	if headless() && !isAgyAgent {
+	if headless() && !isAgyAgent && !isGemini(binPath) {
 		go confirmChannelPrompt(tmux, sess)
 	}
 
@@ -816,6 +826,13 @@ func runHooksMode(sc *sidecar.Sidecar, binPath string, userArgs []string) int {
 		if sc.WebPermissions && !hasFlag(args, "--dangerously-skip-permissions") {
 			args = append([]string{"--dangerously-skip-permissions"}, args...)
 		}
+	} else if isGemini(binPath) {
+		a, e, err := geminiLaunch(sc, self, userArgs)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "live: %v\n", err)
+			return 1
+		}
+		args, env = a, append(env, e...)
 	} else {
 		settings, cleanup, err := adapter.WriteClaudeSettings(self, sc.WebPermissions)
 		if err != nil {

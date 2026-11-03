@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,15 +19,16 @@ import (
 // the sidecar's hook-output JSON. It must be fast, silent, and always emit
 // valid JSON + exit 0 so a broken sidecar can never wedge the agent.
 //
-// `live hook pre-tool-use --gated` is installed only when LiveShortly is the
-// approval gate (web permissions; the agent's own prompt is skipped). There a
-// sidecar that can't answer must never let the tool run, so the relay denies.
+// `live hook pre-tool-use --gated` (gemini: `gemini-before-tool --gated`) is
+// installed only when LiveShortly is the approval gate (web permissions; the
+// agent's own prompt is skipped). There a sidecar that can't answer must never
+// let the tool run, so the relay denies.
 func cmdHook(args []string) {
 	event := ""
 	if len(args) > 0 {
 		event = args[0]
 	}
-	gated := event == "pre-tool-use" && slices.Contains(args[1:], "--gated")
+	gated := slices.Contains(args[1:], "--gated")
 	var body []byte
 	if os.Getenv("LIVE_SIDECAR") != "" || gated {
 		body, _ = io.ReadAll(io.LimitReader(os.Stdin, 16<<20))
@@ -51,7 +53,7 @@ func hookOutput(event string, gated bool, body, out []byte, err error) []byte {
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "live: approvals offline — tool call denied: %v\n", err)
-			return denyOutput(body, err)
+			return denyOutput(event, body, err)
 		}
 		return out
 	}
@@ -84,14 +86,16 @@ func hasVerdict(out []byte) bool {
 }
 
 // denyOutput is a fail-closed verdict in the shape the calling agent expects
-// (agy payloads carry "toolCall"; Claude and codex share hookSpecificOutput).
-func denyOutput(body []byte, cause error) []byte {
+// (agy payloads carry "toolCall" and gemini reads the same flat shape — keyed
+// on the event, so an unreadable body can't pick the shape gemini ignores;
+// Claude and codex share hookSpecificOutput).
+func denyOutput(event string, body []byte, cause error) []byte {
 	reason := "LiveShortly approvals are offline (" + cause.Error() + "), so this tool call was denied for safety. " +
 		"Tell the user approvals are unavailable; restarting the live session restores them."
 	var p map[string]any
 	_ = json.Unmarshal(body, &p)
 	var v any
-	if p["toolCall"] != nil {
+	if p["toolCall"] != nil || strings.HasPrefix(event, "gemini-") {
 		v = map[string]any{"decision": "deny", "reason": reason}
 	} else {
 		v = map[string]any{"hookSpecificOutput": map[string]any{

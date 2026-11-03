@@ -6,6 +6,37 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+### Added
+- **Gemini CLI runs on its hooks, not a raw terminal (LSH-04).** `live gemini`
+  (Gemini CLI 0.26+) now streams prompts, replies, tool steps, file edits with
+  diffs, permission pings, the model and turn ends as structured events, like
+  `live claude`. Viewer comments reach gemini at tool and turn boundaries (a
+  comment that arrives after the last tool re-opens the turn once). With
+  permission control on, gemini runs with `--approval-mode=yolo` and live's
+  BeforeTool hook is the gate: the owner approves from the web or the tmux
+  popup, "always allow" is remembered, and the gate fails closed like LSH-07.
+  Read-only tools (read, grep, glob, search…) aren't gated; MCP and unknown
+  tools are. A web-started gemini is gated and drivable the same way.
+  - Hooks ship as a `liveshortly` extension in `~/.gemini/extensions` (Gemini
+    has no per-run settings flag, and it ignores a system-settings override
+    outside a root-owned directory). It is inert outside live: each hook runs
+    `true` unless `live` set `LIVE_BIN`. `live uninstall` removes it.
+  - Live only takes over approvals when its hook is certain to fire. If hooks
+    or extensions are disabled in any gemini settings scope, an admin
+    extension allowlist is set, the extension is disabled, a settings file
+    can't be parsed, or the run is under GitHub Actions (hook env stripped),
+    gemini's own prompt stays in charge and live says why. Passing
+    `--yolo`/`--approval-mode` yourself also leaves approvals to gemini.
+  - Known gaps: in an untrusted folder gemini refuses yolo, so each gated
+    tool is approved twice (web, then gemini's own prompt). With
+    gemini's env redaction on, `LIVE_TOKEN` is stripped from hooks, so capture
+    is off and gated tools are denied. Comments wait for the next boundary
+    while gemini is idle (no channel like Claude's). No model switch. Gemini
+    older than 0.26 keeps raw terminal capture.
+  - `testdata/gemini/0.65.0/hooks.jsonl` is a golden replay built from
+    gemini's documented hook payloads (synthetic, see `testdata/README.md`);
+    the old PTY fixture moved to `testdata/gemini-pty/0.65.0/`.
+
 ### Security
 - **Approvals fail closed (LSH-07).** In web-permissions mode the agent's own
   prompt is skipped and `live hook pre-tool-use` is the only gate, yet it
