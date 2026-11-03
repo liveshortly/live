@@ -399,6 +399,19 @@ For web-spawned sessions, mark it in `~/.liveshortly/agents.json`:
 
 The session is headless: send the first instruction from the session page.
 
+### Choosing the model from the web
+
+`live daemon` registers, for each agent, the models the web may start it with:
+the agent's own listing where it has one (codex's model cache, `agy models`,
+`cursor-agent --list-models`, `ollama list`), otherwise a short list shipped
+with live, plus your configured default. The daemon only accepts a model from
+that list and passes it as the agent's own `--model` flag. For an agents.json
+adapter, list them yourself:
+
+```json
+[{ "name": "hermes", "models": ["nous/hermes-4-405b"], "model_flag": "-m" }]
+```
+
 ## How it actually works
 
 ```

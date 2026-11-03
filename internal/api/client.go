@@ -376,6 +376,25 @@ type HostRegistration struct {
 	// is offered. This list is what the spawn path validates against, so it is
 	// enumerated locally and never accepted from the server.
 	Models []string `json:"models,omitempty"`
+	// AgentModels is the per-agent model catalog (LSH-16): what the web may
+	// offer for each agent. Built locally; a spawn's model is re-checked
+	// against it. A separate field so servers that predate it ignore it.
+	AgentModels []AgentModels `json:"agent_models,omitempty"`
+}
+
+// AgentModels lists the models one agent on this machine may be started with.
+// Models empty means the agent takes no model from the web (its own default).
+type AgentModels struct {
+	Name            string        `json:"name"`
+	Models          []ModelOption `json:"models"`
+	DefaultModel    string        `json:"default_model,omitempty"`
+	ModelSwitchable bool          `json:"model_switchable,omitempty"`
+}
+
+// ModelOption is one pickable model: the id passed to the agent, and a label.
+type ModelOption struct {
+	ID    string `json:"id"`
+	Label string `json:"label,omitempty"`
 }
 
 // SpawnCommand is a request from the web to start a session on this machine.
@@ -386,9 +405,9 @@ type SpawnCommand struct {
 	Agent     string `json:"agent"`
 	Cwd       string `json:"cwd"`
 	Title     string `json:"title"`
-	// Model names the ollama model to run. Ignored for other agents. It is a
-	// choice from the list this machine registered, not a free-form argument —
-	// the daemon re-checks it against a fresh `ollama list`.
+	// Model names the model to run: one this machine registered for Agent in
+	// AgentModels, not a free-form argument. The daemon re-checks it (ollama
+	// against a fresh `ollama list`) and maps it to the agent's own flag.
 	Model string `json:"model,omitempty"`
 	// BypassPermissions is the owner's request to run the agent unattended:
 	// no web permission probes from live, and the agent's own prompt flag

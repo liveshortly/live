@@ -238,13 +238,21 @@ func cmdDaemon(args []string) int {
 		Dirs:     opts.dirs,
 		Agents:   agents,
 		Models:   models,
+		// Per-agent model choice (LSH-16); spawnSession checks against it.
+		AgentModels: buildModelCatalog(agents, custom, models),
 	}
 	client := api.New()
 
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m daemon ready as \x1b[1m%s\x1b[0m — start sessions from %s\n", name, hostcfg.WebURL())
 	fmt.Fprintf(os.Stderr, "        agents: %s\n", strings.Join(agents, ", "))
-	if contains(agents, "ollama") {
-		fmt.Fprintf(os.Stderr, "        models: %s\n", strings.Join(models, ", "))
+	for _, am := range reg.AgentModels {
+		if len(am.Models) > 0 {
+			ids := make([]string, len(am.Models))
+			for i, m := range am.Models {
+				ids[i] = m.ID
+			}
+			fmt.Fprintf(os.Stderr, "        models: %s — %s\n", am.Name, strings.Join(ids, ", "))
+		}
 	}
 	for _, d := range opts.dirs {
 		fmt.Fprintf(os.Stderr, "        dir:    %s\n", d)
@@ -367,23 +375,26 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 	// the same trust boundary the directory check enforces, and a model can be
 	// removed while the daemon is running.
 	agentArgs := append([]string{}, fixedArgs...)
-	// claude takes an optional model ALIAS from the fixed allowlist. Anything
-	// unknown is ignored (the alias list is the trust boundary, not the wire).
-	if cmd.Agent == "claude" && claudeModelAliases[strings.TrimSpace(cmd.Model)] {
-		agentArgs = append(agentArgs, "--model", strings.TrimSpace(cmd.Model))
-	}
 	if cmd.Agent == "ollama" {
 		model := strings.TrimSpace(cmd.Model)
 		if model == "" {
 			return fail("ollama spawn carried no model")
 		}
-		if !validModelName(model) {
+		if !safeModelID(model) {
 			return fail("model %q is not a valid ollama model name", model)
 		}
 		if !contains(availableModels(), model) {
 			return fail("model %q is not pulled on this machine", model)
 		}
 		agentArgs = []string{"run", model}
+	} else {
+		// Every other agent: the model must be in the catalog THIS process
+		// built at startup, and maps to the agent's own fixed flag (LSH-16).
+		margs, err := modelArgs(cmd.Agent, cmd.Model, reg, custom)
+		if err != nil {
+			return fail("%v", err)
+		}
+		agentArgs = append(agentArgs, margs...)
 	}
 
 	// Owner-requested permission bypass. The spawn came from the owner's own

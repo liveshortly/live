@@ -82,6 +82,10 @@ type agentCommand struct {
 	// ACP runs the agent over the Agent Client Protocol instead of a terminal
 	// (LSH-13): Command+Args must be its ACP entry point, e.g. `goose acp`.
 	ACP bool `json:"acp"`
+	// Models the web may start this agent with (LSH-16), passed as
+	// `<model_flag> <id>`. Both come from the operator, never from a client.
+	Models    []string `json:"models"`
+	ModelFlag string   `json:"model_flag"`
 }
 
 var validAgentName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
@@ -125,6 +129,14 @@ func loadAgentCommands(path string) (map[string]agentCommand, error) {
 		}
 		if contains(nativeAgents, c.Name) {
 			return nil, fmt.Errorf("adapter %s conflicts with a built-in agent", c.Name)
+		}
+		if len(c.Models) > 0 && !flagPattern.MatchString(c.ModelFlag) {
+			return nil, fmt.Errorf("adapter %s lists models but no model_flag such as \"--model\"", c.Name)
+		}
+		for _, m := range c.Models {
+			if !safeModelID(m) {
+				return nil, fmt.Errorf("adapter %s: model %q is not a valid model name", c.Name, m)
+			}
 		}
 		if _, exists := result[c.Name]; exists {
 			return nil, fmt.Errorf("duplicate adapter %s", c.Name)
