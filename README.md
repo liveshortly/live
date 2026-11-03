@@ -34,7 +34,7 @@ After [configuring your server](#choose-your-server):
 ```bash
 live claude        # Claude Code — the full story: prompts, tools, diffs, replies
 live agy           # Antigravity CLI — full story: prompts, tools, diffs, replies
-live gemini        # some other agent? still works — we capture the terminal
+live gemini        # Gemini CLI — prompts, tools, diffs, replies via its hooks
 live npm run dev   # honestly, run whatever you want through it
 ```
 
@@ -363,7 +363,7 @@ live open <id>              # open its page in a browser
 | Command | How it's captured | What shows up | Messages back |
 |---|---|---|---|
 | `live claude` | Claude Code hooks | prompts, tool calls, file diffs, replies, "waiting for you" pings, model auto-detect | straight into the agent |
-| `live gemini` | terminal recording (proper hooks planned — Gemini CLI has a hook system now) | terminal output, cleaned up | shown to you |
+| `live gemini` | Gemini CLI hooks (0.26+, via a `liveshortly` extension that does nothing outside `live`); terminal recording on older versions | prompts, tool calls, file diffs, replies, permission pings, model | at tool and turn boundaries |
 | `live codex` | terminal recording (hooks planned — Codex has hooks too) | terminal output | shown to you |
 | `live <anything>` | terminal recording | terminal output | shown to you |
 
@@ -435,7 +435,7 @@ internal/adapter/    Claude (hook injection) and the terminal-capture runner
 
 ## Where this is headed
 
-- [ ] Proper hooks for Gemini CLI (real events instead of terminal scraping)
+- [x] Proper hooks for Gemini CLI (real events instead of terminal scraping)
 - [ ] Same for Codex
 - [x] Real-time viewer comments (live push, no more polling)
 - [x] Idle-viewer messages that reach Claude while it's waiting

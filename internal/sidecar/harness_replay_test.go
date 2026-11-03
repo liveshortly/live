@@ -1,6 +1,6 @@
 package sidecar
 
-// Golden replay of hook-based harness captures (claude, agy) — LSH-00. See
+// Golden replay of hook-based harness captures (claude, agy, gemini) — LSH-00. See
 // cmd/live/harness_replay_test.go and testdata/README.md for the format.
 //
 // Each line of testdata/<agent>/<version>/hooks.jsonl is one of:
@@ -174,7 +174,7 @@ func replayHooks(t *testing.T, dir string) {
 
 // fixtureFramework maps a testdata/<agent> dir to the session framework `live`
 // sets for it (profileFor in cmd/live/run.go), which names the agent in asks.
-var fixtureFramework = map[string]string{"claude": "claude-code", "agy": "agy"}
+var fixtureFramework = map[string]string{"claude": "claude-code", "agy": "agy", "gemini": "gemini-cli"}
 
 func dropTS(p map[string]any) map[string]any {
 	clean := map[string]any{}

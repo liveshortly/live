@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -44,6 +45,7 @@ func TestHookFailsClosedWhenGated(t *testing.T) {
 	deny := `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"}}`
 	claudeBody := `{"tool_name":"Bash","tool_input":{"command":"rm -rf /"}}`
 	agyBody := `{"toolCall":{"name":"run_command"}}`
+	geminiBody := `{"hook_event_name":"BeforeTool","tool_name":"run_shell_command","tool_input":{"command":"rm -rf /"}}`
 
 	for _, tc := range []struct {
 		name, addr, body string
@@ -61,6 +63,10 @@ func TestHookFailsClosedWhenGated(t *testing.T) {
 		{"explicit deny", reply(200, deny, 0), claudeBody, true, "deny"},
 		{"explicit allow", reply(200, allow, 0), claudeBody, true, "allow"},
 		{"agy allow", reply(200, `{"decision":"allow"}`, 0), agyBody, true, "allow"},
+		// Gemini reads only a top-level decision; the Claude shape would be ignored (= run).
+		{"unreachable gemini", deadURL, geminiBody, true, "deny"},
+		{"gemini no verdict", reply(200, `{}`, 0), geminiBody, true, "deny"},
+		{"gemini allow", reply(200, `{"decision":"allow"}`, 0), geminiBody, true, "allow"},
 		// Ungated (bypass / agent's own prompt in charge): unchanged behaviour.
 		{"bypass unreachable", deadURL, claudeBody, false, "allow"},
 		{"bypass 5xx", reply(500, "boom", 0), claudeBody, false, "allow"},
@@ -70,8 +76,16 @@ func TestHookFailsClosedWhenGated(t *testing.T) {
 			t.Setenv("LIVE_SIDECAR", tc.addr)
 			t.Setenv("LIVE_TOKEN", "tok")
 			t.Setenv("LIVE_HOOK_TIMEOUT", "1")
-			out, err := relay("pre-tool-use", []byte(tc.body))
-			got := decisionOf(t, hookOutput("pre-tool-use", tc.gated, []byte(tc.body), out, err))
+			event := "pre-tool-use"
+			if strings.Contains(tc.body, "BeforeTool") {
+				event = "gemini-before-tool"
+			}
+			out, err := relay(event, []byte(tc.body))
+			o := hookOutput(event, tc.gated, []byte(tc.body), out, err)
+			if event != "pre-tool-use" && strings.Contains(string(o), "hookSpecificOutput") {
+				t.Fatalf("gemini got a verdict shape it ignores: %s", o)
+			}
+			got := decisionOf(t, o)
 			if got != tc.want {
 				t.Fatalf("decision = %q, want %q", got, tc.want)
 			}

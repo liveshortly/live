@@ -7,10 +7,10 @@ mapper and compare the result with the golden:
 
 | Capture file | Harness path | Replayed through | Test |
 |---|---|---|---|
-| `hooks.jsonl` (+ `transcript.jsonl`) | claude, agy hooks | `sidecar.handleHook` (`internal/sidecar/hooks.go`) | `internal/sidecar/harness_replay_test.go` |
+| `hooks.jsonl` (+ `transcript.jsonl`) | claude, agy, gemini hooks | `sidecar.handleHook` (`internal/sidecar/hooks.go`) | `internal/sidecar/harness_replay_test.go` |
 | `rollout.jsonl` | codex rollout tail (tmux default, `LIVE_TMUX=0`) | `rolloutMapper` (`cmd/live/rollout.go`) | `cmd/live/harness_replay_test.go` |
 | `jsonrpc.jsonl` | codex app-server (`LIVE_CODEX_APPSERVER=1`) | `codexApp.readLoop` (`cmd/live/appserver*.go`) | same |
-| `pty.jsonl` | gemini, ollama, any terminal agent | idle batching + `adapter.StripANSI` (mirrors `runPTYMode`) | same |
+| `pty.jsonl` | ollama, gemini < 0.26, any terminal agent | idle batching + `adapter.StripANSI` (mirrors `runPTYMode`) | same |
 
 A golden pins what the code does **today**, gaps included (see Findings). A
 fix that changes what viewers see shows up as a golden diff to review:
@@ -39,7 +39,8 @@ matrix (docs/HARNESS-TESTING.md); keep the folder name.
 | `codex/0.142.5/rollout.jsonl` | synthetic | The 0.142.5 shapes already used by `rollout_test.go` (`live/CODEX.md`). Kept as the regression baseline for the old `function_call exec_command` / `apply_patch` format. |
 | `codex/0.166.0/rollout.jsonl` | synthetic | Line types and keys copied from local codex-tui 0.163–0.165 rollout files (`~/.codex/sessions/**`): `custom_tool_call` `exec` (code mode), `event_msg/item_completed` with `CommandExecution` / `FileChange` / `AgentMessage`, `function_call` `wait`. No 0.166.0 rollout existed locally. |
 | `codex-appserver/0.166.0/jsonrpc.jsonl` | synthetic | Checked against `codex app-server generate-json-schema` from the installed codex-cli 0.166.0 (`ThreadItem` variants, `FileUpdateChange` array, server-request method names). |
-| `gemini/0.65.0/pty.jsonl` | synthetic | Modelled on the gemini-cli TUI (banner, input box, spinner, tool rows, approval dialog). A real run costs the owner's Google quota. |
+| `gemini/0.65.0/hooks.jsonl` | synthetic | Hook stdin as documented in gemini-cli 0.65.0 `docs/hooks/reference.md` (base fields, BeforeAgent `prompt`, BeforeModel `llm_request.model`, Before/AfterTool `tool_name`/`tool_input`/`tool_response`, AfterAgent `prompt_response`, Notification `ToolPermission`) with argument keys from `docs/reference/tools.md`. The AfterAgent retry carrying viewer messages through BeforeAgent follows the 0.65.0 source. Checked live on gemini 0.66.0 only that the extension's SessionStart hook reaches `live hook`. A real run costs the owner's Google quota. |
+| `gemini-pty/0.65.0/pty.jsonl` | synthetic | Modelled on the gemini-cli TUI (banner, input box, spinner, tool rows, approval dialog). Gemini 0.26+ now runs on hooks; this pins the PTY fallback for older gemini. |
 | `aider/0.82.3/pty.jsonl` | synthetic | aider's line REPL (banner, `>` prompt, SEARCH/REPLACE block, y/n confirmations). |
 | `cursor-agent/2026.10.01/pty.jsonl` | synthetic | cursor-agent's full-screen TUI (alternate screen, cursor-addressed redraws). |
 | `hermes/0.21.5/pty.jsonl` | synthetic | hermes' line REPL with streamed reply fragments. |

@@ -16,6 +16,9 @@ import (
 // handleHook maps an agent hook payload (relayed by `live hook`) to feed
 // events and hook JSON output. Supports both Claude Code and Antigravity (agy).
 func (s *Sidecar) handleHook(event string, p map[string]any) map[string]any {
+	if ev, ok := strings.CutPrefix(event, "gemini-"); ok {
+		return s.handleGeminiHook(ev, p)
+	}
 	switch event {
 	case "session-start":
 		return s.hookSessionStart()

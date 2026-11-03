@@ -1,0 +1,38 @@
+[
+  {
+    "type": "output",
+    "payload": {
+      "text": "███ GEMINI\n\nTips for getting started:\n1. Ask questions, edit files, or run commands.\n╭──────────────────────────────────────────╮\n│ \u003e Type your message or @path/to/file     │\n╰──────────────────────────────────────────╯"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "│ \u003e Read README.md, add a line 'hello from gemini', then run `ls`. │"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "Thinking... (esc to cancel, 1s)"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "✓  ReadFile README.md\n╭────────────────────────────────────────────────────╮\n│ ?  Edit README.md                                  │\n│    1   # lsh-repo                                  │\n│    2 + hello from gemini                           │\n│ Apply this change?                                 │\n│ ● 1. Allow once                                    │\n│   2. Allow always                                  │\n│   3. No, suggest changes (esc)                     │\n╰────────────────────────────────────────────────────╯"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "✓  Edit README.md\n ✓  Shell ls\n    README.md"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "✦ Added 'hello from gemini' to README.md and ran `ls`.\n\n│ \u003e Type your message or @path/to/file     │"
+    }
+  }
+]
