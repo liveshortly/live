@@ -1,0 +1,14 @@
+{"hook":"pre-invocation","payload":{"transcriptPath":"$FIXTURE/transcript.jsonl","modelName":"Gemini 3.8 Flash (Medium)"}}
+{"hook":"pre-tool-use","payload":{"transcriptPath":"$FIXTURE/transcript.jsonl","modelName":"Gemini 3.8 Flash (Medium)","stepIdx":1,"toolCall":{"name":"read_file","args":{"Path":"/tmp/lsh-repo/README.md"}}}}
+{"verdict":"allow"}
+{"hook":"pre-tool-use","payload":{"transcriptPath":"$FIXTURE/transcript.jsonl","modelName":"Gemini 3.8 Flash (Medium)","stepIdx":3,"toolCall":{"name":"edit_file","args":{"Path":"/tmp/lsh-repo/README.md","Target":"# lsh-repo\n","Replacement":"# lsh-repo\nhello from agy\n"}}}}
+{"hook":"post-tool-use","payload":{"transcriptPath":"$FIXTURE/transcript.jsonl","modelName":"Gemini 3.8 Flash (Medium)","stepIdx":4,"toolCall":{"name":"edit_file","args":{"Path":"/tmp/lsh-repo/README.md","Target":"# lsh-repo\n","Replacement":"# lsh-repo\nhello from agy\n"}}}}
+{"comment":{"username":"viewer1","message":"also show hidden files"}}
+{"comment":{"username":"viewer2","message":"and the git log"}}
+{"hook":"pre-invocation","payload":{"transcriptPath":"$FIXTURE/transcript.jsonl","modelName":"Gemini 3.8 Flash (Medium)"}}
+{"verdict":"allow"}
+{"hook":"pre-tool-use","payload":{"transcriptPath":"$FIXTURE/transcript.jsonl","modelName":"Gemini 3.8 Flash (Medium)","stepIdx":5,"toolCall":{"name":"run_command","args":{"CommandLine":"ls","WaitMsBeforeAsync":"5000"}}}}
+{"hook":"post-tool-use","payload":{"transcriptPath":"$FIXTURE/transcript.jsonl","modelName":"Gemini 3.8 Flash (Medium)","stepIdx":6,"toolCall":{"name":"run_command","args":{"CommandLine":"ls","WaitMsBeforeAsync":"5000"}}}}
+{"hook":"pre-tool-use","payload":{"transcriptPath":"$FIXTURE/transcript.jsonl","modelName":"Gemini 3.8 Flash (Medium)","stepIdx":5,"toolCall":{"name":"replace_file_content","args":{"TargetFile":"/tmp/lsh-repo/README.md","TargetContent":"hello from agy\n","ReplacementContent":"hello from agy!\n"}}}}
+{"hook":"post-tool-use","payload":{"transcriptPath":"$FIXTURE/transcript.jsonl","modelName":"Gemini 3.8 Flash (Medium)","stepIdx":5,"toolCall":{"name":"replace_file_content","args":{"TargetFile":"/tmp/lsh-repo/README.md","TargetContent":"hello from agy\n","ReplacementContent":"hello from agy!\n"}}}}
+{"hook":"stop","payload":{"transcriptPath":"$FIXTURE/transcript.jsonl","modelName":"Gemini 3.8 Flash (Medium)","fullyIdle":true,"terminationReason":"COMPLETED"}}

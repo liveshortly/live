@@ -1,0 +1,189 @@
+[
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "session-start",
+      "systemMessage": "You are live-streaming on 😍liveshortly. Viewers are watching at: http://localhost:8080/session/replay — acknowledge viewer messages when they arrive and keep coding."
+    }
+  },
+  {
+    "type": "prompt",
+    "payload": {
+      "content": "Read README.md, add a line 'hello from claude', then run `ls`."
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "editing",
+      "file": "/tmp/lsh-repo/README.md",
+      "tool": "Edit"
+    }
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "permission",
+      "message": "Claude wants to run Edit: /tmp/lsh-repo/README.md"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "pre-tool-use",
+      "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "allow",
+        "permissionDecisionReason": "Answered by the session owner via LiveShortly"
+      }
+    }
+  },
+  {
+    "type": "file_write",
+    "payload": {
+      "added": 1,
+      "diff": "--- /tmp/lsh-repo/README.md\n+++ /tmp/lsh-repo/README.md\n # lsh-repo\n+hello from claude",
+      "file": "/tmp/lsh-repo/README.md",
+      "removed": 0,
+      "tool": "Edit"
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "running",
+      "command": "ls",
+      "dangerous": false,
+      "tool": "Bash"
+    }
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "permission",
+      "message": "Claude wants to run Bash: ls"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "pre-tool-use",
+      "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "allow",
+        "permissionDecisionReason": "Allowed via LiveShortly — won't ask again for Bash:ls"
+      }
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "ls",
+      "output": "README.md",
+      "tool": "Bash"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "post-tool-use",
+      "hookSpecificOutput": {
+        "additionalContext": "[live] Viewer message(s) (respond if relevant):\n  • viewer1: also show hidden files",
+        "hookEventName": "PostToolUse"
+      },
+      "systemMessage": "[live] 💬 viewer1: also show hidden files → delivered to Claude"
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "running",
+      "command": "ls -a",
+      "dangerous": false,
+      "tool": "Bash"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "pre-tool-use",
+      "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "allow",
+        "permissionDecisionReason": "Allowed earlier via LiveShortly (don't ask again)"
+      }
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "ls -a",
+      "output": ".\n..\n.git\nREADME.md",
+      "tool": "Bash"
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "running",
+      "command": "rm -rf .git",
+      "dangerous": true,
+      "tool": "Bash"
+    }
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "permission",
+      "message": "Claude wants to run Bash: rm -rf .git"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "pre-tool-use",
+      "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": "Answered by the session owner via LiveShortly"
+      }
+    }
+  },
+  {
+    "type": "response",
+    "payload": {
+      "content": "Added 'hello from claude' to README.md and listed the files."
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "block",
+      "hook": "stop",
+      "reason": "viewer2: thanks!",
+      "systemMessage": "[live] 💬 viewer2: thanks! → delivered to Claude"
+    }
+  },
+  {
+    "type": "response",
+    "payload": {
+      "content": "You're welcome, viewer2."
+    }
+  },
+  {
+    "type": "stream_end"
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "input",
+      "message": "Claude is waiting for your input"
+    }
+  },
+  {
+    "type": "_model",
+    "payload": {
+      "model": "claude-sonnet-4-6"
+    }
+  }
+]

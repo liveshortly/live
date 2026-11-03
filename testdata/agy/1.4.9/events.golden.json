@@ -1,0 +1,181 @@
+[
+  {
+    "type": "prompt",
+    "payload": {
+      "content": "Read README.md, add a line 'hello from agy', then run `ls`."
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "pre-invocation",
+      "injectSteps": []
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "executing",
+      "tool": "read_file"
+    }
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "permission",
+      "message": "Antigravity wants to run read_file: read_file"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "allow",
+      "hook": "pre-tool-use",
+      "reason": "Answered by the session owner via LiveShortly"
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "executing",
+      "tool": "edit_file"
+    }
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "permission",
+      "message": "Antigravity wants to run edit_file: edit_file"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "allow",
+      "hook": "pre-tool-use",
+      "reason": "Answered by the session owner via LiveShortly"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "post-tool-use"
+    }
+  },
+  {
+    "type": "prompt",
+    "payload": {
+      "content": "Read README.md, add a line 'hello from agy', then run `ls`."
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "pre-invocation",
+      "injectSteps": [
+        {
+          "ephemeralMessage": "[live] Viewer message(s) (respond if relevant):\n  • viewer1: also show hidden files\n  • viewer2: and the git log"
+        }
+      ]
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "running",
+      "command": "ls",
+      "dangerous": false,
+      "tool": "Bash"
+    }
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "permission",
+      "message": "Antigravity wants to run Bash: ls"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "allow",
+      "hook": "pre-tool-use",
+      "reason": "Answered by the session owner via LiveShortly"
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "ls",
+      "output": "Created At: 2026-11-03T11:30:04+05:30\nCompleted At: 2026-11-03T11:30:04+05:30\nCommand exited with code 0.\n\nCommand output:\nREADME.md",
+      "tool": "Bash"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "post-tool-use"
+    }
+  },
+  {
+    "type": "pre_tool",
+    "payload": {
+      "action": "editing",
+      "file": "/tmp/lsh-repo/README.md",
+      "tool": "Edit"
+    }
+  },
+  {
+    "type": "input_requested",
+    "payload": {
+      "kind": "permission",
+      "message": "Antigravity wants to run Edit: /tmp/lsh-repo/README.md"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "allow",
+      "hook": "pre-tool-use",
+      "reason": "Answered by the session owner via LiveShortly"
+    }
+  },
+  {
+    "type": "file_write",
+    "payload": {
+      "added": 1,
+      "diff": "--- /tmp/lsh-repo/README.md\n+++ /tmp/lsh-repo/README.md\n-hello from agy\n+hello from agy!",
+      "file": "/tmp/lsh-repo/README.md",
+      "removed": 1,
+      "tool": "Edit"
+    }
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "hook": "post-tool-use"
+    }
+  },
+  {
+    "type": "response",
+    "payload": {
+      "content": "Added 'hello from agy' to README.md and ran ls."
+    }
+  },
+  {
+    "type": "stream_end"
+  },
+  {
+    "type": "_hook_output",
+    "payload": {
+      "decision": "allow",
+      "hook": "stop"
+    }
+  },
+  {
+    "type": "_model",
+    "payload": {
+      "model": "Gemini 3.8 Flash (Medium)"
+    }
+  }
+]

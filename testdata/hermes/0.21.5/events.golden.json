@@ -1,0 +1,20 @@
+[
+  {
+    "type": "output",
+    "payload": {
+      "text": "Hermes Agent v0.21.5\nmodel: hermes-4  ·  cwd: /tmp/lsh-repo\n❯"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "Read README.md, add a line 'hello from hermes', then run `ls`.\n● read_file README.md"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "● patch README.md (+1)\n● terminal: ls\n  README.md\nDone — added 'hello from hermes' to README.md and ran ls.\n❯"
+    }
+  }
+]

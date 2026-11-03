@@ -1,0 +1,182 @@
+[
+  {
+    "type": "output",
+    "payload": {
+      "text": "\u003e\u003e\u003e Send a message (/? for help)In one short sentence, say hello from ollama.\nHello"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "there"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "!"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "I'm"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "Oll"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "ama"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": ","
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "ready"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "to"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "assist"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "you"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "with"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "any"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "information"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "or"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "tasks"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "you'd"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "like"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "help"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "with"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "today"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "."
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "How"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "can"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "I"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "be"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "be of"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "service"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "?"
+    }
+  },
+  {
+    "type": "output",
+    "payload": {
+      "text": "\u003e\u003e\u003e Send a message (/? for help)/bye"
+    }
+  }
+]

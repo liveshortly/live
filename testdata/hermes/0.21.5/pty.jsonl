@@ -1,0 +1,10 @@
+{"t_ms": 0, "data": "Hermes Agent v0.21.5\r\nmodel: hermes-4  ·  cwd: /tmp/lsh-repo\r\n"}
+{"t_ms": 10, "data": "❯ "}
+{"t_ms": 1500, "data": "Read README.md, add a line 'hello from hermes', then run `ls`.\r\n"}
+{"t_ms": 2000, "data": "● read_file README.md\r\n"}
+{"t_ms": 2600, "data": "● patch README.md (+1)\r\n"}
+{"t_ms": 2700, "data": "● terminal: ls\r\n  README.md\r\n"}
+{"t_ms": 3000, "data": "Done — "}
+{"t_ms": 3100, "data": "added 'hello from hermes' "}
+{"t_ms": 3200, "data": "to README.md and ran ls.\r\n"}
+{"t_ms": 3300, "data": "❯ "}
