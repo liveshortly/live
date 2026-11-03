@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -184,5 +186,35 @@ func TestCodexAppServerIntegration(t *testing.T) {
 				return // saw a tool call + turn end: the pipeline works
 			}
 		}
+	}
+}
+
+// Legacy approval methods answer in ReviewDecision words; the thread/start
+// response's model is reported once.
+func TestCodexApp_LegacyApprovalAndModel(t *testing.T) {
+	var out bytes.Buffer
+	var mu sync.Mutex
+	app, _ := newTestApp()
+	app.stdin = bufio.NewWriter(&lockedWriter{mu: &mu, w: &out})
+	var models []string
+	app.reportModel = func(m string) { models = append(models, m) }
+	app.noteModel(json.RawMessage(`{"model":"gpt-5.5","thread":{"id":"t"}}`))
+	app.noteModel(json.RawMessage(`{"thread":{"model":"other"}}`))
+	if len(models) != 1 || models[0] != "gpt-5.5" {
+		t.Fatalf("models = %v", models)
+	}
+	app.handleServerRequest(json.RawMessage(`7`), "execCommandApproval", json.RawMessage(`{"command":["ls"]}`))
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		s := out.String()
+		mu.Unlock()
+		if strings.Contains(s, `"decision":"approved"`) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("reply = %q", s)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

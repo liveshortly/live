@@ -1,5 +1,5 @@
 {"jsonrpc":"2.0","id":1,"result":{"userAgent":"codex_cli_rs/0.166.0"}}
-{"jsonrpc":"2.0","method":"thread/started","params":{"thread":{"id":"thr_1","cwd":"/tmp/lsh-repo","modelProvider":"openai"}}}
+{"jsonrpc":"2.0","method":"thread/started","params":{"thread":{"id":"thr_1","cwd":"/tmp/lsh-repo","model":"gpt-5.5","modelProvider":"openai"}}}
 {"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"thr_1","turn":{"id":"turn_1","items":[],"status":"inProgress"}}}
 {"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"thr_1","turnId":"turn_1","completedAtMs":1793685600070,"item":{"type":"userMessage","id":"item_1","content":[{"type":"text","text":"Read README.md, add a line 'hello from codex', then run `ls`.","text_elements":[]}]}}}
 {"jsonrpc":"2.0","method":"item/started","params":{"threadId":"thr_1","turnId":"turn_1","item":{"type":"commandExecution","id":"item_2","command":"/bin/zsh -lc 'cat README.md'","commandActions":[],"cwd":"/tmp/lsh-repo","status":"inProgress"}}}

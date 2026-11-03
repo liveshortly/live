@@ -1,5 +1,11 @@
 [
   {
+    "type": "_model",
+    "payload": {
+      "model": "gpt-5.5"
+    }
+  },
+  {
     "type": "prompt",
     "payload": {
       "content": "Read README.md, add a line 'hello from codex', then run `ls`."
@@ -58,7 +64,7 @@
       "id": 0,
       "jsonrpc": "2.0",
       "result": {
-        "decision": "approved"
+        "decision": "accept"
       }
     }
   },
@@ -68,7 +74,7 @@
       "id": 1,
       "jsonrpc": "2.0",
       "result": {
-        "decision": "approved"
+        "decision": "accept"
       }
     }
   },
@@ -78,7 +84,7 @@
       "id": 2,
       "jsonrpc": "2.0",
       "result": {
-        "decision": "denied"
+        "answers": {}
       }
     }
   }

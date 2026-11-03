@@ -154,8 +154,9 @@ func TestReplayCodexAppServer(t *testing.T) {
 					mu.Unlock()
 					return "allow"
 				},
-				pending: map[int]chan rpcResp{},
-				stdin:   bufio.NewWriter(&lockedWriter{mu: &mu, w: &stdin}),
+				pending:     map[int]chan rpcResp{},
+				reportModel: func(model string) { r.emit("_model", map[string]any{"model": model}) },
+				stdin:       bufio.NewWriter(&lockedWriter{mu: &mu, w: &stdin}),
 			}
 			capture, err := os.ReadFile(filepath.Join(dir, "jsonrpc.jsonl"))
 			if err != nil {

@@ -46,6 +46,13 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, de
 		requestPerm: sc.RequestPermission,
 		echo:        func(s string) { fmt.Fprintln(os.Stderr, s) }, // live CLI transcript
 		pending:     map[int]chan rpcResp{},
+		reportModel: func(model string) {
+			go func() {
+				if err := sc.Client.ReportModel(sc.SessionID, model); err != nil {
+					sc.Log.Printf("appserver: report model: %v", err)
+				}
+			}()
+		},
 	}
 	if err := c.start(ctx, binPath); err != nil {
 		fmt.Fprintf(os.Stderr, "live: codex app-server: %v\n", err)
@@ -68,6 +75,7 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, de
 		return 1
 	}
 	c.threadID = threadIDOf(thread)
+	c.noteModel(thread)
 	if c.threadID == "" {
 		fmt.Fprintln(os.Stderr, "live: codex app-server returned no thread id")
 		return 1
@@ -144,6 +152,7 @@ type codexApp struct {
 	logf        func(string, ...any)                         // diagnostics
 	requestPerm func(context.Context, string, string) string // web permission verdict
 	echo        func(string)                                 // live CLI transcript (nil in tests)
+	reportModel func(string)                                 // report codex's model once (nil: don't)
 
 	notification  func(string, json.RawMessage)
 	serverRequest func(json.RawMessage, string, json.RawMessage)
@@ -154,12 +163,13 @@ type codexApp struct {
 	wmu   sync.Mutex // serializes writes to codex stdin
 	stdin *bufio.Writer
 
-	mu        sync.Mutex
-	nextID    int
-	pending   map[int]chan rpcResp
-	threadID  string
-	activeTur string // id of the in-progress turn (for steer), "" when idle
-	exit      int
+	mu            sync.Mutex
+	nextID        int
+	pending       map[int]chan rpcResp
+	threadID      string
+	activeTur     string // id of the in-progress turn (for steer), "" when idle
+	modelReported bool
+	exit          int
 }
 
 func (c *codexApp) start(ctx context.Context, binPath string) error {

@@ -36,9 +36,9 @@ re-check them with a real capture.
 |---|---|---|---|---|---|---|---|---|---|
 | claude 2.1.316 (synthetic) | ✅ | ✅ | ✅ | ✅ | ✅ full command | ✅ text, at hook boundary and Stop | ✅ | ✅ from transcript | baseline |
 | agy 1.4.9 (synthetic) | ⚠ repeated on every PreInvocation | ⚠ only at Stop | ⚠ `read_file`/`edit_file` generic; `run_command` output keeps the `Created At…` header | ❌ for `edit_file`/`write_file` (✅ only for old `replace_file_content`) | ⚠ "Antigravity wants to run edit_file: edit_file" | ✅ full text of every comment | ✅ | ✅ | LSH-03 |
-| codex 0.142.5 rollout (synthetic) | ✅ | ✅ | ✅ "Shell" | ✅ | (hook, as claude) | (channel / tmux) | ✅ | ✅ | LSH-02 |
-| codex 0.166.0 rollout (synthetic, real shapes) | ✅ | ✅ | ❌ none (`custom_tool_call exec` ignored); bogus `wait` row | ❌ none (`FileChange` ignored) | (hook, as claude) | (channel / tmux) | ✅ | ✅ | LSH-02 |
-| codex 0.166.0 app-server (synthetic, schema-checked) | ✅ | ✅ | ✅ "Shell" | ✅ | ⚠ "apply a file change" | — | ✅ | ❌ | LSH-02 |
+| codex 0.142.5 rollout (synthetic) | ✅ | ✅ | ✅ "Shell" | ✅ | (hook, as claude) | (channel / tmux) | ✅ | ✅ | LSH-09 ✅ |
+| codex 0.166.0 rollout (synthetic, real shapes) | ✅ | ✅ | ✅ "Shell" from `item_completed CommandExecution` | ✅ from `FileChange` | (hook, as claude) | (channel / tmux) | ✅ | ✅ | LSH-09 ✅ |
+| codex 0.166.0 app-server (synthetic, schema-checked) | ✅ | ✅ | ✅ "Shell" | ✅ | ⚠ "apply a file change" | — | ✅ | ✅ from `thread/started` / `thread/start` | LSH-09 ✅ |
 | ollama 0.30.10 (**real**) | ❌ (raw output) | ⚠ one row per token on a slow model; placeholder text glued to the prompt | ❌ | ❌ | ❌ | typed line (ollama only) | ❌ | ❌ | LSH-05 |
 | gemini 0.65.0 hooks (synthetic) | ✅ | ✅ | ✅ shell as Bash; others by gemini name | ✅ `replace`/`write_file` | ✅ full command | ✅ text, at tool boundary and AfterAgent | ✅ | ✅ from BeforeModel | LSH-04 |
 | gemini < 0.26 PTY (`gemini-pty`, synthetic) | ❌ raw TUI | ❌ raw TUI | ❌ | ❌ | ❌ | ❌ overlay | ❌ | ❌ | LSH-04 |

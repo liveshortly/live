@@ -11,6 +11,8 @@ import (
 // (the settled item) and track turn state for comment steering.
 func (c *codexApp) handleNotification(method string, raw json.RawMessage) {
 	switch method {
+	case "thread/started":
+		c.noteModel(raw)
 	case "turn/started":
 		var p struct {
 			Turn struct {
@@ -119,29 +121,74 @@ func (c *codexApp) handleServerRequest(id json.RawMessage, method string, raw js
 			Reason  string `json:"reason"`
 		}
 		_ = json.Unmarshal(raw, &p)
-		c.answerApproval(id, "Shell", firstNonEmptyStr(p.Command, p.Reason))
+		c.answerApproval(id, method, "Shell", firstNonEmptyStr(p.Command, p.Reason))
 	case "item/fileChange/requestApproval", "applyPatchApproval":
-		c.answerApproval(id, "Edit", "apply a file change")
+		c.answerApproval(id, method, "Edit", "apply a file change")
 	case "item/permissions/requestApproval":
-		c.answerApproval(id, "Permissions", "elevated permissions")
+		go func() {
+			// PermissionsRequestApprovalResponse: grant what was asked, or nothing.
+			granted := json.RawMessage(`{}`)
+			if v := c.requestPerm(context.Background(), "Permissions", "elevated permissions"); v == "allow" || v == "always" {
+				var p struct {
+					Permissions json.RawMessage `json:"permissions"`
+				}
+				if json.Unmarshal(raw, &p) == nil && len(p.Permissions) > 0 {
+					granted = p.Permissions
+				}
+			}
+			c.respond(id, map[string]any{"permissions": granted, "scope": "turn"})
+		}()
+	case "item/tool/requestUserInput":
+		// No UI for codex's questions here: answer none so the tool proceeds.
+		c.respond(id, map[string]any{"answers": map[string]any{}})
+	case "mcpServer/elicitation/request":
+		c.respond(id, map[string]any{"action": "decline"})
+	case "item/tool/call":
+		c.respond(id, map[string]any{"contentItems": []any{}, "success": false})
 	default:
-		// Unknown request (e.g. tool user-input / elicitation): decline safely so
-		// codex proceeds rather than blocking on a UI we don't render.
-		c.respond(id, map[string]any{"decision": "denied"})
+		// Anything else (auth refresh, attestation): fail explicitly so codex
+		// doesn't hang waiting on us.
+		_ = c.write(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32601, "message": "not supported by live: " + method}})
 	}
 }
 
-// answerApproval surfaces a web permission prompt and maps the owner's verdict
-// to codex's ReviewDecision.
-func (c *codexApp) answerApproval(id json.RawMessage, tool, desc string) {
+// answerApproval surfaces a web permission prompt and answers in the method's
+// own vocabulary: v2 item/*/requestApproval take accept/decline, the legacy
+// execCommandApproval/applyPatchApproval take ReviewDecision approved/denied.
+func (c *codexApp) answerApproval(id json.RawMessage, method, tool, desc string) {
 	go func() {
 		verdict := c.requestPerm(context.Background(), tool, desc)
-		decision := "denied"
-		if verdict == "allow" || verdict == "always" {
-			decision = "approved"
+		ok := verdict == "allow" || verdict == "always"
+		decision := map[bool]string{true: "accept", false: "decline"}[ok]
+		if method == "execCommandApproval" || method == "applyPatchApproval" {
+			decision = map[bool]string{true: "approved", false: "denied"}[ok]
 		}
 		c.respond(id, map[string]any{"decision": decision})
 	}()
+}
+
+// noteModel reports codex's model to the server once (from the thread/start
+// response or the thread/started notification).
+func (c *codexApp) noteModel(raw json.RawMessage) {
+	var r struct {
+		Model  string `json:"model"`
+		Thread struct {
+			Model string `json:"model"`
+		} `json:"thread"`
+	}
+	if json.Unmarshal(raw, &r) != nil {
+		return
+	}
+	m := firstNonEmptyStr(r.Model, r.Thread.Model)
+	c.mu.Lock()
+	report := m != "" && !c.modelReported && c.reportModel != nil
+	if report {
+		c.modelReported = true
+	}
+	c.mu.Unlock()
+	if report {
+		c.reportModel(m)
+	}
 }
 
 // ── small helpers ─────────────────────────────────────────────────────────────
