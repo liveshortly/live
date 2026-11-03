@@ -48,20 +48,27 @@ func agyStartupBlocker(pane string) string {
 // how long a submitted message may sit in the composer before we call it lost.
 var agyReadyWait, agyAcceptWait = 20 * time.Second, 5 * time.Second
 
-// errAgyUnaccepted means the text was pasted but agy never took it: it is
+// errUnaccepted means the text was pasted but the agent never took it: it is
 // still sitting in the composer, so it must NOT also be queued for hooks.
-type errAgyUnaccepted struct{}
+type errUnaccepted struct{ agent string }
 
-func (errAgyUnaccepted) Error() string { return "agy didn't accept the message" }
+func (e errUnaccepted) Error() string { return e.agent + " didn't accept the message" }
 
-// injectAgy types text into agy's composer once it is ready, submits it, and
-// confirms agy took it (the composer no longer holds it), retrying Enter once.
+// injectAgy types text into agy's composer once it is ready (LSH-15).
 func (t *tmuxPane) injectAgy(text string) error {
-	if !t.waitFor(agyComposerReady, agyReadyWait) {
-		if why := agyStartupBlocker(t.capture()); why != "" {
+	return t.injectComposer("agy", agyComposerLine, agyStartupBlocker, text)
+}
+
+// injectComposer types text into an agent's composer once composer() reports
+// it on screen and accepting input, submits it, and confirms the agent took
+// it (the composer no longer holds it), retrying Enter once.
+func (t *tmuxPane) injectComposer(agent string, composer func(string) (string, bool), blocker func(string) string, text string) error {
+	ready := func(pane string) bool { _, ok := composer(pane); return ok }
+	if !t.waitFor(ready, agyReadyWait) {
+		if why := blocker(t.capture()); why != "" {
 			return fmt.Errorf("%s", why)
 		}
-		return fmt.Errorf("agy's composer never appeared")
+		return fmt.Errorf("%s's composer never appeared", agent)
 	}
 	if err := t.paste(text); err != nil {
 		return err
@@ -72,7 +79,7 @@ func (t *tmuxPane) injectAgy(text string) error {
 		probe = probe[:24]
 	}
 	gone := func(pane string) bool {
-		s, ok := agyComposerLine(pane)
+		s, ok := composer(pane)
 		return !ok || !strings.Contains(s, probe)
 	}
 	for _, key := range []string{"Enter", "C-m"} {
@@ -84,7 +91,7 @@ func (t *tmuxPane) injectAgy(text string) error {
 			return nil
 		}
 	}
-	return errAgyUnaccepted{}
+	return errUnaccepted{agent}
 }
 
 // waitFor polls the pane until cond holds or d elapses.

@@ -428,20 +428,30 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	// to the hook queue, and an idle agy fires no hooks (LSH-15). injectAgy
 	// waits for the pane and composer, so early comments simply block here and
 	// are delivered in order once agy is up.
+	//
+	// gemini is the same when idle (LSH-17); while it is busy deliverGemini
+	// leaves the message to gemini's next hook.
 	isAgyAgent := isAgy(binPath)
-	if isAgyAgent {
+	var deliver func(c api.Comment, text string) error
+	switch {
+	case isAgyAgent:
+		deliver = func(_ api.Comment, text string) error { return t.injectAgy(text) }
+	case isGemini(binPath):
+		deliver = func(c api.Comment, text string) error { return t.deliverGemini(sc, c, text) }
+	}
+	if deliver != nil {
 		sc.OnComment = func(c api.Comment) {
 			who := c.Username
 			if who == "" {
 				who = "viewer"
 			}
-			err := t.injectAgy(viewerTurn(who, c.Message))
+			err := deliver(c, viewerTurn(who, c.Message))
 			if err == nil {
-				sc.Log.Printf("live agy tmux: injected comment from %s into composer", who)
+				sc.Log.Printf("live %s tmux: delivered comment from %s", sc.Agent, who)
 				return
 			}
-			sc.Log.Printf("live agy tmux: inject failed (%v)", err)
-			if _, typed := err.(errAgyUnaccepted); !typed {
+			sc.Log.Printf("live %s tmux: inject failed (%v)", sc.Agent, err)
+			if _, typed := err.(errUnaccepted); !typed {
 				sc.QueueForHooks(c) // nothing typed: deliver at the next hook instead
 			}
 			sc.Emit("input_requested", map[string]any{
