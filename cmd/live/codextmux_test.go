@@ -111,6 +111,9 @@ func TestInjectBlockedByModal(t *testing.T) {
 	t.Cleanup(func() { _ = p.run("kill-session", "-t", p.sess) })
 
 	time.Sleep(500 * time.Millisecond)
+	old := codexReadyWait
+	codexReadyWait = 2 * time.Second
+	t.Cleanup(func() { codexReadyWait = old })
 	err = p.inject("should not be typed")
 	if err == nil {
 		t.Fatal("inject succeeded into a modal; expected refusal")

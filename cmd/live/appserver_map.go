@@ -210,22 +210,45 @@ func threadIDOf(result json.RawMessage) string {
 	return r.ThreadID
 }
 
+// codexValueFlags are the codex flags that take a separate value. That value
+// is never a prompt: `live` injects `-c` overrides (permission hooks, the
+// handoff digest), and the daemon appends `--model <id>` and
+// `--ask-for-approval never` to web-started sessions — a trailing one would
+// otherwise be submitted to the model as the opening turn.
+var codexValueFlags = map[string]bool{
+	"-c": true, "--config": true, "-m": true, "--model": true,
+	"-a": true, "--ask-for-approval": true, "-s": true, "--sandbox": true,
+	"-p": true, "--profile": true,
+}
+
 // initialPrompt picks the opening instruction out of the agent args: the LAST
-// non-flag token. That's the plain `live codex "task"` positional, and it dodges
-// flag values like `--model gpt` that a leading-scan would wrongly grab.
-//
-// A `-c key=value` override is NOT a prompt: `live` injects those (permission
-// hooks, the handoff digest), and a trailing one would otherwise be submitted to
-// the model as the opening turn.
+// token that is neither a flag nor a flag's value. That's the plain
+// `live codex "task"` positional.
 func initialPrompt(args []string) string {
 	for i := len(args) - 1; i >= 0; i-- {
 		if strings.HasPrefix(args[i], "-") {
 			continue
 		}
-		if i > 0 && (args[i-1] == "-c" || args[i-1] == "--config") {
+		if i > 0 && codexValueFlags[args[i-1]] {
 			continue // this is the flag's value, not a prompt
 		}
 		return args[i]
+	}
+	return ""
+}
+
+// argValue returns the value of the first of flags in args ("--model x" or
+// "--model=x"), or "".
+func argValue(args []string, flags ...string) string {
+	for i, a := range args {
+		for _, f := range flags {
+			if a == f && i+1 < len(args) {
+				return args[i+1]
+			}
+			if strings.HasPrefix(a, f+"=") {
+				return strings.TrimPrefix(a, f+"=")
+			}
+		}
 	}
 	return ""
 }

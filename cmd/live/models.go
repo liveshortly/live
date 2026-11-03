@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/liveshortly/live/internal/api"
+	"github.com/liveshortly/live/internal/harness"
 )
 
 // Per-agent model catalog (LSH-16).
@@ -109,7 +110,7 @@ func buildModelCatalog(agents []string, custom map[string]agentCommand, ollama [
 			Name:            a,
 			Models:          cleanOptions(models, def),
 			DefaultModel:    defaultIfSafe(def),
-			ModelSwitchable: a == "claude", // only claude takes `/model` mid-session (see setSessionModel)
+			ModelSwitchable: harness.ForAgent(a).ModelSwitch, // only claude takes `/model` mid-session (see setSessionModel)
 		})
 	}
 	return out

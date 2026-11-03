@@ -4,6 +4,24 @@ All notable changes to `live` are documented here. Versions follow
 [SemVer](https://semver.org); each release is a git tag (`vX.Y.Z`) that the
 Homebrew formula and `live version` report.
 
+## Unreleased
+
+### Added
+- **Support matrix: "First message wakes idle agent" and "Model choice at
+  start" columns (LSH-15, LSH-16).** Also `first_message` and `model_choice` in
+  `docs/harness-matrix.json`; existing fields are unchanged.
+
+### Fixed
+- **codex app-server: a web-picked model no longer becomes the opening turn.**
+  The daemon's `--model <id>` (and `--ask-for-approval never`) values were read
+  as the initial prompt; the model now goes on `thread/start`.
+- **codex in tmux: an early web message is no longer lost silently.** live waits
+  up to 20 s for the composer (was 5 s) and posts a session notice if it
+  can't type the message.
+- **pty agents (ollama, `type_comments` adapters): a message drained before the
+  agent started is delivered** instead of dropped.
+- **agy handoff seed uses `-i`.** agy 1.4.12 exits on a bare positional prompt.
+
 ## v2.3.5 — 2026-11-03
 
 ### Added

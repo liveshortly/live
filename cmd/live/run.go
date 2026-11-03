@@ -37,6 +37,10 @@ type agentProfile struct {
 	// positional arg (claude, codex). Used to inject the handoff seed prompt
 	// automatically instead of asking the operator to paste it.
 	acceptsInitialPrompt bool
+	// promptFlag is the flag the initial prompt rides on; "" means a bare
+	// positional. agy rejects a bare positional outright (`unexpected
+	// argument`, exit 2, agy 1.4.12): its interactive prompt is -i.
+	promptFlag string
 }
 
 func profileFor(bin string) agentProfile {
@@ -44,7 +48,7 @@ func profileFor(bin string) agentProfile {
 	case "claude":
 		return agentProfile{framework: "claude-code", captureMode: "hooks", acceptsInitialPrompt: true}
 	case "agy", "antigravity":
-		return agentProfile{framework: "agy", captureMode: "hooks", acceptsInitialPrompt: true}
+		return agentProfile{framework: "agy", captureMode: "hooks", acceptsInitialPrompt: true, promptFlag: "-i"}
 	case "gemini":
 		return geminiProfile(bin)
 	case "codex":
@@ -1140,8 +1144,11 @@ func clipLine(s string, n int) string {
 // NB flag ordering: the seed is appended LAST. Any launcher that also prepends
 // its own flags (e.g. claude's channel args) must not end on a variadic flag,
 // or the trailing prompt gets swallowed — see the 6a75b17 fix + its test.
-func appendSeedPrompt(userArgs []string, seed string, acceptsInitialPrompt bool) []string {
-	if acceptsInitialPrompt {
+func appendSeedPrompt(userArgs []string, seed string, p agentProfile) []string {
+	if p.acceptsInitialPrompt && p.promptFlag != "" {
+		return append(userArgs, p.promptFlag, seed)
+	}
+	if p.acceptsInitialPrompt {
 		return append(userArgs, seed)
 	}
 	fmt.Fprintf(os.Stderr, "\x1b[36m● live\x1b[0m paste this to orient your agent:\n    %s\n\n", seed)

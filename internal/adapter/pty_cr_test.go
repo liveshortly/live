@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -102,5 +103,21 @@ func TestCoalescerWrapAfterSend(t *testing.T) {
 	c.Write([]byte("\x1b[2D\x1b[K\r\nbe of service?\r\n"), t0.Add(time.Second))
 	if got := c.Tick(t0.Add(2 * time.Second)); got != "of service?" {
 		t.Errorf("after wrap = %q, want %q", got, "of service?")
+	}
+}
+
+// A web message can be drained before the agent's pty exists (sidecar starts
+// first). It used to be dropped as "agent gone"; it must reach the agent.
+func TestPTYSubmitBeforeStart(t *testing.T) {
+	p := &PTY{}
+	if err := p.Submit("hello"); err != nil {
+		t.Fatal(err)
+	}
+	var out []byte
+	if _, err := p.Run("sh", []string{"-c", `read l; echo "got:$l"`}, func(b []byte) { out = append(out, b...) }); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "got:hello") {
+		t.Fatalf("early line not delivered; output %q", out)
 	}
 }

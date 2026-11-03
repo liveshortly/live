@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/liveshortly/live/internal/api"
+	"github.com/liveshortly/live/internal/harness"
 )
 
 func TestModelArgs(t *testing.T) {
@@ -103,4 +104,34 @@ func TestAgentsFileModelsValidated(t *testing.T) {
 			t.Errorf("accepted %s", body)
 		}
 	}
+}
+
+// The LSH-00 matrix's model cells must say what the daemon actually does: every
+// agent that takes a model from the web has a ✅/⚠ "Model choice" cell, and only
+// rows the daemon advertises as switchable claim a mid-session switch.
+func TestMatrixModelCellsMatchCatalog(t *testing.T) {
+	for _, a := range append([]string{"ollama"}, mapKeys(modelFlags)...) {
+		if c := harness.ForAgent(a).ModelChoice; c == "" || strings.HasPrefix(c, "❌") {
+			t.Errorf("%s takes a model from the web, but the matrix says %q", a, c)
+		}
+	}
+	// no agy: its catalog runs the real binary
+	for _, am := range buildModelCatalog([]string{"claude", "codex", "gemini"}, nil, nil) {
+		if am.ModelSwitchable != (am.Name == "claude") {
+			t.Errorf("%s: model_switchable = %v; only claude switches mid-session", am.Name, am.ModelSwitchable)
+		}
+	}
+	for _, r := range harness.Rows {
+		if r.ModelChoice == "" || r.FirstMessage == "" {
+			t.Errorf("%v: matrix row missing a model-choice or first-message cell", r.Agents)
+		}
+	}
+}
+
+func mapKeys(m map[string]string) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
