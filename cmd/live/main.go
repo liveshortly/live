@@ -120,6 +120,11 @@ Options (before the command):
   --handoff <code>           Continue from a handoff snapshot (fork)
   --pre-digest               Pre-compress the handoff context with claude -p
 
+Server:
+  live host                        Show the server in use and where it comes from
+  live host set <url>              Use a self-hosted server (writes host.json)
+  live host reset                  Back to https://liveshortly.com
+
 Environment:
   LIVESHORTLY_API_URL        Self-hosted server (default https://liveshortly.com;
                              ~/.liveshortly/host.json wins over this)
@@ -141,6 +146,8 @@ func main() {
 		fmt.Println("logged out")
 	case "whoami":
 		cmdWhoami()
+	case "host":
+		os.Exit(cmdHost(os.Args[2:]))
 	case "version", "--version", "-v":
 		fmt.Println("live", version)
 	case "update":
@@ -226,9 +233,14 @@ func cmdLogin() {
 		fmt.Printf("already signed in as %s — `live logout` first to switch accounts\n", c.User.Email)
 		return
 	}
+	api := hostcfg.APIURL()
+	fmt.Printf("Server: %s (%s)\n", api, hostcfg.Source())
 	c, err := auth.DeviceLogin()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "login failed:", err)
+		if hint := loginHint(err, api); hint != "" {
+			fmt.Fprintln(os.Stderr, hint)
+		}
 		os.Exit(1)
 	}
 	who := "signed in"

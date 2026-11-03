@@ -146,6 +146,15 @@ func Refresh() (string, error) {
 	return c.AccessToken, nil
 }
 
+// HTTPError is a non-2xx answer from the server, kept typed so `live login`
+// can tell "server broken" (5xx) from "client too old" (4xx).
+type HTTPError struct {
+	Op   string
+	Code int
+}
+
+func (e *HTTPError) Error() string { return fmt.Sprintf("%s: HTTP %d", e.Op, e.Code) }
+
 // DeviceLogin runs the browser device flow: POST /auth/device/start, open the
 // approval page, poll /auth/device/poll until approved, save credentials.
 func DeviceLogin() (*Creds, error) {
@@ -155,6 +164,9 @@ func DeviceLogin() (*Creds, error) {
 		return nil, fmt.Errorf("device start: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, &HTTPError{Op: "device start", Code: resp.StatusCode}
+	}
 	var start struct {
 		DeviceCode              string `json:"device_code"`
 		UserCode                string `json:"user_code"`
