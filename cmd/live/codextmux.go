@@ -52,7 +52,14 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 			who = "viewer"
 		}
 		if err := t.inject(viewerTurn(who, c.Message)); err != nil {
+			// Never lose a message silently: the composer can stay hidden
+			// behind a trust dialog nobody at a web-started session can see.
 			sc.Log.Printf("codextmux: inject: %v", err)
+			sc.Emit("input_requested", map[string]any{
+				"message": fmt.Sprintf("codex didn't get the message from %s (%v) — open the terminal (`tmux -L %s attach -t %s`) to continue", who, err, sock, sess),
+				"kind":    "input",
+				"ts":      time.Now().UTC().Format(time.RFC3339),
+			})
 		}
 	}
 	sc.Start(context.Background())
@@ -186,8 +193,13 @@ func composerReady(pane string) bool {
 // user input, and tmux would otherwise interpret `;` as a command separator and
 // leading `-` as a flag. -p uses bracketed paste so an embedded newline cannot
 // submit the turn early.
+// codexReadyWait bounds the wait for the composer. It covers a cold codex
+// start: a message sent from the web right after New Session arrives before
+// codex has drawn anything, and a 5 s wait dropped it.
+var codexReadyWait = 20 * time.Second
+
 func (t *tmuxPane) inject(text string) error {
-	if !t.waitComposer(5 * time.Second) {
+	if !t.waitComposer(codexReadyWait) {
 		return fmt.Errorf("composer not ready (modal on screen?) — comment not delivered")
 	}
 	if err := t.paste(text); err != nil {

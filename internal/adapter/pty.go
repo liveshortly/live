@@ -25,6 +25,11 @@ type PTY struct {
 	mu   sync.Mutex
 	ptmx *os.File
 	done bool
+	// early holds lines submitted before the agent started (a web message
+	// drained in the gap between the sidecar and pty starting). They are
+	// written the moment the pty exists; the tty buffers them until the
+	// agent reads its input.
+	early []string
 	// OnInput, when set, sees every chunk the operator types before it is
 	// forwarded to the agent (used to turn submitted lines into prompts).
 	OnInput func([]byte)
@@ -50,8 +55,12 @@ func (p *PTY) Notify(msg string) {
 func (p *PTY) Submit(text string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.ptmx == nil || p.done {
+	if p.done {
 		return nil // agent gone; nothing to type into
+	}
+	if p.ptmx == nil {
+		p.early = append(p.early, text)
+		return nil
 	}
 	_, err := p.ptmx.WriteString(text + "\r")
 	return err
@@ -89,6 +98,10 @@ func (p *PTY) Run(bin string, args []string, onChunk func([]byte)) (int, error) 
 	}
 	p.mu.Lock()
 	p.ptmx = ptmx
+	for _, line := range p.early {
+		_, _ = ptmx.WriteString(line + "\r")
+	}
+	p.early = nil
 	p.mu.Unlock()
 	defer ptmx.Close()
 

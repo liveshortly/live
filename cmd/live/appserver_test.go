@@ -102,13 +102,23 @@ func TestInitialPrompt(t *testing.T) {
 	if p := initialPrompt([]string{"-c", "hooks.PreToolUse=[]", "real prompt"}); p != "real prompt" {
 		t.Fatalf("positional after a -c override, got %q", p)
 	}
+	// A web-started session: the daemon appends `--model <id>` and, on bypass,
+	// `--ask-for-approval never`. Neither value is an opening turn.
+	for _, args := range [][]string{{"--model", "gpt-5"}, {"--model", "gpt-5", "--ask-for-approval", "never"}} {
+		if p := initialPrompt(args); p != "" {
+			t.Fatalf("initialPrompt(%q) = %q, want none", args, p)
+		}
+	}
+	if m := argValue([]string{"--ask-for-approval", "never", "--model", "gpt-5"}, "--model", "-m"); m != "gpt-5" {
+		t.Fatalf("argValue = %q", m)
+	}
 }
 
 // A fork must orient the app-server agent the same way the TUI is oriented.
 // Without developerInstructions on thread/start, `LIVE_CODEX_APPSERVER=1
 // live --session <id> codex` starts with no prior context at all.
 func TestThreadStartParams(t *testing.T) {
-	plain := threadStartParams("/repo", "")
+	plain := threadStartParams("/repo", "", "")
 	if _, ok := plain["developerInstructions"]; ok {
 		t.Fatal("non-fork runs must omit developerInstructions entirely, not send an empty string")
 	}
@@ -116,10 +126,16 @@ func TestThreadStartParams(t *testing.T) {
 		t.Fatalf("unexpected base params: %v", plain)
 	}
 
-	forked := threadStartParams("/repo", "prior context: we were fixing the parser")
+	forked := threadStartParams("/repo", "prior context: we were fixing the parser", "")
 	got, ok := forked["developerInstructions"].(string)
 	if !ok || !strings.Contains(got, "fixing the parser") {
 		t.Fatalf("fork must carry the digest into thread/start, got %v", forked["developerInstructions"])
+	}
+	if _, ok := plain["model"]; ok {
+		t.Fatal("no model picked: omit it so codex uses its default")
+	}
+	if m := threadStartParams("/repo", "", "gpt-5")["model"]; m != "gpt-5" {
+		t.Fatalf("a picked model must reach thread/start, got %v", m)
 	}
 }
 
@@ -250,7 +266,7 @@ func TestCodexApp_HandshakeOrder(t *testing.T) {
 		}
 	}()
 
-	thread, err := app.handshake("live", "/tmp", "")
+	thread, err := app.handshake("live", "/tmp", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

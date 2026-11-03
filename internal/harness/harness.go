@@ -22,13 +22,19 @@ type Row struct {
 	Framework string   // the framework live reports to the server
 	Display   string   // name shown in prompts and the feed
 
-	Capture    string
-	Approvals  string
-	Comments   string
-	Handoff    string
-	MinVersion string
-	Gaps       string
-	Summary    string // one line, for picker tooltips
+	Capture   string
+	Approvals string
+	Comments  string
+	Handoff   string
+	// ModelChoice: can a web/Mac-started session run a chosen model? Mirrors
+	// what the daemon advertises as agent_models (cmd/live/models.go).
+	ModelChoice string
+	// FirstMessage: does a composer message wake an IDLE agent — including
+	// one sent while it is still starting — with nobody at the terminal?
+	FirstMessage string
+	MinVersion   string
+	Gaps         string
+	Summary      string // one line, for picker tooltips
 
 	ModelSwitch     bool   // the daemon may type `/model` into this agent's pane
 	TypedComments   bool   // viewer comments may be typed into the agent as a line
@@ -38,16 +44,18 @@ type Row struct {
 
 // generic is the row every unknown command falls back to.
 var generic = Row{
-	Agents:     []string{"aider", "cursor-agent", "hermes", "copilot", "opencode", "crush", "goose", "amp", "qwen", "pi", "any command"},
-	Framework:  "terminal",
-	Display:    "The agent",
-	Capture:    "⚠ terminal recording (raw lines, no structure)",
-	Approvals:  "❌ the agent's own prompt, in the terminal only",
-	Comments:   "⚠ shown to the operator only (opt in to typing with `type_comments` in agents.json or `LIVE_TYPE_COMMENTS=1`)",
-	Handoff:    "⚠ paste the printed seed prompt",
-	MinVersion: "—",
-	Gaps:       "no prompt/reply/tool rows, no stream_end, no model. Speaks ACP? Run it in ACP mode (row above)",
-	Summary:    "Terminal recording only: viewers see raw output; approvals stay in the terminal.",
+	Agents:       []string{"aider", "cursor-agent", "hermes", "copilot", "opencode", "crush", "goose", "amp", "qwen", "pi", "any command"},
+	Framework:    "terminal",
+	Display:      "The agent",
+	Capture:      "⚠ terminal recording (raw lines, no structure)",
+	Approvals:    "❌ the agent's own prompt, in the terminal only",
+	Comments:     "⚠ shown to the operator only (opt in to typing with `type_comments` in agents.json or `LIVE_TYPE_COMMENTS=1`)",
+	Handoff:      "⚠ paste the printed seed prompt",
+	ModelChoice:  "⚠ `cursor-agent` (`--model`), or any agent given `models` + `model_flag` in agents.json",
+	FirstMessage: "❌ shown to the operator only; ⚠ with `type_comments` it is typed in, ready or not",
+	MinVersion:   "—",
+	Gaps:         "no prompt/reply/tool rows, no stream_end, no model. Speaks ACP? Run it in ACP mode (row above)",
+	Summary:      "Terminal recording only: viewers see raw output; approvals stay in the terminal.",
 
 	PocketApprovals: "unsupported",
 	Fixtures:        []string{"aider", "cursor-agent", "hermes"},
@@ -57,109 +65,127 @@ var generic = Row{
 var Rows = []Row{
 	{
 		Agents: []string{"claude"}, Framework: "claude-code", Display: "Claude",
-		Capture:    "✅ Claude Code hooks",
-		Approvals:  "✅ gated from the web or tmux popup; fails closed",
-		Comments:   "✅ injected (channel, hook boundaries, Stop)",
-		Handoff:    "✅ seed prompt injected",
-		MinVersion: "—",
-		Gaps:       "—",
-		Summary:    "Full support: structured feed, web approvals, live comments, model switch.",
+		Capture:      "✅ Claude Code hooks",
+		Approvals:    "✅ gated from the web or tmux popup; fails closed",
+		Comments:     "✅ injected (channel, hook boundaries, Stop)",
+		Handoff:      "✅ seed prompt injected",
+		ModelChoice:  "✅ `--model` (opus, sonnet, haiku, your default)",
+		FirstMessage: "✅ channel push; held until the channel connects",
+		MinVersion:   "—",
+		Gaps:         "—",
+		Summary:      "Full support: structured feed, web approvals, live comments, model switch.",
 
 		ModelSwitch: true, PocketApprovals: "supported", Fixtures: []string{"claude"},
 	},
 	{
 		Agents: []string{"codex"}, Framework: "codex", Display: "Codex",
-		Capture:    "✅ rollout file, codex in tmux",
-		Approvals:  "✅ gated (PreToolUse hook); fails closed. Off with `--no-permissions`, `--yolo`, `-a never`",
-		Comments:   "✅ typed into codex's composer",
-		Handoff:    "✅ seed prompt injected",
-		MinVersion: "—",
-		Gaps:       "no mid-session model switch",
-		Summary:    "Structured feed from codex's rollout file, web approvals, live comments.",
+		Capture:      "✅ rollout file, codex in tmux",
+		Approvals:    "✅ gated (PreToolUse hook); fails closed. Off with `--no-permissions`, `--yolo`, `-a never`",
+		Comments:     "✅ typed into codex's composer",
+		Handoff:      "✅ seed prompt injected",
+		ModelChoice:  "✅ `--model` (codex's model list)",
+		FirstMessage: "✅ typed into the composer once it is drawn (waits up to 20 s; session notice if it never is)",
+		MinVersion:   "—",
+		Gaps:         "no mid-session model switch",
+		Summary:      "Structured feed from codex's rollout file, web approvals, live comments.",
 
 		PocketApprovals: "supported", Fixtures: []string{"codex"},
 	},
 	{
 		Agents: []string{"codex"}, Mode: "`LIVE_TMUX=0`", Framework: "codex", Display: "Codex",
-		Capture:    "✅ rollout file, codex in a PTY",
-		Approvals:  "✅ gated (PreToolUse hook); fails closed",
-		Comments:   "⚠ codex pulls them via the `poll_viewer_messages` channel tool (`LIVE_CHANNEL=0` turns it off)",
-		Handoff:    "✅ seed prompt injected",
-		MinVersion: "—",
-		Gaps:       "comments wait until codex calls the channel tool; no model switch",
-		Summary:    "Structured feed; comments arrive when codex polls for them.",
+		Capture:      "✅ rollout file, codex in a PTY",
+		Approvals:    "✅ gated (PreToolUse hook); fails closed",
+		Comments:     "⚠ codex pulls them via the `poll_viewer_messages` channel tool (`LIVE_CHANNEL=0` turns it off)",
+		Handoff:      "✅ seed prompt injected",
+		ModelChoice:  "✅ `--model` (codex's model list)",
+		FirstMessage: "❌ waits for codex to call `poll_viewer_messages`; an idle codex never does",
+		MinVersion:   "—",
+		Gaps:         "comments wait until codex calls the channel tool; no model switch",
+		Summary:      "Structured feed; comments arrive when codex polls for them.",
 
 		PocketApprovals: "supported", Fixtures: []string{"codex"},
 	},
 	{
 		Agents: []string{"codex"}, Mode: "`LIVE_CODEX_APPSERVER=1`", Framework: "codex", Display: "Codex",
-		Capture:    "✅ app-server JSON-RPC (headless)",
-		Approvals:  "✅ answered from the web; deny on timeout",
-		Comments:   "✅ steer the running turn, or start a new one",
-		Handoff:    "✅ developer instructions",
-		MinVersion: "—",
-		Gaps:       "file approvals say only \"apply a file change\"; no terminal UI; codex questions get no answers; no model switch",
-		Summary:    "Headless codex driven over app-server: structured feed, web approvals, comments as turns.",
+		Capture:      "✅ app-server JSON-RPC (headless)",
+		Approvals:    "✅ answered from the web; deny on timeout",
+		Comments:     "✅ steer the running turn, or start a new one",
+		Handoff:      "✅ developer instructions",
+		ModelChoice:  "✅ `model` on thread/start",
+		FirstMessage: "✅ starts a turn (held on the server until the thread is open)",
+		MinVersion:   "—",
+		Gaps:         "file approvals say only \"apply a file change\"; no terminal UI; codex questions get no answers; no model switch",
+		Summary:      "Headless codex driven over app-server: structured feed, web approvals, comments as turns.",
 
 		PocketApprovals: "supported", Fixtures: []string{"codex-appserver"},
 	},
 	{
 		Agents: []string{"agy", "antigravity"}, Framework: "agy", Display: "Antigravity",
-		Capture:    "✅ hooks (`liveshortly` plugin)",
-		Approvals:  "✅ gated; fails closed; live exits if the plugin can't install",
-		Comments:   "✅ every comment in full, at the next model step",
-		Handoff:    "✅ seed prompt injected",
-		MinVersion: "—",
-		Gaps:       "reply arrives when the turn ends; no model switch",
-		Summary:    "Structured feed and web approvals; replies appear when the turn ends.",
+		Capture:      "✅ hooks (`liveshortly` plugin)",
+		Approvals:    "✅ gated; fails closed; live exits if the plugin can't install",
+		Comments:     "✅ every comment in full, at the next model step",
+		Handoff:      "⚠ prior context shown in the pane and saved as a digest; agy has no system-prompt flag and `-i` would start a turn, so it isn't given to agy",
+		ModelChoice:  "✅ `--model` (`agy models`)",
+		FirstMessage: "✅ typed in once the composer is ready (waits up to 20 s, confirms, retries once; notice names trust/sign-in)",
+		MinVersion:   "—",
+		Gaps:         "reply arrives when the turn ends; no model switch",
+		Summary:      "Structured feed and web approvals; replies appear when the turn ends.",
 
 		PocketApprovals: "supported", Fixtures: []string{"agy"},
 	},
 	{
 		Agents: []string{"gemini"}, Framework: "gemini-cli", Display: "Gemini",
-		Capture:    "✅ hooks (`liveshortly` extension)",
-		Approvals:  "⚠ gated, fails closed — but gemini's own prompt stays in charge when hooks may not fire (hooks/extensions disabled, allowlist, GitHub Actions, your own `--yolo`/`--approval-mode`)",
-		Comments:   "⚠ at tool and turn boundaries only",
-		Handoff:    "⚠ paste the printed seed prompt",
-		MinVersion: "0.26",
-		Gaps:       "untrusted folder: approve twice; env redaction strips `LIVE_TOKEN` (capture off, gated tools denied); comments wait while idle; no model switch",
-		Summary:    "Structured feed and web approvals via hooks; comments land at tool or turn boundaries.",
+		Capture:      "✅ hooks (`liveshortly` extension)",
+		Approvals:    "⚠ gated, fails closed — but gemini's own prompt stays in charge when hooks may not fire (hooks/extensions disabled, allowlist, GitHub Actions, your own `--yolo`/`--approval-mode`)",
+		Comments:     "⚠ at tool and turn boundaries only",
+		Handoff:      "⚠ paste the printed seed prompt",
+		ModelChoice:  "✅ `--model` (shipped list + your default)",
+		FirstMessage: "❌ queued for the next hook; an idle gemini fires none until someone types in the terminal",
+		MinVersion:   "0.26",
+		Gaps:         "untrusted folder: approve twice; env redaction strips `LIVE_TOKEN` (capture off, gated tools denied); comments wait while idle; no model switch",
+		Summary:      "Structured feed and web approvals via hooks; comments land at tool or turn boundaries.",
 
 		PocketApprovals: "unsupported", Fixtures: []string{"gemini"},
 	},
 	{
 		Agents: []string{"gemini"}, Mode: "gemini < 0.26", Framework: "gemini-cli", Display: "Gemini",
-		Capture:    "⚠ terminal recording",
-		Approvals:  "❌ gemini's own prompt, in the terminal only",
-		Comments:   "⚠ shown to the operator only",
-		Handoff:    "⚠ paste the printed seed prompt",
-		MinVersion: "—",
-		Gaps:       "no structure; upgrade to 0.26+",
-		Summary:    "Old gemini: terminal recording only. Upgrade to 0.26+ for hooks.",
+		Capture:      "⚠ terminal recording",
+		Approvals:    "❌ gemini's own prompt, in the terminal only",
+		Comments:     "⚠ shown to the operator only",
+		Handoff:      "⚠ paste the printed seed prompt",
+		ModelChoice:  "✅ `--model` (shipped list + your default)",
+		FirstMessage: "❌ shown to the operator only",
+		MinVersion:   "—",
+		Gaps:         "no structure; upgrade to 0.26+",
+		Summary:      "Old gemini: terminal recording only. Upgrade to 0.26+ for hooks.",
 
 		PocketApprovals: "unsupported", Fixtures: []string{"gemini-pty"},
 	},
 	{
 		Agents: []string{"ollama"}, Framework: "ollama", Display: "Ollama",
-		Capture:    "⚠ terminal recording, whole lines",
-		Approvals:  "— no tools",
-		Comments:   "✅ typed in as one line",
-		Handoff:    "⚠ paste the printed seed prompt",
-		MinVersion: "—",
-		Gaps:       "no prompt/tool rows, no stream_end, no model",
-		Summary:    "Local chat REPL: replies stream as lines; comments are typed in.",
+		Capture:      "⚠ terminal recording, whole lines",
+		Approvals:    "— no tools",
+		Comments:     "✅ typed in as one line",
+		Handoff:      "⚠ paste the printed seed prompt",
+		ModelChoice:  "✅ `ollama run <model>` (pulled models; required)",
+		FirstMessage: "✅ typed in as one line; an early one waits in the terminal's input buffer",
+		MinVersion:   "—",
+		Gaps:         "no prompt/tool rows, no stream_end, no model",
+		Summary:      "Local chat REPL: replies stream as lines; comments are typed in.",
 
 		TypedComments: true, PocketApprovals: "not-needed", Fixtures: []string{"ollama"},
 	},
 	{
 		Agents: []string{"any ACP agent"}, Mode: "`LIVE_ACP=1` or `\"acp\": true` in agents.json", Framework: "acp", Display: "The agent",
-		Capture:    "✅ Agent Client Protocol over stdio (headless)",
-		Approvals:  "✅ answered from the web; fails closed",
-		Comments:   "✅ sent as the next turn (queued while one runs)",
-		Handoff:    "✅ digest prepended to the first turn",
-		MinVersion: "ACP protocol v1",
-		Gaps:       "no terminal UI; comments wait for the running turn; no model switch",
-		Summary:    "Any agent that speaks ACP: structured feed, web approvals, comments as turns — no per-agent adapter.",
+		Capture:      "✅ Agent Client Protocol over stdio (headless)",
+		Approvals:    "✅ answered from the web; fails closed",
+		Comments:     "✅ sent as the next turn (queued while one runs)",
+		Handoff:      "✅ digest prepended to the first turn",
+		ModelChoice:  "⚠ only via `models` + `model_flag` in agents.json",
+		FirstMessage: "✅ sent as the first turn (held on the server until the ACP session is open)",
+		MinVersion:   "ACP protocol v1",
+		Gaps:         "no terminal UI; comments wait for the running turn; no model switch",
+		Summary:      "Any agent that speaks ACP: structured feed, web approvals, comments as turns — no per-agent adapter.",
 
 		PocketApprovals: "unsupported", Fixtures: []string{"acp"},
 	},
@@ -199,7 +225,7 @@ func ForDisplay(d string) Row {
 	return generic
 }
 
-func (r Row) model() string {
+func (r Row) modelSwitch() string {
 	if r.ModelSwitch {
 		return "✅ `/model` from the session page"
 	}
@@ -245,14 +271,14 @@ func tested(root string, fixtures []string) (string, error) {
 // Markdown renders the support table. root is the repo root (for testdata/).
 func Markdown(root string) (string, error) {
 	var b strings.Builder
-	b.WriteString("| Agent | Capture | Approvals | Viewer comments | Model switch | Handoff | Min version | Golden replays | pocket.ai approvals | Known gaps |\n")
-	b.WriteString("|---|---|---|---|---|---|---|---|---|---|\n")
+	b.WriteString("| Agent | Capture | Approvals | Viewer comments | First message wakes idle agent | Model choice at start | Model switch | Handoff | Min version | Golden replays | pocket.ai approvals | Known gaps |\n")
+	b.WriteString("|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 	for _, r := range Rows {
 		t, err := tested(root, r.Fixtures)
 		if err != nil {
 			return "", err
 		}
-		cells := []string{r.name(), r.Capture, r.Approvals, r.Comments, r.model(), r.Handoff, r.MinVersion, t, r.PocketApprovals, r.Gaps}
+		cells := []string{r.name(), r.Capture, r.Approvals, r.Comments, r.FirstMessage, r.ModelChoice, r.modelSwitch(), r.Handoff, r.MinVersion, t, r.PocketApprovals, r.Gaps}
 		for i, c := range cells {
 			cells[i] = strings.ReplaceAll(c, "|", "\\|")
 		}
@@ -274,6 +300,8 @@ func JSON(root string) ([]byte, error) {
 		Approvals       string   `json:"approvals"`
 		Comments        string   `json:"comments"`
 		ModelSwitch     bool     `json:"model_switch"`
+		ModelChoice     string   `json:"model_choice"`
+		FirstMessage    string   `json:"first_message"`
 		Handoff         string   `json:"handoff"`
 		MinVersion      string   `json:"min_version"`
 		Tested          string   `json:"tested"`
@@ -286,7 +314,7 @@ func JSON(root string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		rows = append(rows, out{r.Agents, strings.Trim(r.Mode, "`"), r.Framework, r.Display, r.Summary, r.Capture, r.Approvals, r.Comments, r.ModelSwitch, r.Handoff, r.MinVersion, t, r.PocketApprovals, r.Gaps})
+		rows = append(rows, out{r.Agents, strings.Trim(r.Mode, "`"), r.Framework, r.Display, r.Summary, r.Capture, r.Approvals, r.Comments, r.ModelSwitch, r.ModelChoice, r.FirstMessage, r.Handoff, r.MinVersion, t, r.PocketApprovals, r.Gaps})
 	}
 	b, err := json.MarshalIndent(map[string]any{
 		"source": "github.com/liveshortly/live internal/harness (generated; do not edit)",

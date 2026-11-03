@@ -183,12 +183,12 @@ func TestCodexChannelWanted(t *testing.T) {
 
 func TestAppendSeedPrompt(t *testing.T) {
 	// agents that accept an initial prompt get it appended
-	got := appendSeedPrompt([]string{"--model", "gpt"}, "SEED", true)
+	got := appendSeedPrompt([]string{"--model", "gpt"}, "SEED", agentProfile{acceptsInitialPrompt: true})
 	if len(got) != 3 || got[2] != "SEED" {
 		t.Fatalf("acceptsInitialPrompt: got %v, want trailing SEED", got)
 	}
 	// pty agents that don't: userArgs unchanged
-	got = appendSeedPrompt([]string{"--flag"}, "SEED", false)
+	got = appendSeedPrompt([]string{"--flag"}, "SEED", agentProfile{})
 	if len(got) != 1 || got[0] != "--flag" {
 		t.Fatalf("non-accepting agent: userArgs should be untouched, got %v", got)
 	}
@@ -200,7 +200,7 @@ func TestProfileForCodex(t *testing.T) {
 		t.Fatalf("codex profile = %+v, want {codex rollout true}", p)
 	}
 	// codex must inject the handoff seed (not the paste banner)
-	if got := appendSeedPrompt(nil, "SEED", p.acceptsInitialPrompt); len(got) != 1 || got[0] != "SEED" {
+	if got := appendSeedPrompt(nil, "SEED", p); len(got) != 1 || got[0] != "SEED" {
 		t.Fatalf("codex seed not injected: %v", got)
 	}
 }
@@ -210,6 +210,11 @@ func TestProfileForAgy(t *testing.T) {
 		p := profileFor(bin)
 		if p.framework != "agy" || p.captureMode != "hooks" || !p.acceptsInitialPrompt {
 			t.Errorf("profileFor(%q) = %+v, want {agy hooks true}", bin, p)
+		}
+		// agy exits 2 on a bare positional ("unexpected argument"); the seed
+		// must ride on -i/--prompt-interactive.
+		if got := appendSeedPrompt([]string{"--model", "m"}, "SEED", p); strings.Join(got, " ") != "--model m -i SEED" {
+			t.Errorf("agy seed args = %q, want [--model m -i SEED]", got)
 		}
 	}
 }

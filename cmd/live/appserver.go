@@ -63,7 +63,7 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, de
 	// approval + workspace-write sandbox means codex escalates risky actions as
 	// approval requests we can gate from the web.
 	cwd, _ := os.Getwd()
-	thread, err := c.handshake("live", cwd, devInstructions)
+	thread, err := c.handshake("live", cwd, devInstructions, argValue(userArgs, "--model", "-m"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "live: codex %v\n", err)
 		return 1
@@ -116,7 +116,7 @@ func runAppServerMode(sc *sidecar.Sidecar, binPath string, userArgs []string, de
 // we gate from the web. On a fork, developerInstructions carries the handoff
 // digest; the key is omitted entirely when there is none, since codex rejects a
 // null where it expects a string.
-func threadStartParams(cwd, devInstructions string) map[string]any {
+func threadStartParams(cwd, devInstructions, model string) map[string]any {
 	p := map[string]any{
 		"cwd":            cwd,
 		"approvalPolicy": appServerApprovalPolicy(),
@@ -124,6 +124,9 @@ func threadStartParams(cwd, devInstructions string) map[string]any {
 	}
 	if devInstructions != "" {
 		p["developerInstructions"] = devInstructions
+	}
+	if model != "" {
+		p["model"] = model // app-server ignores argv, so a web-picked --model rides here
 	}
 	return p
 }
@@ -208,7 +211,7 @@ func (c *codexApp) start(ctx context.Context, binPath string, args ...string) er
 // handshake runs the app-server opening sequence: initialize, then the
 // `initialized` notification the protocol requires before any other request,
 // then thread/start. It returns the thread/start result.
-func (c *codexApp) handshake(client, cwd, devInstructions string) (json.RawMessage, error) {
+func (c *codexApp) handshake(client, cwd, devInstructions, model string) (json.RawMessage, error) {
 	if _, err := c.request("initialize", map[string]any{
 		"clientInfo": map[string]any{"name": client, "version": version},
 	}); err != nil {
@@ -217,7 +220,7 @@ func (c *codexApp) handshake(client, cwd, devInstructions string) (json.RawMessa
 	if err := c.write(map[string]any{"method": "initialized"}); err != nil {
 		return nil, fmt.Errorf("initialized failed: %w", err)
 	}
-	thread, err := c.request("thread/start", threadStartParams(cwd, devInstructions))
+	thread, err := c.request("thread/start", threadStartParams(cwd, devInstructions, model))
 	if err != nil {
 		return nil, fmt.Errorf("thread/start failed: %w", err)
 	}

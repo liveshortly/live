@@ -104,7 +104,7 @@ func runPocketCodex(parent context.Context, dir, prompt string) (string, error) 
 		return "", err
 	}
 	defer func() { cancel(); <-c.done }()
-	thread, err := c.handshake("pocket_ai", dir, "")
+	thread, err := c.handshake("pocket_ai", dir, "", "")
 	if err != nil {
 		return "", err
 	}
