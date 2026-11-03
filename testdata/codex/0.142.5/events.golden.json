@@ -30,12 +30,6 @@
     }
   },
   {
-    "type": "output",
-    "payload": {
-      "text": "Success. Updated the following files:\nM README.md"
-    }
-  },
-  {
     "type": "tool_call",
     "payload": {
       "command": "ls -a",

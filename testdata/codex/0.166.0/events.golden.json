@@ -14,9 +14,27 @@
   {
     "type": "tool_call",
     "payload": {
-      "command": "{\"cell_id\":\"3\",\"yield_time_ms\":1000}",
-      "output": "Script completed",
-      "tool": "wait"
+      "command": "cat README.md",
+      "output": "# lsh-repo",
+      "tool": "Shell"
+    }
+  },
+  {
+    "type": "file_write",
+    "payload": {
+      "added": 1,
+      "diff": "@@ -1 +1,2 @@\n # lsh-repo\n+hello from codex",
+      "file": "/tmp/lsh-repo/README.md",
+      "removed": 0,
+      "tool": "apply_patch"
+    }
+  },
+  {
+    "type": "tool_call",
+    "payload": {
+      "command": "ls -a",
+      "output": ".\n..\n.git\nREADME.md",
+      "tool": "Shell"
     }
   },
   {

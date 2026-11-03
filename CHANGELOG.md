@@ -46,6 +46,20 @@ Homebrew formula and `live version` report.
   starts with agy's `Created At… / Command output:` header (only that exact
   leading header is removed), and the prompt row appears once per user turn
   instead of on every model step.
+- **codex ≥ 0.163 sessions show tool and file rows again (LSH-09).** Newer
+  codex runs shell commands and patches inside a code-mode `exec` call and
+  records them as `item_completed` `CommandExecution` / `FileChange` items,
+  which the rollout mapper ignored, so viewers saw no commands or edits and a
+  bogus `wait` row instead. Those items now become `Shell` tool rows and
+  `file_write` rows with diffs; the `wait` helper is hidden, and older codex
+  (0.142) no longer shows the apply_patch result as a stray output row.
+- **codex app-server (`LIVE_CODEX_APPSERVER=1`) reports the model and answers
+  codex in its own schema.** The model comes from the thread start. Command and
+  file approvals are answered `accept`/`decline` (the legacy methods keep
+  `approved`/`denied`), permission requests get a granted-permissions reply,
+  `item/tool/requestUserInput` gets an empty `answers` map, MCP elicitations
+  are declined, and unsupported requests get a JSON-RPC error instead of a
+  `{"decision":"denied"}` codex cannot parse.
 
 ### Security
 - **Approvals fail closed (LSH-07).** In web-permissions mode the agent's own

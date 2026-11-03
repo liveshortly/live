@@ -54,15 +54,13 @@ Already fixed by #27, and pinned here as fixed: agy gets every comment's
 text, asks and receipts name the real agent, and app-server `file_write`
 carries the diff.
 
-- **codex ≥ 0.163 (LSH-02):** the rollout mapper only knows `function_call`
-  `exec_command`/`apply_patch`. Current codex runs shell and patches inside
-  `custom_tool_call` `exec` and reports them as `item_completed`
-  `CommandExecution`/`FileChange`, so `codex/0.166.0` produces **no tool or
-  file rows**, and the `wait` helper call becomes a bogus `tool_call` named
-  `wait`. (0.142.5 also shows the apply_patch result as a stray `output` row.)
-- **codex app-server (LSH-02):** no model is reported, and
-  `item/tool/requestUserInput` is answered with `{"decision":"denied"}`,
-  which is not that request's response shape.
+- **codex (LSH-09, fixed):** ≥ 0.163 shell and patches run inside a
+  `custom_tool_call` `exec` and are mapped from `item_completed`
+  `CommandExecution`/`FileChange`; the `wait` helper no longer makes a row, and
+  the 0.142.5 apply_patch result no longer shows as a stray `output` row. The
+  app-server reports the model from `thread/started` (and the `thread/start`
+  response), answers v2 approvals with `accept`/`decline`, and answers
+  `item/tool/requestUserInput` with `{"answers":{}}`.
 - **agy 1.4.9 (LSH-10, fixed):** `read_file`/`edit_file`/`write_file`
   (args `Path`, `Target`/`Replacement`, `Content`) now map to View/Edit/Write
   rows with a diff, alongside the old names. `run_command` output drops the

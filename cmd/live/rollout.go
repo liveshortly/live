@@ -370,6 +370,7 @@ func tailRolloutFile(ctx context.Context, sc *sidecar.Sidecar, path string) {
 type codexCall struct {
 	name    string
 	command string
+	skip    bool // output belongs to a call already shown (apply_patch) or not worth a row (wait)
 }
 
 type rolloutMapper struct {
@@ -437,15 +438,22 @@ func (m *rolloutMapper) handleResponseItem(raw json.RawMessage) {
 			// developer/system roles: internal scaffolding, skip.
 		}
 	case "function_call":
-		if p.Name == "apply_patch" {
+		switch p.Name {
+		case "apply_patch":
 			m.emitApplyPatch(p.Arguments)
-			return
+			m.pending[p.CallID] = codexCall{skip: true}
+		case "wait": // codex ≥0.163 code-mode helper that polls a running exec cell
+			m.pending[p.CallID] = codexCall{skip: true}
+		default:
+			m.pending[p.CallID] = codexCall{name: p.Name, command: extractCommand(p.Arguments)}
 		}
-		m.pending[p.CallID] = codexCall{name: p.Name, command: extractCommand(p.Arguments)}
 	case "function_call_output":
 		out := parseCodexOutput(p.Output)
 		if call, ok := m.pending[p.CallID]; ok {
 			delete(m.pending, p.CallID)
+			if call.skip {
+				return
+			}
 			m.emit("tool_call", map[string]any{
 				"tool":    codexToolLabel(call.name),
 				"command": clip(call.command, 500),
@@ -463,6 +471,12 @@ func (m *rolloutMapper) handleResponseItem(raw json.RawMessage) {
 func (m *rolloutMapper) handleEventMsg(raw json.RawMessage) {
 	var p struct {
 		Type string `json:"type"`
+		Item struct {
+			Type             string          `json:"type"`
+			Command          []string        `json:"command"`
+			AggregatedOutput string          `json:"aggregated_output"`
+			Changes          json.RawMessage `json:"changes"`
+		} `json:"item"`
 	}
 	if json.Unmarshal(raw, &p) != nil {
 		return
@@ -470,7 +484,66 @@ func (m *rolloutMapper) handleEventMsg(raw json.RawMessage) {
 	switch p.Type {
 	case "task_complete", "turn_aborted":
 		m.emit("stream_end", map[string]any{"ts": isoNow()})
+	case "item_completed":
+		// codex ≥0.163 runs shell and patches inside a code-mode `exec`
+		// custom_tool_call (a JS cell, not worth a row) and reports what the
+		// cell did as these settled items.
+		switch p.Item.Type {
+		case "CommandExecution":
+			m.supersedePending()
+			m.emit("tool_call", map[string]any{
+				"tool":    "Shell",
+				"command": clip(shellCommand(p.Item.Command), 500),
+				"output":  clip(strings.TrimSpace(p.Item.AggregatedOutput), codexOutputCap),
+				"ts":      isoNow(),
+			})
+		case "FileChange":
+			for _, f := range parseCodexFileChanges(p.Item.Changes) {
+				added, removed := diffCounts(f.diff)
+				m.emit("file_write", map[string]any{
+					"tool":    "apply_patch",
+					"file":    f.path,
+					"diff":    clip(strings.TrimRight(f.diff, "\n"), codexOutputCap),
+					"added":   added,
+					"removed": removed,
+					"ts":      isoNow(),
+				})
+			}
+		}
 	}
+}
+
+// supersedePending drops rows for shell calls still awaiting output: once codex
+// reports a CommandExecution item, that item is the row, so a direct
+// function_call exec_command must not add a second one.
+func (m *rolloutMapper) supersedePending() {
+	for id, call := range m.pending {
+		if codexToolLabel(call.name) == "Shell" {
+			m.pending[id] = codexCall{skip: true}
+		}
+	}
+}
+
+// shellCommand unwraps codex's ["/bin/zsh","-lc","<cmd>"] argv to <cmd>.
+func shellCommand(argv []string) string {
+	if len(argv) == 3 && (argv[1] == "-lc" || argv[1] == "-c") {
+		return argv[2]
+	}
+	return strings.Join(argv, " ")
+}
+
+// diffCounts counts added/removed lines in a unified diff.
+func diffCounts(diff string) (added, removed int) {
+	for _, l := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(l, "+++"), strings.HasPrefix(l, "---"):
+		case strings.HasPrefix(l, "+"):
+			added++
+		case strings.HasPrefix(l, "-"):
+			removed++
+		}
+	}
+	return
 }
 
 // maybeReportModel reports codex's model to the server once, so the viewer

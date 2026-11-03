@@ -280,3 +280,20 @@ func TestCodexPermsWantedHonoursBypass(t *testing.T) {
 		t.Fatal("app-server under --no-permissions: want approvalPolicy never")
 	}
 }
+
+// A direct exec_command call that codex also reports as a CommandExecution
+// item must show once, from the item.
+func TestRolloutMapper_CommandItemSupersedesCall(t *testing.T) {
+	c := &captured{}
+	m := newMapper(c)
+	for _, l := range []string{
+		`{"type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"c1","arguments":"{\"cmd\":\"ls\"}"}}`,
+		`{"type":"event_msg","payload":{"type":"item_completed","item":{"type":"CommandExecution","command":["/bin/zsh","-lc","ls"],"aggregated_output":"a\n"}}}`,
+		`{"type":"response_item","payload":{"type":"function_call_output","call_id":"c1","output":"a\n"}}`,
+	} {
+		m.handle([]byte(l))
+	}
+	if got := c.ofType("tool_call"); len(got) != 1 || got[0].payload["command"] != "ls" || len(c.events) != 1 {
+		t.Fatalf("want one ls tool_call, got %+v", c.events)
+	}
+}
