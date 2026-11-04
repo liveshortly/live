@@ -107,3 +107,41 @@ func (t *tmuxPane) waitFor(cond func(string) bool, d time.Duration) bool {
 		time.Sleep(200 * time.Millisecond)
 	}
 }
+
+// ── claude with channels blocked (LSH-20) ───────────────────────────────────
+//
+// claude hears an idle viewer through the `live channel` MCP. An org policy can
+// switch development channels off; claude then prints a warning and silently
+// drops every inbound message, while the channel subscriber still connects —
+// so live reported each comment as delivered and claude never saw one. When
+// the warning is on screen, comments are typed into the composer instead.
+
+// claudeChannelBlocked reports claude's "channels blocked" startup warning.
+func claudeChannelBlocked(pane string) bool {
+	return strings.Contains(pane, "blocked by org policy") ||
+		strings.Contains(pane, "Inbound messages will be silently dropped")
+}
+
+// claudeComposerLine returns the text in claude's composer ("❯ " directly
+// under a rule) and whether it is on screen.
+func claudeComposerLine(pane string) (text string, ok bool) {
+	if promptOnScreen(pane) >= 0 {
+		return "", false
+	}
+	lines := strings.Split(pane, "\n")
+	for i := len(lines) - 1; i > 0; i-- {
+		l := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(l, "❯") && strings.Contains(lines[i-1], "───") {
+			return strings.TrimSpace(strings.TrimPrefix(l, "❯")), true
+		}
+	}
+	return "", false
+}
+
+// claudeStartupBlocker names a startup screen that needs the operator, or "".
+func claudeStartupBlocker(pane string) string {
+	if promptOnScreen(pane) >= 0 {
+		return "claude is waiting at a startup prompt in the terminal"
+	}
+	return ""
+}

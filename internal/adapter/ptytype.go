@@ -51,6 +51,7 @@ var busyMarkers = []string{"esc to interrupt", "esc to cancel", "ctrl+c to inter
 var modalMarkers = []string{
 	"(y)es/(n)o", "[y/n]", "(y/n)", "[yes/no]", "do you trust", "trust this folder",
 	"trust the files", "allow once", "always allow", "press enter to continue",
+	"need review before they can run",
 	"sign in to", "log in to", "select an option",
 }
 
@@ -70,6 +71,23 @@ func screen(tail []byte) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// ScreenBlocker names a dialog or a running turn visible in scr (the last
+// lines on screen) that a typed line must not land in, or "".
+func ScreenBlocker(scr string) string {
+	low := strings.ToLower(scr)
+	for _, m := range modalMarkers {
+		if strings.Contains(low, m) {
+			return "the agent is waiting for an answer in the terminal"
+		}
+	}
+	for _, m := range busyMarkers {
+		if strings.Contains(low, m) {
+			return "the agent is busy"
+		}
+	}
+	return ""
 }
 
 // blocker names what keeps the agent from taking a typed line now, or "".

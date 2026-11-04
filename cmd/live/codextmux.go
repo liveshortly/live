@@ -111,6 +111,9 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	}
 	_ = t.run("set-option", "-t", sess, "status", "off")
 	bindContextPopup(t.run, self, sc.SessionID)
+	if headless() {
+		go t.dismissCodexHooksReview(sc)
+	}
 
 	// popup driver: raise a display-popup whenever a permission is pending
 	popupCmd := fmt.Sprintf("%q perm-prompt %q %q", self, addr, token)
@@ -178,7 +181,7 @@ func composerReady(pane string) bool {
 		return false
 	}
 	low := strings.ToLower(pane)
-	for _, modal := range []string{"do you trust", "allow codex to", "yes, allow", "no, and tell", "permission"} {
+	for _, modal := range []string{"do you trust", "allow codex to", "yes, allow", "no, and tell", "permission", "need review before they can run"} {
 		if strings.Contains(low, modal) {
 			return false
 		}
@@ -244,4 +247,19 @@ func (t *tmuxPane) waitComposer(d time.Duration) bool {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+// dismissCodexHooksReview closes the "N hooks need review before they can run"
+// screen codex opens at startup when its hook config changed (LSH-20). On a
+// web-started run nobody can answer it, and the composer stays hidden behind
+// it, so every viewer message was lost. Esc is codex's own "not now": the
+// unreviewed hooks stay off for this session, nothing is trusted on the
+// operator's behalf.
+func (t *tmuxPane) dismissCodexHooksReview(sc *sidecar.Sidecar) {
+	up := func(p string) bool { return strings.Contains(strings.ToLower(p), "need review before they can run") }
+	if !t.waitFor(up, 30*time.Second) {
+		return
+	}
+	_ = t.run("send-keys", "-t", t.sess, "Escape")
+	sc.Log.Printf("codextmux: closed codex's hooks-review screen (unreviewed hooks stay off this session)")
 }

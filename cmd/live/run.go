@@ -402,6 +402,8 @@ func cmdRun(args []string) int {
 		exitCode = runCodexTmuxMode(sc, binPath, userArgs)
 	case prof.captureMode == "rollout":
 		exitCode = runRolloutMode(sc, binPath, userArgs)
+	case os.Getenv("LIVE_TMUX") != "0" && tmuxAvailable() != "":
+		exitCode = runTerminalTmuxMode(sc, tmuxAvailable(), binPath, userArgs)
 	default:
 		exitCode = runPTYMode(sc, binPath, userArgs)
 	}
@@ -452,6 +454,27 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		deliver = func(_ api.Comment, text string) error { return t.injectAgy(text) }
 	case isGemini(binPath):
 		deliver = func(c api.Comment, text string) error { return t.deliverGemini(sc, c, text) }
+	default:
+		// claude: the channel delivers, unless an org policy blocked it.
+		var blocked atomic.Bool
+		go func() {
+			if t.waitFor(claudeChannelBlocked, time.Minute) {
+				blocked.Store(true)
+				sc.Log.Printf("live claude tmux: channels are blocked by org policy — typing viewer messages into the composer")
+			}
+		}()
+		deliver = func(c api.Comment, text string) error {
+			// The warning prints before the composer, so once the composer
+			// is up the blocked check has seen it.
+			composerUp := func(p string) bool { _, ok := claudeComposerLine(p); return ok }
+			t.waitFor(composerUp, agyReadyWait)
+			if !blocked.Load() && !claudeChannelBlocked(t.capture()) {
+				sc.Route([]api.Comment{c})
+				return nil
+			}
+			blocked.Store(true)
+			return t.injectComposer("claude", claudeComposerLine, claudeStartupBlocker, text)
+		}
 	}
 	if deliver != nil {
 		sc.OnComment = func(c api.Comment) {
