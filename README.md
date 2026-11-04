@@ -1,366 +1,284 @@
-<h1 align="center">live</h1>
+# live
 
-<p align="center">
-  <em>Put <code>live</code> in front of your coding agent — and people can watch it work.</em>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/github/stars/liveshortly/live?style=flat-square&labelColor=1a1a1a&color=1f7a4d&label=stars" alt="Stars">
-  <img src="https://img.shields.io/badge/works_with-claude_%C2%B7_gemini_%C2%B7_codex_%C2%B7_anything-1f7a4d?style=flat-square&labelColor=1a1a1a" alt="Works with any agent">
-  <img src="https://img.shields.io/badge/built_with-Go-1f7a4d?style=flat-square&labelColor=1a1a1a&logo=go&logoColor=white" alt="Built with Go">
-  <img src="https://img.shields.io/badge/deploy-self--hosted-1f7a4d?style=flat-square" alt="Self-hosted">
-</p>
+`live` is a small Go CLI that you put in front of a coding agent. Type
+`live claude` instead of `claude` and you get a link where people can watch the
+session as it happens (prompts, tool calls, file diffs, replies), send messages
+into the running agent, and approve its tool runs. When the session ends the
+link becomes a replay. It works with Claude Code, Codex, Antigravity (`agy`),
+Gemini CLI, Ollama, pi and any other command. Sessions stream to a LiveShortly
+server: the hosted one at [liveshortly.com](https://liveshortly.com) by default,
+or your own copy of [liveshortly-server](https://github.com/liveshortly/liveshortly-server).
+`live daemon` lets the web app start sessions on your machine, and
+`live daemon --server` lets the PocketAI apps for Mac and iPhone run agents on
+your machine directly, without any server. All of these projects live under
+[github.com/liveshortly](https://github.com/liveshortly): see [PocketAI.Mac](https://github.com/liveshortly/PocketAI.Mac), [PocketAI.Iphone](https://github.com/liveshortly/PocketAI.Iphone) and their shared [PocketAI.Core](https://github.com/liveshortly/PocketAI.Core).
 
 <p align="center">
   <a href="https://github.com/liveshortly/live/raw/main/docs/demo.mp4">
-    <img src="docs/demo.gif" width="100%" alt="live demo — run `live claude`, a shareable URL is generated, open it in the browser to watch the session stream live, and viewers talk back into the running session" />
+    <img src="docs/demo.gif" width="100%" alt="Running live claude prints a session link; the browser shows the session streaming live and a viewer sending a message into it" />
   </a>
 </p>
-<p align="center"><sub><a href="https://github.com/liveshortly/live/raw/main/docs/demo.mp4">▶ watch in HD (mp4)</a></sub></p>
 
-<p align="center">
-  <strong>Any agent &middot; live in one word &middot; watch it, replay it, talk back to it.</strong><br>
-  <sub>Type <code>live claude</code> instead of <code>claude</code> and a shareable link appears — friends, your team, or the internet watch every prompt, tool call and file diff as it happens, and message the session while it runs. When it ends, the link becomes a replay. One small Go binary; nothing is captured unless you typed <code>live</code>.</sub>
-</p>
+Nothing is captured unless you typed `live`. If the server is down or you are
+offline, the agent runs normally and the agent's exit code passes through.
 
-<p align="center">
-  <code>curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.sh | bash</code>
-</p>
+## Contents
 
----
+- [Quick start](#quick-start)
+- [Install](#install)
+- [Using it](#using-it)
+- [Run locally (development)](#run-locally-development)
+- [Self-host](#self-host)
+- [Build from source](#build-from-source)
+- [Tests](#tests)
+- [Repository layout](#repository-layout)
+- [Reference](#reference)
+- [Contributing](#contributing)
+- [License](#license)
 
-After [configuring your server](#choose-your-server):
+## Quick start
 
 ```bash
-live claude        # Claude Code — the full story: prompts, tools, diffs, replies
-live agy           # Antigravity CLI — full story: prompts, tools, diffs, replies
-live gemini        # Gemini CLI — prompts, tools, diffs, replies via its hooks
-live npm run dev   # honestly, run whatever you want through it
+curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.sh | bash
+live login          # signs in to liveshortly.com, or to your server (see Self-host)
+live claude         # prints the session link, then runs Claude Code as usual
 ```
 
-That's the whole idea: you type `live claude` instead of `claude`, and now
-there's a shareable link where people watch the session unfold live — every
-prompt, tool call and file diff — and message you while it's happening. When
-you're done, it turns into a replay. It started as a weekend "wouldn't it be
-cool if…" and turned out to be pretty cool. 🙂
-
-## Why you might like it
-
-- **One binary, works with everything.** Deep hooks for Claude Code, and a
-  "just record the terminal" fallback for any other CLI on earth.
-- **You opt in, every time.** No always-on daemon, no background magic —
-  `live claude` streams, `claude` doesn't.
-- **Viewers can talk back.** Anyone with comment access can message the
-  session, and the agent actually sees it — even while it's sitting idle
-  waiting for you.
-- **The link just appears.** Share link when it starts, replay link when it
-  ends. No dashboards to click through.
-- **It stays out of your way.** If the server's down or you're offline, your
-  agent runs exactly like normal. Capture is best-effort; your work is not.
-
 ## Install
+
+Installer (macOS and Linux, arm64 and amd64, checksum-verified binary from
+[GitHub Releases](https://github.com/liveshortly/live-dist/releases)):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/liveshortly/live-dist/main/install.sh | bash
 ```
 
-Installs a checksum-verified binary for macOS/Linux, arm64/amd64, from
-[GitHub Releases](https://github.com/liveshortly/live-dist/releases). No Go
-toolchain or automatic login. Then `live login` signs you in to
-[liveshortly.com](https://liveshortly.com) (or [your own server](#choose-your-server)). To inspect the
-installer first, download that URL to a file and run it with `bash install.sh`.
+The installer accepts `--version`, `--bin-dir`, `--no-modify-path`,
+`--from-source` and `--login`. To read it first, download the URL to a file
+and run `bash install.sh`.
 
-### Homebrew
+Homebrew:
 
 ```bash
-brew tap liveshortly/tap
 brew install liveshortly/tap/live
 ```
 
-### Build from source
-
-Install the Go version in `go.mod` (or use Go's automatic toolchain download):
-
-```bash
-git clone https://github.com/liveshortly/live.git
-cd live
-mkdir -p "$HOME/.local/bin"
-go build -o "$HOME/.local/bin/live" ./cmd/live
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Source builds use the current checkout; release downloads contain the most
-recently published version. The public source repository is the place to report
-issues and contribute changes. If the Homebrew tap is not yet publicly available,
-use the installer or build from source.
+Or [build from source](#build-from-source).
 
 ### Updates
 
 ```bash
 live update
-live update --version v2.1.2
-# Homebrew-managed installations:
-brew upgrade liveshortly/tap/live
+live update --version v2.1.2          # a specific release
+brew upgrade liveshortly/tap/live     # Homebrew installs
 ```
 
-The updater uses GitHub Releases independently of your session server. A server
-operator can set `LIVE_INSTALL_BASE=https://downloads.example.com/live` to use a
-flat mirror containing `latest.txt`, the `.gz` assets, and their `.sha256` files.
-For a GitHub-compatible release host, set `LIVE_GH_BASE` and `LIVE_LATEST_URL`.
-The installer accepts `--version`, `--bin-dir`, `--no-modify-path`, and
-`--from-source`. Login is opt-in with `--login`;
-`--no-login` remains accepted for older scripts.
+`live update` downloads from GitHub Releases, independent of the session
+server you use. To serve releases from your own mirror, set
+`LIVE_INSTALL_BASE` to a flat directory holding `latest.txt`, the `.gz`
+binaries and their `.sha256` files (the layout `make release` produces), or set
+`LIVE_GH_BASE` and `LIVE_LATEST_URL` for a GitHub-compatible release host.
 
-## Choose your server
+### tmux
 
-By default `live` uses the hosted service at **https://liveshortly.com** —
-`live login`, `live claude`, done. Self-hosting is first-class: deploy one of
-these setups on infrastructure you control and point the CLI at it.
+Install tmux (`brew install tmux` / `apt install tmux`). `live codex` needs it
+to type viewer messages into Codex's composer. `live claude` uses it for the
+in-terminal approval popup; without it, approvals still work from the web.
 
-### pocket.ai: standalone daemon
+## Using it
 
-The standalone daemon and GitHub-based `live update` changes are currently on
-`main`; until the next binary release, [build from source](#build-from-source)
-for these features. The installer itself already downloads directly from GitHub.
+```bash
+live claude                         # Claude Code, streamed
+live claude -p "fix the tests"      # one-shot runs too
+live --title "friday demo" claude   # name the session
+live codex                          # any supported agent
+live -- ./scripts/deploy.sh         # any command; `--` ends live's own flags
+live --no-permissions claude        # turn off web approvals for this run
+```
 
-Install and sign in to your chosen agent CLIs on the server, then:
+On start, `live` prints the session link; on exit it prints the replay link.
+
+Viewers with comment access can message the session. For hook-integrated
+agents (Claude, Codex, Antigravity, Gemini) the message reaches the agent at
+its next pause, including while it is idle. For plain terminal capture it is
+typed in when the agent is idle at its prompt, or shown to you as a
+`[live]` line to relay.
+
+Tool approvals are on by default for `live claude`, `live codex`, `live agy`
+and `live gemini`: each tool run waits for Allow / Deny / Allow always from the
+session page or a tmux popup. Only the owner, or someone joined with commenter
+access, can answer. Unanswered requests are denied after about 8 minutes.
+
+### From the terminal
+
+```bash
+live ls                     # recent sessions (--all, --live, --ended, -q <text>, --json)
+live shared                 # sessions shared with you
+live info <id>              # one session and its last events
+live join <id>              # stream a session and talk to its agent
+live watch <id>             # same, read-only
+live share <id> them@example.com [--role viewer]
+live stop <id>
+live open <id>
+live hosts                  # your machines running `live daemon`
+live agents                 # agents this machine can run
+```
+
+`<id>` is the short handle a listing prints, a full session id, or a pasted
+session link. While joined, `/allow`, `/deny` and `/always` answer a pending
+approval; `/help` lists the other slash commands.
+
+### Starting sessions from the web: `live daemon`
+
+```bash
+live daemon --dir /absolute/path/to/project
+```
+
+The machine appears under **New session** in the web app. The server can only
+pick from the agents this machine found on its `PATH` (plus your
+`~/.liveshortly/agents.json`) and the directories you passed with `--dir`
+(repeatable); it cannot send a command line.
+
+### PocketAI apps: `live daemon --server`
+
+For the PocketAI apps you do not need a LiveShortly server or account. Run the
+daemon in server mode on the machine that has your agent CLIs installed and
+signed in:
 
 ```bash
 export LIVE_POCKET_KEY="$(openssl rand -hex 32)"
 live daemon --server --dir /absolute/path/to/project
 ```
 
-Keep the key for phone setup. In pocket.ai, select **LiveShortly**, enter the
-server address (for example `http://your-server.local:8787`) and the same key,
-then **Test connection**, select an agent/workspace, and save. The daemon listens
-on all interfaces by default. Use HTTPS or a private network for remote access.
-No web platform, Google login, Postgres, or Redis is needed for this mode.
-See [Standalone server for pocket.ai](#pocketai-support-in-live-daemon) for TLS,
-agent adapters, persistence, API routes and approval support.
+It listens on `:8787` on all interfaces (`--listen` to change it). In the app,
+choose **LiveShortly**, enter `http://<machine>:8787` and the key, then **Test
+connection**. `--key` works instead of `LIVE_POCKET_KEY`; `--name`,
+`--state-dir`, `--agents-file`, `--tls-cert` and `--tls-key` are also
+accepted. Over plain HTTP the key is sent unencrypted, so use TLS or a private
+network, and run the daemon as a dedicated user if others hold the key. Details
+are in [Reference: daemon server mode](#daemon-server-mode).
 
-### Browser sessions: self-host the web platform
+## Run locally (development)
 
-Deploy [liveshortly-server](https://github.com/liveshortly/liveshortly-server)
-using its [self-hosting guide](https://github.com/liveshortly/liveshortly-server/blob/main/deploy/DEPLOY.md).
-It includes the web UI, API, Postgres, Redis, and a streaming-aware reverse proxy.
-Configure your own Google OAuth client to enable browser and CLI login.
-
-Then point the CLI at the same origin users open in their browser:
+To develop `live` against a local server, start
+[liveshortly-server](https://github.com/liveshortly/liveshortly-server) with its
+`docker-compose.local.yml` stack (one origin on `http://localhost:8080`, needed
+for sign-in and streaming), then:
 
 ```bash
-mkdir -p "$HOME/.liveshortly"
-cat > "$HOME/.liveshortly/host.json" <<'EOF'
-{"api_url":"https://live.example.com","web_url":"https://live.example.com"}
-EOF
-live login
-live whoami
-live claude
-# Register a machine for the web UI's session launcher:
-live daemon --dir /absolute/path/to/project
+make build                                   # ./bin/live
+./bin/live host set http://localhost:8080    # or: make use-local
+./bin/live login
+./bin/live claude
 ```
 
-For the local Compose stack, use `http://localhost:8080` for both URLs. From a
-checkout, `make use-local` or
-`make use-server SERVER_ORIGIN=https://live.example.com` writes `host.json`.
-Server resolution: `host.json` → `LIVESHORTLY_API_URL` / `LIVESHORTLY_WEB_URL`
-→ `https://liveshortly.com`. Delete `host.json` (or `make use-prod`) to go back
-to the hosted service. Credentials in `~/.liveshortly/credentials.json` belong
-to one server; run `live logout && live login` after changing servers. Data and
-accounts are not transferred between the hosted service and a self-hosted one.
+`./bin/live host reset` (or deleting `~/.liveshortly/host.json`) switches back
+to liveshortly.com. Logs go to `~/.liveshortly/live.log`.
 
-### tmux 🪄
+## Self-host
 
-`brew install tmux` / `apt install tmux`.
+`live` needs no server of its own beyond one of these:
 
-**Required for `live codex`.** Codex runs inside a tmux session so viewer
-comments can be typed into its composer — that is the only way a comment reaches
-codex while it sits idle. Without tmux, `live codex` falls back to a mode where
-web comments are delivered only if codex happens to poll for them.
+- **Your own LiveShortly server** for the web app, accounts, sharing and
+  replays. Deploy it with liveshortly-server's
+  [self-hosting guide](https://github.com/liveshortly/liveshortly-server/blob/main/web/content/docs/self-hosting.md),
+  then on each agent machine:
 
-**Recommended for `live claude`**, where it powers the clean CLI permission
-popups (`LIVE_TMUX=1`, below). Without it, permission control still works from
-the web.
+  ```bash
+  live host set https://live.example.com
+  live login
+  live whoami
+  ```
 
-## Answering Claude's permission prompts
+  Use the same origin users open in the browser; the API and web app share it.
+  `live host` prints the server in use and where the setting came from.
+  Credentials (`~/.liveshortly/credentials.json`) belong to one server, so run
+  `live logout && live login` after switching. Accounts and data are not
+  shared between liveshortly.com and your server.
 
-**On by default** for interactive `live claude` (v0.4.0+). Instead of only the
-terminal, you approve Claude's tool runs from a **tmux popup** (when tmux is
-installed) or **the session page** — handy when you're watching from your
-phone or streaming it. Answer from whichever, first one wins.
+- **No server at all**, for the PocketAI apps: `live daemon --server` (see
+  [above](#pocketai-apps-live-daemon---server)).
 
-- **Allow / Deny / Allow-always** — owner only. "Allow always" remembers the
-  command for the session so it stops asking (Claude's "don't ask again").
-- With **tmux** installed, Claude runs in an isolated tmux session so the
-  prompt shows in a `display-popup` without touching Claude's TUI. Without
-  tmux, a plain `live claude` uses Claude's **native terminal prompts** (so
-  install tmux for the in-terminal popup).
-- While on, every write/execute/fetch tool is gated (your allowlist is
-  bypassed) — use **allow-always** to quiet the repeats. Unanswered prompts
-  deny after ~8 minutes.
+How `live` picks the server, first match wins:
+
+1. `~/.liveshortly/host.json` (`{"api_url": "...", "web_url": "..."}`), written by `live host set`
+2. `LIVESHORTLY_API_URL` (and `LIVESHORTLY_WEB_URL` if the web origin differs)
+3. `https://liveshortly.com`
+
+From a checkout, `make use-server SERVER_ORIGIN=https://live.example.com`
+writes the same `host.json`.
+
+## Build from source
+
+Install the Go version in `go.mod` (or let Go download it automatically):
 
 ```bash
-live claude                 # permission control on (tmux popup if tmux present)
-live --no-permissions claude  # turn it off for this run — plain native behavior
+git clone https://github.com/liveshortly/live.git
+cd live
+make build                 # ./bin/live, version from git describe
+make install               # copies to /usr/local/bin (PREFIX=... to change)
 ```
 
-Headless `-p`/`--print` runs are never gated.
+Without make: `go build -o "$HOME/.local/bin/live" ./cmd/live`.
 
-## Using it
+`make release` cross-compiles stripped binaries for darwin and linux
+(arm64/amd64) into `dist/`, with `.sha256` files, and refuses to run on a dirty
+tree unless you pass `VERSION=vX.Y.Z`.
+
+A container that runs a streamed Claude Code session in isolation is in
+[`deploy/docker/`](deploy/docker/README.md).
+
+## Tests
 
 ```bash
-live claude                       # normal interactive Claude Code, streamed
-live claude -p "fix the tests"    # one-shot runs get captured too
-live --title "friday demo" claude # give the session a name
-live gemini                       # any other agent (terminal capture)
-live -- ./scripts/deploy.sh       # anything at all; `--` ends live's flags
+make vet
+make test                         # go test ./...
+go test -race ./cmd/live
+go run ./scripts/harnessmatrix -check   # README/docs agent matrix is up to date
 ```
 
-When it starts you'll see your link:
+CI also checks the installer: `shellcheck -S error install.sh`, `bash -n
+install.sh` and `python3 scripts/test_install.py`. Per-agent recorded replays
+live in `testdata/`; see [docs/HARNESS-TESTING.md](docs/HARNESS-TESTING.md).
+
+## Repository layout
 
 ```
-● live streaming → https://live.example.com/session/<id>
+cmd/live/            the CLI: run, login, host, daemon, join, ls, update, hook relay, ...
+internal/hostcfg/    server selection and credential path
+internal/auth/       sign-in, token refresh, credentials file
+internal/api/        LiveShortly API client (REST and live stream)
+internal/sidecar/    event queue, comment listener, hook handlers, diffs
+internal/adapter/    per-agent integration and terminal capture
+internal/harness/    agent support matrix (source of the table below)
+internal/perm/       approval gating
+scripts/             matrix generator, installer test, formula bump
+deploy/docker/       agent sandbox image
+docs/                design notes, harness matrix and testing guide
+testdata/            recorded agent sessions for replay tests
+install.sh           installer
 ```
 
-When it exits, it wraps up the session and prints the replay link. Your
-agent's exit code passes straight through, so scripts don't care that `live`
-was in the middle.
+## Reference
 
-### What the people watching get
+### Files and environment
 
-They see the feed roll by live — prompts, tool calls, file diffs, replies.
-Anyone allowed to comment can send you a message, and `live` gets it to the
-agent:
+| Setting | Where |
+|---|---|
+| Server | `~/.liveshortly/host.json`, else `LIVESHORTLY_API_URL` / `LIVESHORTLY_WEB_URL`, else liveshortly.com |
+| Login | `~/.liveshortly/credentials.json` (0600); override with `LIVESHORTLY_CRED_PATH` |
+| Logs | `~/.liveshortly/live.log`, `~/.liveshortly/channel.log` |
+| Custom agents | `~/.liveshortly/agents.json` |
+| Idle messages to Claude | On by default via a per-session channel; Claude Code asks once to load development channels. `LIVE_CHANNEL=0` turns it off |
+| tmux | `LIVE_TMUX=0` runs without tmux |
+| ACP agents | `LIVE_ACP=1 live <agent's ACP command>` |
+| Type messages into any command | `LIVE_TYPE_COMMENTS=1` |
+| Codex app-server mode | `LIVE_CODEX_APPSERVER=1` |
 
-- **Claude:** it lands in Claude's context at the next natural pause (a
-  prompt, a tool call, or when it's idle waiting on you), so it can actually
-  react mid-task.
-- **Everything else (terminal capture):** the message pops up for *you* as a
-  yellow `[live] 💬` line in your terminal — random CLIs can't safely have
-  text injected into them, so you relay it.
+### Who works with what
 
-## Browsing and joining sessions from the terminal
-
-Everything the website shows you, without the website:
-
-```bash
-live ls                     # the 10 most recent, one line each
-live ls --all               # every one of them
-live ls --live              # only the ones running right now
-live ls -q auth --ended     # search titles
-live shared                 # what other people have shared with you
-live info <id>              # one session in full, plus its last events
-live hosts                  # your machines running `live daemon`
-```
-
-`<id>` is the eight-character handle every listing prints — or a full session
-id, or a pasted session link. Add `--json` to `ls` if you'd rather pipe it.
-
-### Joining someone else's session
-
-This is the part that makes two terminals talk to each other:
-
-```bash
-live join <id>              # watch it live AND talk to the agent
-live watch <id>             # same, read-only
-```
-
-`live join` prints the last ~20 turns for context, then streams the session as
-it happens. Anything you type goes to the running agent as a viewer message —
-the same channel the web composer uses — so the person whose terminal it is
-sees your message land in their agent, and you see the reply come back. Two
-people, two CLIs, one agent in the middle.
-
-It reads like the web viewer, not like a log:
-
-```
- › Rohit Sehgal · you 08:31:32
-   append a line 'v2 tui' to README.md, then run wc -l
-
- ⟳ Bash · running  08:31:35
-   git status --short
-
- ▸ Bash  08:31:35
-   git status --short
-   ⎿ ?? README.md
-
- ✎ Edit  +1 −0  08:33:15
-   …/scratchpad/demo/README.md
-    hello
-   +v2 tui
-
- ◆ claude-opus-5 · agent 08:33:17
-   Status: `?? README.md` (untracked). Line `v2 tui` appended.
-
-────────────────────────────────────────────────────────────────────────
-[4m · 2◉] ❯ nice — now add a test
-```
-
-Every turn names who produced it, replies are shown in full rather than cut to
-one line, diffs are coloured with their `+`/`−` counts, and the prompt at the
-bottom carries the session's uptime and how many people are watching.
-
-While the agent is mid-task the prompt says so, with a spinner:
-
-```
-[4m · 2◉] ⠹ Claude is working… ❯
-```
-
-It holds for the whole turn rather than a few seconds — a hooks-captured agent
-emits nothing at all while the model thinks, and that silent stretch is exactly
-when you want to know something is happening. It clears the moment the reply
-lands, or when the agent stops to ask you something. `live watch` carries the
-same indicator on its own status line.
-
-Your input line stays put: an event arriving while you are halfway through a
-sentence is printed above the prompt, not spliced into it. `↑`/`↓` recall what
-you have sent, `Ctrl-U` clears the line, `Ctrl-W` deletes a word, `Ctrl-C`
-leaves. Piping works too (`echo "ship it" | live join <id>`).
-
-### Answering permission prompts from a join
-
-When the agent stops to ask permission for a tool, whoever is joined can answer
-it — not just whoever is sitting at the session's own terminal:
-
-```
- ⌐ waiting for permission 09:12:21
-   Claude wants to run Write: …/scratchpad/demo/perm2.txt
-   ⏸ the agent is waiting — /allow, /deny or /always answers it from here
-
-[BLOCKED — /allow or /deny] ❯ /allow
-```
-
-The prompt itself turns into a `BLOCKED` chip so a stalled session is obvious
-even after the request scrolls away, and joining an already-stuck session says
-so up front. The verdict goes through the same endpoint the web viewer uses and
-carries the same authorization — commenter access, the same right that lets you
-talk to the session — so the running agent picks it up within a second and
-everybody watching sees who answered.
-
-Slash commands while joined: `/allow`, `/deny`, `/always`, `/info`, `/who`,
-`/tail`, `/url`, `/fork`, `/stop`, `/quit`. `/help` lists them.
-
-Add `--full` to print the entire history instead of the last 20 turns, or
-`-n <count>` to pick your own.
-
-To let someone in, grant them access:
-
-```bash
-live share <id> them@example.com                 # commenter — they can talk
-live share <id> them@example.com --role viewer   # watch only
-live share <id> --list                           # who has access
-```
-
-And to wind one up from anywhere:
-
-```bash
-live stop <id>              # end a running session
-live open <id>              # open its page in a browser
-```
-
-## Who works with what
-
-Run any of these as `live <agent>`. The same table, with the live-run
-checklist, is in [docs/HARNESS-MATRIX.md](docs/HARNESS-MATRIX.md).
+Run any of these as `live <agent>`. The table and a live-run checklist are also
+in [docs/HARNESS-MATRIX.md](docs/HARNESS-MATRIX.md).
 
 <!-- harness-matrix:start -->
 | Agent | Capture | Approvals | Viewer comments | First message wakes idle agent | Model choice at start | Model switch | Handoff | Min version | Golden replays | pocket.ai approvals | Known gaps |
@@ -379,254 +297,102 @@ checklist, is in [docs/HARNESS-MATRIX.md](docs/HARNESS-MATRIX.md).
 ✅ works · ⚠ partial (reason given) · ❌ not supported. Generated from `internal/harness` by `go run ./scripts/harnessmatrix`; do not edit by hand.
 <!-- harness-matrix:end -->
 
-### Any agent that speaks ACP
+### Custom and ACP agents
 
-An agent live has never heard of, including one released after this binary,
-gets a structured feed, web approvals and comment delivery if it speaks the
-[Agent Client Protocol](https://agentclientprotocol.com). Run its ACP entry
-point with `LIVE_ACP=1`:
+An agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com)
+gets a structured feed, web approvals and message delivery:
 
 ```bash
 LIVE_ACP=1 live goose acp
-LIVE_ACP=1 live gemini --experimental-acp
 ```
 
-For web-spawned sessions, mark it in `~/.liveshortly/agents.json`:
+For web-started sessions, describe agents in `~/.liveshortly/agents.json`:
 
 ```json
-[{ "name": "goose", "command": "goose", "args": ["acp"], "acp": true }]
+[
+  { "name": "goose", "command": "goose", "args": ["acp"], "acp": true },
+  { "name": "aider", "ready_pattern": "(?m)^\\S*> ?$" },
+  { "name": "hermes", "models": ["nous/hermes-4-405b"], "model_flag": "-m" }
+]
 ```
 
-The session is headless: send the first instruction from the session page.
+`ready_pattern` pins the regexp for an agent's idle prompt, `type_comments:
+true` allows typing messages into an unknown command, and `models` +
+`model_flag` list the models the web may start it with. `live agents` shows
+what the daemon found and where.
 
-### Messages to terminal agents
+### Daemon server mode
 
-A viewer message to aider, cursor-agent, hermes, copilot, opencode, crush,
-goose, amp, qwen or pi is typed into the agent once it is idle at its prompt:
-output quiet for 1.5 s, no yes/no or trust dialog on screen. The message is
-submitted only after the agent echoes it. If the agent's prompt is
-recognisable, pin it with a regexp in agents.json:
+`live daemon --server` serves a small HTTP API for the PocketAI apps. Every
+route requires `Authorization: Bearer <key>`, and the key grants access to
+every session on the daemon.
 
-```json
-[{ "name": "aider", "ready_pattern": "(?m)^\\S*> ?$" }]
-```
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/v1/info` | Server name, agents, models, workspaces, statuses |
+| GET | `/v1/sessions` | Session summaries, newest first |
+| POST | `/v1/sessions` | Create with `{"agent":"codex","directory":"/allowed/path"}`; Ollama also needs `"model"` |
+| GET | `/v1/sessions/{id}` | Status and conversation |
+| POST | `/v1/sessions/{id}/messages` | Send `{"text":"..."}`; returns 202 while working |
+| POST | `/v1/sessions/{id}/stop` | Cancel the current turn |
+| POST | `/v1/sessions/{id}/permissions/{requestId}` | `{"decision":"allow"}` or `{"decision":"deny"}` |
+| DELETE | `/v1/sessions/{id}` | Delete an idle session |
 
-Any other command gets messages typed in only with `"type_comments": true`
-(or `LIVE_TYPE_COMMENTS=1`), since it may be a shell.
+Limits: one running turn per session and four in total, 200 sessions, 50 turns
+per session, 32,000-byte messages, 256 KiB output, 15-minute turn timeout. The
+last 96 KB of context is replayed to a fresh agent process each turn. Sessions
+are stored in `~/.liveshortly/pocket/liveshortly-pocket` (change with
+`--state-dir`) and survive restarts.
 
-### Choosing the model from the web
+`--agents-file` adds agents for this mode: each gets the prompt on stdin (or in
+an argument containing `{prompt}`) and prints its answer to stdout. No shell is
+used, and clients cannot supply commands or arguments.
 
-`live daemon` registers, for each agent, the models the web may start it with:
-the agent's own listing where it has one (codex's model cache, `agy models`,
-`cursor-agent --list-models`, `ollama list`), otherwise a short list shipped
-with live, plus your configured default. The daemon only accepts a model from
-that list and passes it as the agent's own `--model` flag. For an agents.json
-adapter, list them yourself:
+Phone approvals are supported for Claude, Codex and Antigravity; each tool run
+waits for **Approve once** or **Deny** and is denied after 8 minutes, on relay
+failure, or when the turn stops. Other agents keep their own permission
+behaviour; Ollama runs no tools.
 
-```json
-[{ "name": "hermes", "models": ["nous/hermes-4-405b"], "model_flag": "-m" }]
-```
-
-## How it actually works
+### How it works
 
 ```
 live claude
  ├─ sign in (~/.liveshortly/credentials.json, auto-refreshes)
- ├─ open a session          → get the share link
- ├─ spin up a little sidecar (lives as long as your session)
+ ├─ open a session          → print the share link
+ ├─ start a sidecar for the life of the session
  │    ├─ ships events to the server (ordered, retried)
- │    ├─ listens for viewer comments (real-time push, polling as fallback)
- │    └─ a tiny localhost endpoint for the hooks to talk to
- ├─ hand Claude a temp settings file wiring every hook to `live hook <event>`
- ├─ run claude for real (it owns your terminal like normal)
- └─ on exit: flush everything → close the session → print the replay link
+ │    ├─ listens for viewer messages (push, polling as fallback)
+ │    └─ serves a localhost endpoint for the hooks
+ ├─ give Claude a temporary settings file wiring every hook to `live hook <event>`
+ ├─ run claude in your terminal as normal
+ └─ on exit: flush, close the session, print the replay link
 ```
 
-The trick for Claude is those lifecycle hooks — that's how we get real
-structured events (this file changed, that command ran) instead of just
-scraping terminal text. `live hook <event>` is the same binary wearing a
-different hat: it just relays the hook's data to the sidecar and hands back
-the response. It always bails out cleanly in a few seconds, so even if
-something's broken on our end, Claude never hangs waiting on us.
+Gemini and Antigravity use their own hook systems, Codex is read from its
+rollout file (or driven over its app-server protocol), and anything else runs
+in a pseudo-terminal whose output is recorded. More in
+[docs/DESIGN.md](docs/DESIGN.md).
 
-Gemini and Antigravity get the same treatment through their own hook systems,
-and codex is read from its structured rollout file (or driven over its
-app-server protocol). Everything else runs inside a pseudo-terminal and we
-record what scrolls by — mirroring it to you untouched.
+### Troubleshooting
 
-Want the deeper dive? [docs/DESIGN.md](docs/DESIGN.md). And the server side
-this client already talks to: [docs/SERVER-PROMPT.md](docs/SERVER-PROMPT.md).
-
-## Knobs & files
-
-| Thing | Where it lives |
-|---|---|
-| Which server | `~/.liveshortly/host.json` `{"api_url": "...", "web_url": "..."}`, or the `LIVESHORTLY_API_URL` env var, else https://liveshortly.com |
-| Your login | `~/.liveshortly/credentials.json` (0600) — point elsewhere with `LIVESHORTLY_CRED_PATH` |
-| Logs | `~/.liveshortly/live.log` (we never scribble over the agent's screen) |
-| Idle messages | On by default for `live claude` — a per-session channel lets viewer messages reach Claude even while it's idle. First run, Claude Code shows a one-time "load development channels?" prompt — just say yes. Set `LIVE_CHANNEL=0` to turn it off. Channel logs at `~/.liveshortly/channel.log` |
-| Approve tools from the web | On by default for `live claude`, `live agy`, `live gemini` and `live codex`: each tool waits for Approve/Deny from a tmux popup or the session page. Only *you* (the owner) can answer; viewers just watch. While on, it gates every tool, so your local allowlist doesn't apply; an unanswered prompt denies after ~8 minutes. `live --no-permissions <agent>` turns it off for a run. |
-
-## When something's off
-
-- **"not signed in"** — run `live login`. If it keeps looping, delete
+- **"not signed in"**: run `live login`. If it loops, delete
   `~/.liveshortly/credentials.json` and try again.
-- **Nothing showing up in the feed** — peek at `~/.liveshortly/live.log`,
-  every failed upload logs why.
-- **Session stuck on "live" after a crash** — the server cleans up sessions
-  whose agent went quiet; worst case it wraps up on the next stop.
+- **Wrong server**: `live host` shows which server is in use and why.
+- **Nothing in the feed**: check `~/.liveshortly/live.log`; failed uploads are
+  logged there.
+- **Session stuck on live after a crash**: the server ends sessions whose agent
+  has gone quiet.
 
-## Poking at the code
+## Contributing
 
-```bash
-make build      # → ./bin/live
-make vet
-go test ./...
-```
+Issues and pull requests are welcome on
+[github.com/liveshortly/live](https://github.com/liveshortly/live). Run
+`make vet` and `make test` before opening a pull request. If you change agent
+support in `internal/harness`, regenerate the matrix with
+`go run ./scripts/harnessmatrix`. Release notes go in [CHANGELOG.md](CHANGELOG.md).
+<!-- TODO(owner): add CONTRIBUTING.md / code of conduct / security contact if wanted. -->
 
-Roughly where things are:
+## License
 
-```
-cmd/live/            the CLI: run / login / whoami / hook relay
-internal/hostcfg/    figuring out the server + where creds live
-internal/auth/       sign-in, token refresh, the credentials file
-internal/api/        talking to LiveShortly (REST + live stream)
-internal/sidecar/    event queue, comment listener, hook handlers, diffs
-internal/adapter/    Claude (hook injection) and the terminal-capture runner
-```
-
-## Where this is headed
-
-- [x] Proper hooks for Gemini CLI (real events instead of terminal scraping)
-- [x] Same for Codex (rollout file, app-server) and Antigravity (hooks)
-- [x] Real-time viewer comments (live push, no more polling)
-- [x] Idle-viewer messages that reach Claude while it's waiting
-- [x] Homebrew tap
-- [x] Self-updating releases (`live update`)
-- [x] Let the owner answer "can I run this?" prompts from the web
-- [ ] Visual asciinema-style replay alongside the event feed
-
-It's early and moving fast — if you try it and something's janky, that's
-useful to hear. 🚀
-
----
-
-<p align="center">
-  <sub>Made with 💚 by <a href="https://x.com/ironfisto/">@ironfisto</a> &middot; <a href="https://x.com/sec_r0">@sec_r0</a> &nbsp;·&nbsp; <a href="https://github.com/liveshortly/live">GitHub</a></sub>
-</p>
-
-## pocket.ai support in live daemon
-
-The existing daemon can listen directly for **pocket.ai by LiveShortly** clients:
-
-```sh
-go build -o bin/live ./cmd/live
-./bin/live daemon --server --key 'your-chosen-key' --dir /absolute/path/to/project
-```
-
-Pocket only needs a server URL and key. There is no application-name flag or
-application header. Any non-empty key is accepted. `LIVE_POCKET_KEY` is an
-alternative to `--key`. By default the daemon listens on **all interfaces** at
-`:8787`; override with `--listen`. Repeat `--dir` for multiple workspaces. `--name`
-optionally changes the displayed server name (otherwise the hostname is used).
-
-Use `--tls-cert` and `--tls-key`, or a TLS reverse proxy, for HTTPS. LAN HTTP
-sends the bearer key in plaintext. Every API route requires
-`Authorization: Bearer <key>`. The key grants access to all sessions on this daemon.
-
-Discovery checks PATH for Codex, Claude, Gemini, AGY, Antigravity, Ollama, Aider and
-Cursor Agent. Test connection refreshes this list and enumerates locally pulled
-Ollama models. Agent installation, active session count and last-turn status are
-reported separately; discovery does not verify provider login or quota. Install
-and configure the CLI on the daemon host before using it from Pocket. Agent
-approval controls remain enabled (see Approvals below). Ollama sessions require a selected local model;
-uninstalled models are rejected instead of being downloaded implicitly.
-
-### Additional agents
-
-Register other CLI agents through a local JSON file, then pass `--agents-file`:
-
-```json
-[
-  {"name":"my-agent","command":"/path/to/my-agent","args":["--print"]}
-]
-```
-
-Adapters receive the prompt on stdin and must print their answer to stdout.
-An argument containing `{prompt}` receives the prompt as a literal argv value if
-that CLI requires a command-line prompt. No shell is used. These commands are
-configured only by the server operator; API clients cannot supply arbitrary
-executables or arguments. Custom agents appear when their command is executable.
-
-`live agents` lists every agent the daemon finds (with its path), the ones it
-probed but did not find, and the agents.json entries. The daemon searches your
-login shell's PATH plus the usual global-bin directories (`~/.local/bin`,
-`~/.bun/bin`, `~/.npm-global/bin`, pnpm, volta, mise/asdf shims, `~/go/bin`,
-`~/.cargo/bin`). A CLI that live does not know by name (for example `pig`) needs
-an agents.json entry.
-
-### API and lifecycle
-
-| Method | Route | Purpose |
-| --- | --- | --- |
-| GET | `/v1/info` | Server name, installed agents, models, workspaces and agent statuses |
-| GET | `/v1/sessions` | Session summaries, newest first |
-| POST | `/v1/sessions` | Create with `{"agent":"codex","directory":"/allowed/path"}`; Ollama also requires `"model"` |
-| GET | `/v1/sessions/{id}` | Status and complete conversation |
-| POST | `/v1/sessions/{id}/messages` | Submit `{"text":"..."}`; returns 202 while working |
-| POST | `/v1/sessions/{id}/stop` | Cancel a turn and its subprocess group |
-| POST | `/v1/sessions/{id}/permissions/{requestId}` | Answer a pending request with `{"decision":"allow"}` or `{"decision":"deny"}` |
-| DELETE | `/v1/sessions/{id}` | Delete an idle session |
-
-Turns continue independently of client connections. Poll until `running` becomes
-`idle`, `failed`, or `interrupted`. After an ambiguous connection failure, fetch
-the session before resubmitting. Limits: one active turn per session, four total,
-200 sessions, 50 turns per session, 32,000-byte messages, 256 KiB output and a
-15-minute timeout. The most recent 96 KB of context is replayed to a fresh CLI
-process each turn. Native CLI thread resumption is not implemented. Existing
-website/tmux sessions are separate from these API sessions.
-
-### Approvals in pocket.ai
-
-Codex uses its app-server protocol with on-request approvals and the workspace-write
-sandbox. Claude and AGY/Antigravity use PreToolUse hooks: each tool call waits for
-an explicit decision in the phone's chat. The app shows the complete tool input,
-**Approve once**, and **Deny**. Codex and Claude retain their native permission
-checks. As in the existing LiveShortly web/tmux adapter, AGY delegates terminal
-prompts to the installed, enabled PreToolUse gate using its
-`--dangerously-skip-permissions` flag. The gate still requires a phone decision for
-every tool; it denies on relay failures, timeout, cancellation, and invalid input.
-AGY is not launched in this mode if hook installation or enabling fails.
-
-While the agent waits, the session stays `running` and exposes a `permissions`
-array containing each request's ID, tool, detail and expiry. Reconnecting retrieves
-the same pending requests. Answers require the daemon key, apply only to that
-request, and reject stale/replayed IDs. Requests expire after eight minutes;
-stopping a turn or restarting the daemon denies outstanding requests. A Codex
-permission-profile grant is limited to the current turn, as required by its native
-protocol. The key holder can answer any session on this daemon.
-
-Claude receives temporary settings. AGY installs a separate `liveshortly-pocket`
-plugin under `~/.liveshortly/pocket-hook-plugin`; it is inert outside pocket-launched
-processes and does not replace the existing `liveshortly` plugin. Hook traffic uses
-a loopback-only listener and a random per-turn token. Failed relays deny the tool.
-
-Agent discovery reports `approvals: supported`, `unsupported`, or `not-needed`
-(the "pocket.ai approvals" column in [Who works with what](#who-works-with-what)).
-Gemini, Cursor, Aider and custom command adapters currently have no phone approval
-bridge; their existing CLI permission behavior remains in effect. Ollama's chat
-adapter does not execute tools. The app displays this support status in connection
-settings.
-
-Session files remain at `~/.liveshortly/pocket/liveshortly-pocket` for compatibility
-with existing installations; `--state-dir` overrides this. A lock prevents duplicate
-daemons using the same store. History survives restarts. Interrupted turns are
-marked accordingly. A launch-directory allowlist is not a general filesystem
-sandbox: agents run as the daemon's OS user. Use a dedicated user/container for
-untrusted collaborators. Restart with a new key to rotate access.
-
-The original web-connected `live daemon --dir ...` mode is unchanged.
-
-Validation: `go test -race ./cmd/live`, `go test ./...`, `go vet ./...`. The Pocket
-repository also includes `python3 scripts/test_liveshortly.py` for cross-project
-contract and persistence tests without provider calls.
+The license has not been decided yet.
+<!-- TODO(owner): choose a license, add a LICENSE file, and update this section. -->
