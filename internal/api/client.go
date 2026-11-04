@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -69,6 +70,14 @@ func (c *Client) send(method, path string, body any, out any, tok string) (int, 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
+		// The server explains refusals in {"error": "..."} (storage full,
+		// session limit, too many live sessions); show that, not just a code.
+		var e struct {
+			Error string `json:"error"`
+		}
+		if json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&e) == nil && e.Error != "" {
+			return resp.StatusCode, fmt.Errorf("%s (%s %s: HTTP %d)", e.Error, method, path, resp.StatusCode)
+		}
 		return resp.StatusCode, fmt.Errorf("%s %s: HTTP %d", method, path, resp.StatusCode)
 	}
 	if out != nil {
