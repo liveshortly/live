@@ -168,7 +168,7 @@ func newScreenLines(prev, cur string) string {
 	var out []string
 	for _, l := range strings.Split(cur, "\n") {
 		l = strings.TrimRight(l, " ")
-		if strings.TrimSpace(l) == "" || boxOnly(l) {
+		if strings.TrimSpace(l) == "" || boxOnly(l) || screenNoise(l) {
 			continue
 		}
 		if seen[l] > 0 {
@@ -178,6 +178,18 @@ func newScreenLines(prev, cur string) string {
 		out = append(out, l)
 	}
 	return strings.Join(out, "\n")
+}
+
+// screenNoise reports a line that is the terminal's furniture rather than
+// something the agent said (LSH-21): the echo of a viewer message live typed
+// in (already on the web as the viewer's bubble), and idle-prompt
+// placeholders.
+// ponytail: known placeholders only; add an agent's when one shows up.
+func screenNoise(l string) bool {
+	t := strings.TrimSpace(l)
+	return strings.Contains(t, "(live viewer):") ||
+		strings.HasPrefix(t, ">>> Send a message") ||
+		t == ">>>" || t == ">" || t == "❯"
 }
 
 // boxOnly reports a line made only of rule/box-drawing characters or braille
