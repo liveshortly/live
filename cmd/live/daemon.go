@@ -435,7 +435,7 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 	if typeComments {
 		child.Env = append(child.Env, "LIVE_TYPE_COMMENTS=1")
 	}
-	if acp {
+	if acp || cmd.Agent == "ollama" { // ollama talks to its API (LSH-21): no pane
 		child.Env = append(child.Env, "LIVE_ACP=1")
 	}
 	if readyPattern != "" {

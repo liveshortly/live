@@ -29,3 +29,10 @@ func TestClaudeComposerAndBlocked(t *testing.T) {
 		t.Fatal("trust prompt read as composer")
 	}
 }
+
+func TestNewScreenLinesDropsNoise(t *testing.T) {
+	cur := ">>> Rohit (live viewer): say PONG\n⠸\nPONG\n>>> Send a message (/? for help)"
+	if got := newScreenLines("", cur); got != "PONG" {
+		t.Fatalf("got %q", got)
+	}
+}

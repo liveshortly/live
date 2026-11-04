@@ -384,8 +384,16 @@ func cmdRun(args []string) int {
 		devInstructions = codexInstructions(bundle.Markdown)
 	}
 
+	ollamaModel, ollamaFirst, ollamaAPI := "", "", false
+	if prof.framework == "ollama" {
+		ollamaModel, ollamaFirst, ollamaAPI = ollamaAPIArgs(userArgs)
+		ollamaAPI = ollamaAPI && ollamaReachable(ollamaBase())
+	}
+
 	var exitCode int
 	switch {
+	case ollamaAPI:
+		exitCode = runOllamaAPIMode(sc, ollamaBase(), ollamaModel, ollamaFirst)
 	case prof.captureMode == "acp":
 		exitCode = runACPMode(sc, binPath, userArgs, devInstructions)
 	case tmuxMode:
