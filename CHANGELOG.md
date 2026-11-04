@@ -6,6 +6,24 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.3.8 — 2026-11-04
+
+### Fixed
+- **Web-started pi, ollama and `agents.json` agents work (LSH-20).** They run
+  in their own tmux session (`tmux -L liveshortly attach -t live-<id>`), the
+  web shows what the agent prints (full-screen TUIs showed nothing before),
+  viewer messages are typed in once the agent is idle, and ending the
+  session from the web closes the pane. `LIVE_TMUX=0` keeps the old PTY mode.
+- **claude hears web messages when an org policy blocks channels.** live
+  sees claude's "blocked by org policy" warning and types messages into the
+  composer instead of the channel, which was dropping every one.
+- **codex hears web messages when its hook config changed.** live skips
+  codex's startup hooks-review screens (Esc — nothing is trusted, unreviewed
+  hooks stay off) and confirms a message reached the composer before
+  pressing Enter.
+- codex's injected AGENTS.md / `<…_instructions>` blocks no longer show on
+  the web as a user prompt.
+
 ## v2.3.7 — 2026-11-03
 
 ### Added
