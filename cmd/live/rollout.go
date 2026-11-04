@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -666,15 +667,22 @@ func codexToolLabel(name string) string {
 
 // isCodexPreamble reports whether a user message is one of codex's injected
 // scaffolding blocks rather than something the operator actually typed.
+// codex keeps adding them (<multi_agent_mode>, <skills_instructions>…), so
+// any message that is one whole <tag>…</tag> block counts, not a fixed list.
+// The AGENTS.md injection ("# AGENTS.md instructions for <dir>") counts too;
+// codex sends it in the same message as <environment_context>.
 func isCodexPreamble(text string) bool {
 	t := strings.TrimSpace(text)
-	for _, tag := range []string{"<environment_context>", "<permissions instructions>", "<user_instructions>"} {
+	for _, tag := range []string{"# AGENTS.md instructions", "<environment_context>", "<permissions instructions>", "<user_instructions>"} {
 		if strings.HasPrefix(t, tag) {
 			return true
 		}
 	}
-	return false
+	m := codexPreambleRe.FindStringSubmatch(t)
+	return m != nil && strings.HasSuffix(t, "</"+m[1]+">")
 }
+
+var codexPreambleRe = regexp.MustCompile(`^<([a-z_]+(?: [a-z_]+)*)>`)
 
 // looksLikeChannelTurn reports whether the whole message is just a
 // channel-wrapped viewer comment injected by the live channel MCP.

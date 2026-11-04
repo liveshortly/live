@@ -70,13 +70,30 @@ func (t *tmuxPane) injectComposer(agent string, composer func(string) (string, b
 		}
 		return fmt.Errorf("%s's composer never appeared", agent)
 	}
-	if err := t.paste(text); err != nil {
-		return err
-	}
 	// Probe on the head of the first line: the composer may wrap or truncate.
 	probe := strings.SplitN(text, "\n", 2)[0]
 	if len(probe) > 24 {
 		probe = probe[:24]
+	}
+	// A TUI still finishing its boot can swallow a paste whole, after which
+	// Enter submits nothing and the message is gone without an error
+	// (codex right after its hooks-review screen, LSH-20). Confirm the text
+	// reached the composer; paste once more if it didn't.
+	shown := func(pane string) bool {
+		s, ok := composer(pane)
+		return ok && strings.Contains(s, probe)
+	}
+	pasted := false
+	for range 2 {
+		if err := t.paste(text); err != nil {
+			return err
+		}
+		if pasted = t.waitFor(shown, agyAcceptWait); pasted {
+			break
+		}
+	}
+	if !pasted {
+		return fmt.Errorf("%s did not show the typed message, so it was not sent", agent)
 	}
 	gone := func(pane string) bool {
 		s, ok := composer(pane)
@@ -142,6 +159,33 @@ func claudeComposerLine(pane string) (text string, ok bool) {
 func claudeStartupBlocker(pane string) string {
 	if promptOnScreen(pane) >= 0 {
 		return "claude is waiting at a startup prompt in the terminal"
+	}
+	return ""
+}
+
+// codexComposerLine returns the text in codex's composer (the "› " line; its
+// "Ask Codex…" placeholder reads as empty) and whether it is on screen.
+func codexComposerLine(pane string) (text string, ok bool) {
+	if !composerReady(pane) {
+		return "", false
+	}
+	lines := strings.Split(pane, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		l := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(l, "›") {
+			l = strings.TrimSpace(strings.TrimPrefix(l, "›"))
+			if strings.HasPrefix(l, "Ask Codex") {
+				l = ""
+			}
+			return l, true
+		}
+	}
+	return "", false
+}
+
+func codexStartupBlocker(pane string) string {
+	if codexHooksScreen(pane) {
+		return "codex is showing its hooks-review screen"
 	}
 	return ""
 }

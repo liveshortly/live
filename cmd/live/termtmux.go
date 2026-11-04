@@ -180,10 +180,11 @@ func newScreenLines(prev, cur string) string {
 	return strings.Join(out, "\n")
 }
 
-// boxOnly reports a line made only of rule/box-drawing characters.
+// boxOnly reports a line made only of rule/box-drawing characters or braille
+// spinner frames — screen furniture, not something the agent said.
 func boxOnly(l string) bool {
 	for _, r := range strings.TrimSpace(l) {
-		if r < 0x2500 || r > 0x257F {
+		if (r < 0x2500 || r > 0x257F) && (r < 0x2800 || r > 0x28FF) {
 			return false
 		}
 	}
