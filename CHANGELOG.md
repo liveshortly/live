@@ -6,6 +6,8 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.4.0 — 2026-11-04
+
 ### Fixed
 - **Ollama sessions read as a conversation, not terminal noise (LSH-21).**
   `live ollama run <model>` now talks to ollama's API (`/api/chat`) instead of
