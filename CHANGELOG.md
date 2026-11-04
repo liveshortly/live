@@ -6,6 +6,12 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.3.9 — 2026-11-04
+
+### Changed
+- **`live daemon` no longer offers gemini** (LSH-21). It is not listed for
+  web/app-started sessions; `live gemini` still runs from a terminal.
+
 ## v2.3.8 — 2026-11-04
 
 ### Fixed
