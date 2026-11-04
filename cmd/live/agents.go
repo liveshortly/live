@@ -41,7 +41,7 @@ import (
 // profile beyond plain pty (hooks, rollout), agent-specific launch flags, or
 // both. The names are reserved — an agents.json entry may not shadow one,
 // because the special handling keyed on the name would then be wrong.
-var nativeAgents = []string{"claude", "codex", "gemini", "agy", "antigravity", "ollama"}
+var nativeAgents = []string{"claude", "codex", "agy", "antigravity", "ollama"}
 
 // pocketBuiltins are the agents `live daemon --server` can drive ONE-SHOT, in
 // the Pocket flow: each needs a known non-interactive flag set (--print and
@@ -50,7 +50,7 @@ var nativeAgents = []string{"claude", "codex", "gemini", "agy", "antigravity", "
 //
 // This is deliberately narrower than spawnableBuiltins: driving a CLI headless
 // takes per-tool knowledge, whereas running one in a terminal does not.
-var pocketBuiltins = []string{"codex", "claude", "gemini", "agy", "antigravity", "ollama", "aider", "cursor-agent"}
+var pocketBuiltins = []string{"codex", "claude", "agy", "antigravity", "ollama", "aider", "cursor-agent"}
 
 // spawnableBuiltins are the agents `live daemon` probes for interactive
 // sessions. It is a superset of pocketBuiltins: an interactive run only needs
@@ -60,8 +60,9 @@ var pocketBuiltins = []string{"codex", "claude", "gemini", "agy", "antigravity",
 // A harness that is not listed is NOT excluded — it is simply not guessed at.
 // Name it in agents.json and the daemon offers it too.
 var spawnableBuiltins = []string{
-	// native capture
-	"claude", "codex", "gemini", "agy", "antigravity", "ollama",
+	// native capture. gemini is not offered (owner, 2026-11-04): `live gemini`
+	// still runs from a terminal, but the daemon no longer advertises it.
+	"claude", "codex", "agy", "antigravity", "ollama",
 	// known harnesses, generic pty capture
 	"aider", "cursor-agent", "copilot", "opencode", "crush", "goose",
 	"amp", "qwen", "pi", "hermes",
