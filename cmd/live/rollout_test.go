@@ -302,3 +302,20 @@ func TestRolloutMapper_CommandItemSupersedesCall(t *testing.T) {
 		t.Fatalf("want one ls tool_call, got %+v", c.events)
 	}
 }
+
+func TestIsCodexPreambleNewTags(t *testing.T) {
+	for _, in := range []string{
+		"<multi_agent_mode>\nx\n</multi_agent_mode>",
+		"<skills_instructions>a</skills_instructions>",
+		"# AGENTS.md instructions\n\n<INSTRUCTIONS>x</INSTRUCTIONS>\n<environment_context>y</environment_context>",
+	} {
+		if !isCodexPreamble(in) {
+			t.Errorf("not skipped: %q", in)
+		}
+	}
+	for _, in := range []string{"fix the <div> layout", "<b>bold</b> please explain"} {
+		if isCodexPreamble(in) {
+			t.Errorf("real prompt skipped: %q", in)
+		}
+	}
+}

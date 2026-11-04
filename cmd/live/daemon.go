@@ -465,7 +465,7 @@ func spawnSession(client *api.Client, self string, reg api.HostRegistration, cus
 
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m started %s in %s → %s/session/%s\n",
 		cmd.Agent, cwd, hostcfg.WebURL(), cmd.SessionID)
-	if acp || profileFor(bin).captureMode == "pty" {
+	if acp {
 		fmt.Fprintf(os.Stderr, "        headless terminal session (pid %d) — watch it on the web; no local pane to attach\n", child.Process.Pid)
 	} else {
 		fmt.Fprintf(os.Stderr, "        attach locally: tmux -L %s attach -t live-%s\n", tmuxSocket, cmd.SessionID[:8])

@@ -51,7 +51,7 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 		if who == "" {
 			who = "viewer"
 		}
-		if err := t.inject(viewerTurn(who, c.Message)); err != nil {
+		if err := t.injectComposer("codex", codexComposerLine, codexStartupBlocker, viewerTurn(who, c.Message)); err != nil {
 			// Never lose a message silently: the composer can stay hidden
 			// behind a trust dialog nobody at a web-started session can see.
 			sc.Log.Printf("codextmux: inject: %v", err)
@@ -60,7 +60,9 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 				"kind":    "input",
 				"ts":      time.Now().UTC().Format(time.RFC3339),
 			})
+			return
 		}
+		sc.Log.Printf("codextmux: delivered comment from %s", who)
 	}
 	sc.Start(context.Background())
 
@@ -111,6 +113,9 @@ func runCodexTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	}
 	_ = t.run("set-option", "-t", sess, "status", "off")
 	bindContextPopup(t.run, self, sc.SessionID)
+	if headless() {
+		go t.dismissCodexHooksReview(sc)
+	}
 
 	// popup driver: raise a display-popup whenever a permission is pending
 	popupCmd := fmt.Sprintf("%q perm-prompt %q %q", self, addr, token)
@@ -178,7 +183,7 @@ func composerReady(pane string) bool {
 		return false
 	}
 	low := strings.ToLower(pane)
-	for _, modal := range []string{"do you trust", "allow codex to", "yes, allow", "no, and tell", "permission"} {
+	for _, modal := range []string{"do you trust", "allow codex to", "yes, allow", "no, and tell", "permission", "need review before they can run", "hooks are new or changed"} {
 		if strings.Contains(low, modal) {
 			return false
 		}
@@ -243,5 +248,29 @@ func (t *tmuxPane) waitComposer(d time.Duration) bool {
 			return false
 		}
 		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// codexHooksScreen reports codex's startup hooks-review screens: the "N hooks
+// are new or changed" prompt and the "need review before they can run" list.
+func codexHooksScreen(pane string) bool {
+	low := strings.ToLower(pane)
+	return strings.Contains(low, "hooks are new or changed") || strings.Contains(low, "need review before they can run")
+}
+
+// dismissCodexHooksReview closes the hooks-review screens codex opens at
+// startup when its hook config changed (LSH-20). On a web-started run nobody
+// can answer them, and the composer stays hidden behind them, so every viewer
+// message was lost. Esc is codex's own "skip": the unreviewed hooks stay off
+// for this session, nothing is trusted on the operator's behalf.
+func (t *tmuxPane) dismissCodexHooksReview(sc *sidecar.Sidecar) {
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
+		if !t.waitFor(codexHooksScreen, time.Until(deadline)) {
+			return
+		}
+		_ = t.run("send-keys", "-t", t.sess, "Escape")
+		sc.Log.Printf("codextmux: skipped codex's hooks-review screen (unreviewed hooks stay off this session)")
+		time.Sleep(time.Second)
 	}
 }

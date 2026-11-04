@@ -267,35 +267,7 @@ func (s *Sidecar) drain() {
 		}
 		return
 	}
-	// A connected channel subscriber (`live channel` MCP) delivers into the agent
-	// even while it is idle. Route there first; only what no subscriber accepted
-	// falls back to hook-boundary injection.
-	//
-	// This used to queue EVERY comment for hooks as well, on the reasoning that a
-	// buffered send is not proof Claude consumed it and a rare duplicate beats a
-	// lost message. But nothing ever acked, so with a healthy channel the
-	// duplicate was not rare — it was every single message: the channel delivered
-	// the comment, then hookStop drained the same comment and blocked the turn to
-	// re-deliver it, and Claude answered twice.
-	//
-	// Delivery is still at-least-once, just acked at each hop instead of assumed
-	// failed: a comment handed to a subscriber is requeued for hooks if the SSE
-	// write fails (see the /comments/subscribe handler) or if the subscriber
-	// disconnects with it still buffered (see subscribe's unsubscribe func).
-	undelivered := s.routeToChannel(comments)
-	if len(undelivered) > 0 {
-		s.queueForHooks(undelivered)
-	}
-	if routed := len(comments) - len(undelivered); routed > 0 {
-		s.Log.Printf("%d viewer comment(s) pushed to channel", routed)
-	}
-	if len(undelivered) > 0 {
-		s.Log.Printf("%d viewer comment(s) queued for hook injection", len(undelivered))
-	}
-
-	// The agent may be idle (no hook boundary coming) — surface arrival
-	// out-of-band so the operator knows a message is waiting.
-	go desktopNotify(s.WebURL, s.SessionID, comments)
+	s.Route(comments)
 }
 
 // routeToChannel hands each comment to any connected channel subscriber and
@@ -695,4 +667,40 @@ func (s *Sidecar) agentName() string {
 		return s.Agent
 	}
 	return "The agent"
+}
+
+// Route delivers comments the hooks/channel way: to a connected channel
+// subscriber, else queued for the next hook. It is what drain does when
+// OnComment is nil, exposed so an OnComment that only sometimes types a
+// comment in (claude with channels blocked, LSH-20) can fall back to it.
+func (s *Sidecar) Route(comments []api.Comment) {
+	// A connected channel subscriber (`live channel` MCP) delivers into the agent
+	// even while it is idle. Route there first; only what no subscriber accepted
+	// falls back to hook-boundary injection.
+	//
+	// This used to queue EVERY comment for hooks as well, on the reasoning that a
+	// buffered send is not proof Claude consumed it and a rare duplicate beats a
+	// lost message. But nothing ever acked, so with a healthy channel the
+	// duplicate was not rare — it was every single message: the channel delivered
+	// the comment, then hookStop drained the same comment and blocked the turn to
+	// re-deliver it, and Claude answered twice.
+	//
+	// Delivery is still at-least-once, just acked at each hop instead of assumed
+	// failed: a comment handed to a subscriber is requeued for hooks if the SSE
+	// write fails (see the /comments/subscribe handler) or if the subscriber
+	// disconnects with it still buffered (see subscribe's unsubscribe func).
+	undelivered := s.routeToChannel(comments)
+	if len(undelivered) > 0 {
+		s.queueForHooks(undelivered)
+	}
+	if routed := len(comments) - len(undelivered); routed > 0 {
+		s.Log.Printf("%d viewer comment(s) pushed to channel", routed)
+	}
+	if len(undelivered) > 0 {
+		s.Log.Printf("%d viewer comment(s) queued for hook injection", len(undelivered))
+	}
+
+	// The agent may be idle (no hook boundary coming) — surface arrival
+	// out-of-band so the operator knows a message is waiting.
+	go desktopNotify(s.WebURL, s.SessionID, comments)
 }
