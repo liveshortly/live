@@ -394,5 +394,4 @@ support in `internal/harness`, regenerate the matrix with
 
 ## License
 
-The license has not been decided yet.
-<!-- TODO(owner): choose a license, add a LICENSE file, and update this section. -->
+The `live` CLI is released under the [Apache License 2.0](LICENSE). The LiveShortly server and web app are a separate project under AGPL-3.0.
