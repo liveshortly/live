@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question or share an idea
+    url: https://github.com/liveshortly/live/discussions
+    about: Questions, ideas and show-and-tell go in Discussions.
+  - name: Security issue
+    url: https://liveshortly.com/security
+    about: Please report vulnerabilities privately, as described on the security page.
