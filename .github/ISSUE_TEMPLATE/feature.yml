@@ -1,0 +1,11 @@
+name: Feature request
+description: Tell us what you would add
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What are you trying to do?
+      description: The problem first; a solution idea is welcome but optional.
+    validations:
+      required: true
