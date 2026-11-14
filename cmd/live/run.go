@@ -269,9 +269,16 @@ func cmdRun(args []string) int {
 	)
 	if opts.attachID != "" {
 		// Web-spawned run (`live daemon`): the server created the session before
-		// telling this machine about it, so capture attaches to that id. Nothing
-		// downstream changes — the session is a normal live session.
+		// telling this machine about it, so capture attaches to that id.
 		sessionID = opts.attachID
+		// A web "Continue session" is a fork spawned onto this machine: the server
+		// created it with a source, so fetch its briefing and seed the agent with
+		// the prior context. A plain web spawn returns an empty seed — nothing to
+		// do. Best-effort: a seed fetch failure must never block the spawn.
+		if b, serr := client.SessionSeed(sessionID); serr == nil && b != nil && strings.TrimSpace(b.Markdown) != "" {
+			bundle = *b
+			forked = true
+		}
 	} else if opts.handoffCode != "" || opts.sessionID != "" {
 		if opts.sessionID != "" {
 			// `live ls` prints 8-char handles; the server only knows full uuids.

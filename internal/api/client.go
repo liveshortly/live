@@ -229,6 +229,19 @@ func (c *Client) CreateSessionForked(title, framework, agent, captureMode string
 	return out.ID, out.Handoff, nil
 }
 
+// SessionSeed fetches the handoff briefing a web-spawned "continue" session
+// should seed its agent with. Returns nil when the session is not a fork (a
+// plain web spawn), so the daemon's attach path can call it unconditionally.
+func (c *Client) SessionSeed(id string) (*HandoffBundle, error) {
+	var out struct {
+		Handoff *HandoffBundle `json:"handoff"`
+	}
+	if _, err := c.do("GET", "/api/sessions/"+id+"/seed", nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Handoff, nil
+}
+
 // HandoffInfo is the copyable-command payload from POST
 // /api/sessions/{id}/handoff — used to mint `live claude --handoff <code>`.
 type HandoffInfo struct {
