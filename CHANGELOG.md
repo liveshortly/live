@@ -6,6 +6,14 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.4.3 — 2026-11-14
+
+### Added
+- When Claude Code's channel is blocked by org policy (so browser viewer
+  messages can't reach an idle agent), live now emits a `channel_blocked` event
+  so the web can show the real cause and fix (an admin setting
+  `channelsEnabled: true`) instead of a generic "did not show the typed message".
+
 ## v2.4.2 — 2026-11-14
 
 ### Fixed

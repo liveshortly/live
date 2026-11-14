@@ -474,10 +474,26 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 	default:
 		// claude: the channel delivers, unless an org policy blocked it.
 		var blocked atomic.Bool
+		// Tell the web why, once: a viewer whose message silently dropped sees a
+		// generic "did not show the typed message"; this surfaces the real cause
+		// (org policy) and the fix (channelsEnabled) as a channel_blocked event.
+		var announceOnce sync.Once
+		announceBlocked := func() {
+			announceOnce.Do(func() {
+				sc.Log.Printf("live claude tmux: channels are blocked by org policy — typing viewer messages into the composer")
+				sc.Emit("channel_blocked", map[string]any{
+					"agent":   "claude",
+					"reason":  "org_policy",
+					"message": "Viewer messages can't reach Claude from the browser: this host's org policy blocks Claude Code channels, so a typed message only lands while someone is attached to the terminal. An administrator must set \"channelsEnabled\": true in managed settings to deliver viewer messages to an idle agent.",
+					"attach":  fmt.Sprintf("tmux -L liveshortly attach -t live-%s", sc.SessionID[:8]),
+					"ts":      time.Now().UTC().Format(time.RFC3339),
+				})
+			})
+		}
 		go func() {
 			if t.waitFor(claudeChannelBlocked, time.Minute) {
 				blocked.Store(true)
-				sc.Log.Printf("live claude tmux: channels are blocked by org policy — typing viewer messages into the composer")
+				announceBlocked()
 			}
 		}()
 		deliver = func(c api.Comment, text string) error {
@@ -490,6 +506,7 @@ func runHooksTmuxMode(sc *sidecar.Sidecar, binPath string, userArgs []string) in
 				return nil
 			}
 			blocked.Store(true)
+			announceBlocked()
 			return t.injectComposer("claude", claudeComposerLine, claudeStartupBlocker, text)
 		}
 	}
