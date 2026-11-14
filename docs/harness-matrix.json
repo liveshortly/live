@@ -178,6 +178,25 @@
     },
     {
       "agents": [
+        "pi"
+      ],
+      "framework": "pi",
+      "display": "Pi",
+      "summary": "Pi over its RPC protocol: structured feed, thinking, web approvals, comments as turns, model picker.",
+      "capture": "✅ pi RPC protocol over stdio (`pi --mode rpc`)",
+      "approvals": "✅ answered from the web (confirm/allow dialogs); fails closed",
+      "comments": "✅ sent as the next turn, or steered into the running one",
+      "model_switch": false,
+      "model_choice": "✅ `--model provider/id` (pi's `--list-models`)",
+      "first_message": "✅ sent as the first turn (held on the server until pi is up)",
+      "handoff": "✅ digest prepended to the first turn",
+      "min_version": "1.5",
+      "tested": "—",
+      "pocket_approvals": "unsupported",
+      "gaps": "multi-choice questions are shown but not yet answered from the web; no mid-session model switch yet"
+    },
+    {
+      "agents": [
         "aider",
         "cursor-agent",
         "hermes",
@@ -187,7 +206,6 @@
         "goose",
         "amp",
         "qwen",
-        "pi",
         "any command"
       ],
       "framework": "terminal",

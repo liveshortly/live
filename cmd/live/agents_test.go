@@ -23,18 +23,18 @@ func stubBins(t *testing.T, names ...string) string {
 // A machine running a harness live has never heard of must still be able to
 // offer it: that is the whole point of the adapter file.
 func TestDiscoverAgentsOffersUnknownHarnesses(t *testing.T) {
-	dir := stubBins(t, "claude", "hermes", "pi.dev")
+	dir := stubBins(t, "claude", "hermes", "qwen.dev")
 	cfg := filepath.Join(dir, "agents.json")
-	// "pi" is a builtin NAME but the executable here is pi.dev, so only the
+	// "qwen" is a builtin NAME but the executable here is qwen.dev, so only the
 	// adapter can find it; "hermes" is found by the builtin probe alone.
-	os.WriteFile(cfg, []byte(`[{"name":"pi","command":"pi.dev","args":["chat"]}]`), 0o600)
+	os.WriteFile(cfg, []byte(`[{"name":"qwen","command":"qwen.dev","args":["chat"]}]`), 0o600)
 
 	custom, err := loadAgentCommands(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := strings.Join(discoverAgents(spawnableBuiltins, custom), ",")
-	if got != "claude,hermes,pi" {
+	if got != "claude,hermes,qwen" {
 		t.Fatalf("discovered %q", got)
 	}
 }

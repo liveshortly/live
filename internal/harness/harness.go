@@ -45,7 +45,7 @@ type Row struct {
 
 // generic is the row every unknown command falls back to.
 var generic = Row{
-	Agents:       []string{"aider", "cursor-agent", "hermes", "copilot", "opencode", "crush", "goose", "amp", "qwen", "pi", "any command"},
+	Agents:       []string{"aider", "cursor-agent", "hermes", "copilot", "opencode", "crush", "goose", "amp", "qwen", "any command"},
 	Framework:    "terminal",
 	Display:      "The agent",
 	Capture:      "⚠ terminal recording (raw lines, no structure)",
@@ -189,6 +189,22 @@ var Rows = []Row{
 		Summary:      "Any agent that speaks ACP: structured feed, web approvals, comments as turns — no per-agent adapter.",
 
 		PocketApprovals: "unsupported", Fixtures: []string{"acp"},
+	},
+	{
+		Agents: []string{"pi"}, Framework: "pi", Display: "Pi",
+		Capture:      "✅ pi RPC protocol over stdio (`pi --mode rpc`)",
+		Approvals:    "✅ answered from the web (confirm/allow dialogs); fails closed",
+		Comments:     "✅ sent as the next turn, or steered into the running one",
+		Handoff:      "✅ digest prepended to the first turn",
+		ModelChoice:  "✅ `--model provider/id` (pi's `--list-models`)",
+		FirstMessage: "✅ sent as the first turn (held on the server until pi is up)",
+		MinVersion:   "1.5",
+		Gaps:         "multi-choice questions are shown but not yet answered from the web; no mid-session model switch yet",
+		Summary:      "Pi over its RPC protocol: structured feed, thinking, web approvals, comments as turns, model picker.",
+
+		// ponytail: no golden replay yet — add a testdata/pi fixture once a real
+		// pi rpc session is recorded.
+		PocketApprovals: "unsupported",
 	},
 	generic,
 }

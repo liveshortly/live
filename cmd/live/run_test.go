@@ -351,10 +351,15 @@ func TestInputLinesAssemblesSubmittedLines(t *testing.T) {
 // other command may be a shell, so it needs the operator's opt-in.
 func TestCanSubmitCommentsOptIn(t *testing.T) {
 	t.Setenv("LIVE_TYPE_COMMENTS", "")
-	for _, bin := range []string{"/usr/bin/aider", "/opt/bin/cursor-agent", "pi", "ollama"} {
+	for _, bin := range []string{"/usr/bin/aider", "/opt/bin/cursor-agent", "ollama"} {
 		if !canSubmitComments(bin) {
 			t.Errorf("%s: known REPL, want typed comments by default", bin)
 		}
+	}
+	// pi is native (rpc): comments are delivered as turns, never typed into a
+	// terminal, so it is not a typed-comment REPL.
+	if canSubmitComments("pi") {
+		t.Error("pi: native rpc agent, must not use typed comments")
 	}
 	for _, bin := range []string{"/bin/bash", "mytool", "any command"} {
 		if canSubmitComments(bin) {

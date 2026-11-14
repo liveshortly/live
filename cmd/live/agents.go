@@ -41,7 +41,7 @@ import (
 // profile beyond plain pty (hooks, rollout), agent-specific launch flags, or
 // both. The names are reserved — an agents.json entry may not shadow one,
 // because the special handling keyed on the name would then be wrong.
-var nativeAgents = []string{"claude", "codex", "agy", "antigravity", "ollama"}
+var nativeAgents = []string{"claude", "codex", "agy", "antigravity", "ollama", "pi"}
 
 // pocketBuiltins are the agents `live daemon --server` can drive ONE-SHOT, in
 // the Pocket flow: each needs a known non-interactive flag set (--print and
