@@ -261,7 +261,7 @@ func (c *Client) ViewerStream(ctx context.Context, id string, onFrame func(Strea
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Accept", "text/event-stream")
 
-	resp, err := (&http.Client{}).Do(req) // no timeout: long-lived stream
+	resp, err := streamClient().Do(req)
 	if err != nil {
 		return err
 	}

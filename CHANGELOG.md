@@ -6,6 +6,15 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.4.1 — 2026-11-14
+
+### Fixed
+- Daemon and viewer streams repeatedly dropped with `stream error: ...
+  INTERNAL_ERROR; received from peer` behind Cloudflare, which recycles edge
+  HTTP/2 connections and resets long-lived SSE streams. The stream clients now
+  use HTTP/1.1, which is not subject to per-stream RST; the server heartbeat
+  keeps the connection alive.
+
 ## v2.4.0 — 2026-11-04
 
 ### Fixed
