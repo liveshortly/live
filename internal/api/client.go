@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,20 @@ import (
 	"github.com/liveshortly/live/internal/auth"
 	"github.com/liveshortly/live/internal/hostcfg"
 )
+
+// streamClient returns an HTTP client for long-lived SSE streams. It forces
+// HTTP/1.1: over HTTP/2, Cloudflare recycles edge connections and resets
+// in-flight long-lived streams with RST_STREAM INTERNAL_ERROR ("stream error:
+// … INTERNAL_ERROR; received from peer"). HTTP/1.1 chunked SSE survives that,
+// and the server's 15s heartbeat beats Cloudflare's idle timeout. No request
+// timeout — these streams are meant to stay open. Transport is cloned from the
+// default so proxy and dial settings are preserved.
+func streamClient() *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.ForceAttemptHTTP2 = false
+	tr.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	return &http.Client{Transport: tr}
+}
 
 // Client is a bearer-authenticated LiveShortly API client with automatic
 // one-shot token refresh on 401.
@@ -335,7 +350,7 @@ func (c *Client) AgentStream(ctx context.Context, id string, wake func(msgType s
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Accept", "text/event-stream")
 
-	hc := &http.Client{} // no timeout: long-lived stream
+	hc := streamClient()
 	resp, err := hc.Do(req)
 	if err != nil {
 		return err
@@ -457,7 +472,7 @@ func (c *Client) HostStream(ctx context.Context, hostID string, onSpawn func(Spa
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("Accept", "text/event-stream")
 
-	hc := &http.Client{} // no timeout: long-lived stream
+	hc := streamClient()
 	resp, err := hc.Do(req)
 	if err != nil {
 		return err
