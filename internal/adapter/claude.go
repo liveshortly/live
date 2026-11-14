@@ -55,7 +55,13 @@ func WriteClaudeSettings(liveBin string, webPerms bool) (path string, cleanup fu
 		"hooks": map[string]any{
 			"SessionStart":     []any{claudeHook(liveBin, "session-start", 15, "")},
 			"UserPromptSubmit": []any{claudeHook(liveBin, "user-prompt-submit", 10, "")},
-			"PreToolUse":       []any{claudeHook(liveBin, preToolEvent, preToolTimeout, "Edit|Write|MultiEdit|Bash|WebFetch")},
+			"PreToolUse": []any{
+				claudeHook(liveBin, preToolEvent, preToolTimeout, "Edit|Write|MultiEdit|Bash|WebFetch"),
+				// Mirror the agent's interactive AskUserQuestion prompt to the web
+				// feed (read-only). Separate matcher: it only surfaces the question,
+				// never gates the tool — the answer is still made in the terminal.
+				claudeHook(liveBin, "ask-question", 10, "AskUserQuestion"),
+			},
 			"PostToolUse":      []any{claudeHook(liveBin, "post-tool-use", 10, "Edit|Write|MultiEdit|Bash")},
 			"Notification":     []any{claudeHook(liveBin, "notification", 10, "")},
 			"Stop":             []any{claudeHook(liveBin, "stop", 15, "")},
