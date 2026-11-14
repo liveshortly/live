@@ -6,6 +6,14 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.4.4 — 2026-11-14
+
+### Added
+- Mirror the agent's interactive AskUserQuestion prompt (its questions + options)
+  to the web feed via a new `question_requested` event, so viewers can see what
+  Claude is asking. A separate, non-gating PreToolUse matcher — the answer is
+  still made in the terminal.
+
 ## v2.4.3 — 2026-11-14
 
 ### Added

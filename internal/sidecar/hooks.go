@@ -28,6 +28,8 @@ func (s *Sidecar) handleHook(event string, p map[string]any) map[string]any {
 		return s.hookPreInvocation(p)
 	case "pre-tool-use":
 		return s.hookPreToolUse(p)
+	case "ask-question":
+		return s.hookAskQuestion(p)
 	case "post-tool-use":
 		return s.hookPostToolUse(p)
 	case "notification":
@@ -512,6 +514,26 @@ func (s *Sidecar) hookPostToolUse(p map[string]any) map[string]any {
 		})
 	}
 	return s.injectComments("PostToolUse")
+}
+
+// hookAskQuestion mirrors the agent's interactive AskUserQuestion prompt (its
+// questions + options) to the web feed so viewers see what is being asked. It
+// returns nil so the tool is NOT gated: the answer is still made in the
+// terminal. Claude Code exposes an answer path (PreToolUse updatedInput), but
+// its shape is undocumented, so answering from the web is deliberately not
+// attempted here.
+func (s *Sidecar) hookAskQuestion(p map[string]any) map[string]any {
+	in := sub(p, "tool_input")
+	payload := map[string]any{"ts": nowISO()}
+	if in != nil {
+		if q, ok := in["questions"]; ok {
+			payload["questions"] = q
+		} else {
+			payload["questions"] = in
+		}
+	}
+	s.Emit("question_requested", payload)
+	return nil
 }
 
 func (s *Sidecar) hookNotification(p map[string]any) map[string]any {
