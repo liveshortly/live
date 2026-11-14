@@ -55,6 +55,10 @@ func profileFor(bin string) agentProfile {
 		return geminiProfile(bin)
 	case "codex":
 		return agentProfile{framework: "codex", captureMode: "rollout", acceptsInitialPrompt: true}
+	case "pi":
+		// pi speaks a bidirectional RPC protocol (`pi --mode rpc`): structured
+		// turns, tools, thinking, and web-answered permissions. See pirpc.go.
+		return agentProfile{framework: "pi", captureMode: "pi", acceptsInitialPrompt: true}
 	case "ollama":
 		// `ollama run <model>` is an interactive REPL with no hook system and no
 		// rollout log, so pty is the only capture available — same as gemini.
@@ -387,7 +391,7 @@ func cmdRun(args []string) int {
 	var devInstructions string
 	// ACP: userArgs is the agent's ACP argv, so the digest can't ride on it; it
 	// is prepended to the first prompt instead.
-	if forked && prof.captureMode == "acp" {
+	if forked && (prof.captureMode == "acp" || prof.captureMode == "pi") {
 		devInstructions = codexInstructions(bundle.Markdown)
 	} else if forked {
 		userArgs = seedHandoff(bundle, sessionID, userArgs, opts.preDigest, binPath)
@@ -412,6 +416,8 @@ func cmdRun(args []string) int {
 		exitCode = runOllamaAPIMode(sc, ollamaBase(), ollamaModel, ollamaFirst)
 	case prof.captureMode == "acp":
 		exitCode = runACPMode(sc, binPath, userArgs, devInstructions)
+	case prof.captureMode == "pi":
+		exitCode = runPiMode(sc, binPath, userArgs, devInstructions)
 	case tmuxMode:
 		exitCode = runHooksTmuxMode(sc, binPath, userArgs)
 	case hooks:

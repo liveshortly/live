@@ -38,6 +38,7 @@ var modelFlags = map[string]string{
 	"agy":          "--model",
 	"antigravity":  "--model",
 	"cursor-agent": "--model",
+	"pi":           "--model",
 }
 
 // Shipped fallbacks, used when the agent has no listing of its own. Update each
@@ -100,6 +101,8 @@ func buildModelCatalog(agents []string, custom map[string]agentCommand, ollama [
 				if len(models) == 0 {
 					models = cursorModels
 				}
+			case "pi":
+				models = piModels(runListing(a, "--list-models"))
 			case "ollama":
 				for _, m := range ollama {
 					models = append(models, api.ModelOption{ID: m})
@@ -196,6 +199,31 @@ func runListing(bin string, args ...string) string {
 // parseListing reads `id<TAB>label` (agy) or `id - label` (cursor-agent)
 // lines; anything else is skipped. A label mentioning "default" or "current"
 // marks the default.
+// piModels parses `pi --list-models`, a whitespace-columned table:
+//
+//	provider    model               context  max-out  thinking  images
+//	anthropic   claude-opus-5-5     1M       128K     yes       yes
+//
+// Pi takes `--model provider/id`, so the registered id is "provider/model" and
+// the label is the bare model name.
+func piModels(out string) []api.ModelOption {
+	var models []api.ModelOption
+	sc := bufio.NewScanner(strings.NewReader(out))
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		f := strings.Fields(sc.Text())
+		if len(f) < 2 || f[0] == "provider" {
+			continue // blank lines and the header
+		}
+		id := f[0] + "/" + f[1]
+		if !safeModelID(id) {
+			continue
+		}
+		models = append(models, api.ModelOption{ID: id, Label: f[1]})
+	}
+	return models
+}
+
 func parseListing(out string) ([]api.ModelOption, string) {
 	var models []api.ModelOption
 	def := ""
