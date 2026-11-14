@@ -273,6 +273,15 @@ func cmdRun(args []string) int {
 		// downstream changes — the session is a normal live session.
 		sessionID = opts.attachID
 	} else if opts.handoffCode != "" || opts.sessionID != "" {
+		if opts.sessionID != "" {
+			// `live ls` prints 8-char handles; the server only knows full uuids.
+			full, rerr := resolveID(client, opts.sessionID)
+			if rerr != nil {
+				fmt.Fprintf(os.Stderr, "live: %v\n", rerr)
+				return 1
+			}
+			opts.sessionID = full
+		}
 		ref := api.ForkRef{HandoffCode: opts.handoffCode, SessionID: opts.sessionID}
 		sessionID, bundle, err = client.CreateSessionForked(title, prof.framework, prof.framework, prof.captureMode, ref)
 		if err != nil {

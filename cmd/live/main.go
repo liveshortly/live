@@ -205,12 +205,17 @@ func cmdHandoff(args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: live handoff <session-id>")
 		return 2
 	}
-	id := args[0]
 	if _, err := auth.AccessToken(); err != nil {
 		fmt.Fprintln(os.Stderr, "live:", err)
 		return 1
 	}
-	info, err := api.New().GenerateHandoff(id)
+	c := api.New()
+	id, err := resolveID(c, args[0]) // accepts the 8-char handle from `live ls`
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "live:", err)
+		return 1
+	}
+	info, err := c.GenerateHandoff(id)
 	if err != nil {
 		if err == api.ErrForkForbidden {
 			fmt.Fprintln(os.Stderr, "live: you don't have access to hand off this session")
