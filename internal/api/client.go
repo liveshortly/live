@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -24,13 +25,25 @@ import (
 // in-flight long-lived streams with RST_STREAM INTERNAL_ERROR ("stream error:
 // … INTERNAL_ERROR; received from peer"). HTTP/1.1 chunked SSE survives that,
 // and the server's 15s heartbeat beats Cloudflare's idle timeout. No request
-// timeout — these streams are meant to stay open. Transport is cloned from the
-// default so proxy and dial settings are preserved.
+// timeout — these streams are meant to stay open.
+//
+// HTTP/1.1 is pinned at the TLS layer via ALPN (NextProtos = http/1.1).
+// Disabling h2 only at the net/http layer is not enough: a cloned
+// DefaultTransport still advertises "h2" in ALPN, so the peer replies with h2
+// frames that the transport then misreads as a "malformed HTTP response"
+// (the raw \x00\x00..\x04 SETTINGS frame). Pinning ALPN makes the peer speak
+// HTTP/1.1 on the wire.
 func streamClient() *http.Client {
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.ForceAttemptHTTP2 = false
-	tr.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
-	return &http.Client{Transport: tr}
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+			ForceAttemptHTTP2:     false,
+			TLSClientConfig:       &tls.Config{NextProtos: []string{"http/1.1"}},
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: time.Second,
+		},
+	}
 }
 
 // Client is a bearer-authenticated LiveShortly API client with automatic

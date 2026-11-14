@@ -6,6 +6,16 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.4.2 — 2026-11-14
+
+### Fixed
+- v2.4.1 broke the daemon/viewer streams entirely: forcing HTTP/1.1 only at the
+  net/http layer still advertised `h2` in the TLS ALPN list, so Cloudflare
+  replied with HTTP/2 frames that were misread as `malformed HTTP response`
+  ("\\x00\\x00..\\x04"). HTTP/1.1 is now pinned at the TLS layer
+  (ALPN NextProtos = http/1.1), which is what actually makes the peer speak
+  HTTP/1.1 on the wire.
+
 ## v2.4.1 — 2026-11-14
 
 ### Fixed
