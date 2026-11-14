@@ -6,6 +6,13 @@ Homebrew formula and `live version` report.
 
 ## Unreleased
 
+## v2.4.5 — 2026-11-14
+
+### Added
+- Web "Continue session": a web-spawned session that forks another now seeds its
+  agent with the source's handoff briefing (fetched via GET /sessions/{id}/seed),
+  so continuing/reviving a session from the browser picks up the prior context.
+
 ## v2.4.4 — 2026-11-14
 
 ### Added
