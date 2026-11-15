@@ -74,13 +74,29 @@ func runPiMode(sc *sidecar.Sidecar, binPath string, userArgs []string, preamble 
 	// Report the active model once pi is up (get_state is a no-cost query).
 	go p.reportInitialModel()
 
+	// pi takes images as structured prompt parts, so consume them here rather than
+	// letting the sidecar append temp-file paths to the text.
+	sc.StructuredImages = true
 	sc.OnComment = func(cm api.Comment) {
 		who := cm.Username
 		if who == "" {
 			who = "viewer"
 		}
 		p.cliEcho("\x1b[33m💬 " + who + ":\x1b[0m " + cm.Message)
+		p.pendImages = sc.TakeImages()
 		p.send(fmt.Sprintf("%s (live viewer): %s", who, cm.Message), false)
+	}
+	// Mid-session commands from the web/app, delivered over the agent stream
+	// (pi is headless — no tmux pane for the daemon's `/model` path).
+	sc.OnSetModel = func(model string) {
+		if err := p.setModel(model); err != nil {
+			sc.Log.Printf("pi: set model %q: %v", model, err)
+		}
+	}
+	sc.OnAbort = func() {
+		if err := p.abort(); err != nil {
+			sc.Log.Printf("pi: abort: %v", err)
+		}
 	}
 	sc.WebPermissions = liveGating
 	sc.Start(ctx)
@@ -90,7 +106,7 @@ func runPiMode(sc *sidecar.Sidecar, binPath string, userArgs []string, preamble 
 
 	select {
 	case <-sig:
-		_ = p.rpc.write(map[string]any{"type": "abort"})
+		_ = p.abort()
 		cancel()
 		_ = p.rpc.cmd.Process.Signal(syscall.SIGTERM)
 		return 130
@@ -230,13 +246,27 @@ type piClient struct {
 	echo        func(string)
 	reportModel func(string)
 
-	mu       sync.Mutex
-	busy     bool
-	queue    []string
-	preamble string
-	reply    strings.Builder
-	thinking strings.Builder
-	tools    map[string]*piTool
+	mu         sync.Mutex
+	busy       bool
+	queue      []string
+	preamble   string
+	pendImages []sidecar.PendingImage // viewer images to attach to the next send
+	reply      strings.Builder
+	thinking   strings.Builder
+	tools      map[string]*piTool
+}
+
+// piImageParts converts buffered images to pi's prompt/steer `images` shape:
+// [{"type":"image","data":"<base64>","mimeType":"image/png"}].
+func piImageParts(imgs []sidecar.PendingImage) []map[string]any {
+	if len(imgs) == 0 {
+		return nil
+	}
+	parts := make([]map[string]any, 0, len(imgs))
+	for _, im := range imgs {
+		parts = append(parts, map[string]any{"type": "image", "data": im.Data, "mimeType": im.Mime})
+	}
+	return parts
 }
 
 func newPiClient(emit func(string, map[string]any), logf func(string, ...any), perm func(context.Context, string, string) string) *piClient {
@@ -269,6 +299,44 @@ func (p *piClient) reportInitialModel() {
 	}
 }
 
+// setModel switches pi's model mid-session via pi's `set_model` command. The
+// web passes a catalog id of the form "provider/modelId" (piModels registers pi
+// models that way); pi's command wants the two parts split out.
+//
+// Wired to the agent stream: POST /api/sessions/{id}/model publishes a
+// {"type":"set_model","model":...} frame → Sidecar.OnSetModel → here. That is
+// the headless equivalent of the daemon typing `/model` into a tmux pane.
+func (p *piClient) setModel(catalogID string) error {
+	provider, modelID, ok := parsePiModel(catalogID)
+	if !ok {
+		return fmt.Errorf("pi model %q is not provider/modelId", catalogID)
+	}
+	if _, err := p.rpc.request("set_model", map[string]any{"provider": provider, "modelId": modelID}); err != nil {
+		return err
+	}
+	if p.reportModel != nil {
+		p.reportModel(catalogID)
+	}
+	return nil
+}
+
+// abort tells pi to stop its current action (the web/app "Stop" button). pi's
+// `abort` command cancels the running turn; it is a fire-and-forget event, no
+// response. Also used for the local Ctrl-C path.
+func (p *piClient) abort() error {
+	return p.rpc.write(map[string]any{"type": "abort"})
+}
+
+// parsePiModel splits a "provider/modelId" catalog id into pi's set_model
+// fields, cutting on the first "/". False when it is not shaped that way.
+func parsePiModel(id string) (provider, modelID string, ok bool) {
+	provider, modelID, ok = strings.Cut(strings.TrimSpace(id), "/")
+	if !ok || provider == "" || modelID == "" {
+		return "", "", false
+	}
+	return provider, modelID, true
+}
+
 // send submits text as the next turn, or steers it into the running one.
 // fromOperator marks a prompt the feed should show as a prompt (viewer comments
 // already appear as viewer_comment).
@@ -278,6 +346,8 @@ func (p *piClient) send(text string, fromOperator bool) {
 		text = p.preamble + "\n\n" + text
 		p.preamble = ""
 	}
+	images := piImageParts(p.pendImages)
+	p.pendImages = nil
 	busy := p.busy
 	if busy {
 		p.queue = append(p.queue, text)
@@ -291,15 +361,24 @@ func (p *piClient) send(text string, fromOperator bool) {
 	}
 	if busy {
 		// pi supports mid-turn steering; the running turn picks it up.
-		_ = p.rpc.write(map[string]any{"type": "steer", "message": text})
+		msg := map[string]any{"type": "steer", "message": text}
+		if images != nil {
+			msg["images"] = images
+		}
+		_ = p.rpc.write(msg)
 		return
 	}
-	go p.runTurn(text)
+	go p.runTurn(text, images)
 }
 
-func (p *piClient) runTurn(text string) {
+func (p *piClient) runTurn(text string, images []map[string]any) {
 	for {
-		if _, err := p.rpc.request("prompt", map[string]any{"message": text}); err != nil {
+		fields := map[string]any{"message": text}
+		if images != nil {
+			fields["images"] = images
+			images = nil // only the first prompt of this turn carries them
+		}
+		if _, err := p.rpc.request("prompt", fields); err != nil {
 			p.logf("pi: prompt: %v", err)
 		}
 		// A prompt response means accepted, not finished; agent_settled (handled

@@ -199,7 +199,8 @@ var Rows = []Row{
 		ModelChoice:  "✅ `--model provider/id` (pi's `--list-models`)",
 		FirstMessage: "✅ sent as the first turn (held on the server until pi is up)",
 		MinVersion:   "1.5",
-		Gaps:         "multi-choice questions are shown but not yet answered from the web; no mid-session model switch yet",
+		ModelSwitch:  true, // over the agent stream (pi's set_model RPC), not tmux
+		Gaps:         "multi-choice questions are shown but not yet answered from the web",
 		Summary:      "Pi over its RPC protocol: structured feed, thinking, web approvals, comments as turns, model picker.",
 
 		// ponytail: no golden replay yet — add a testdata/pi fixture once a real

@@ -361,10 +361,28 @@ var ErrAgentStreamUnsupported = fmt.Errorf("agent stream not supported by server
 // before closing the stream). Reconnecting only gets the same answer again.
 var ErrSessionEnded = fmt.Errorf("session ended on the server")
 
-// AgentStream connects to the agent-facing SSE channel and invokes wake for
-// every pushed message (the caller then drains the pending queue as the ack).
-// Blocks until the stream closes or ctx is done.
-func (c *Client) AgentStream(ctx context.Context, id string, wake func(msgType string)) error {
+// AgentCommand is a control command pushed on the agent stream — a mid-session
+// instruction from the owner's web/app for a headless session. Type is the
+// discriminator; the payload fields below are the union of all command shapes,
+// and only the ones for a given Type are set. Adding a command type (e.g. a
+// future "attach_image" carrying a base64 payload) is one new field here plus
+// one case in Sidecar.handleCommand — no transport change.
+type AgentCommand struct {
+	Type  string `json:"type"`
+	Model string `json:"model,omitempty"` // set_model
+	// attach_image: an image a viewer pasted with a comment, delivered out-of-band
+	// so the base64 never enters the stored/broadcast event. Data is raw base64.
+	Index int    `json:"index,omitempty"`
+	Mime  string `json:"mime,omitempty"`
+	Data  string `json:"data,omitempty"`
+}
+
+// AgentStream connects to the agent-facing SSE channel. Viewer comments/
+// decisions call wake (the caller then drains the pending queue as the ack);
+// control commands (set_model, abort, …) are decoded and handed to onCmd.
+// onCmd may be nil (e.g. tmux agents that take commands another way). Blocks
+// until the stream closes or ctx is done.
+func (c *Client) AgentStream(ctx context.Context, id string, wake func(msgType string), onCmd func(AgentCommand)) error {
 	tok, err := auth.AccessToken()
 	if err != nil {
 		return err
@@ -397,17 +415,23 @@ func (c *Client) AgentStream(ctx context.Context, id string, wake func(msgType s
 		if !strings.HasPrefix(line, "data:") {
 			continue
 		}
-		var msg struct {
-			Type string `json:"type"`
-		}
-		if json.Unmarshal([]byte(strings.TrimSpace(line[5:])), &msg) != nil {
+		var cmd AgentCommand
+		if json.Unmarshal([]byte(strings.TrimSpace(line[5:])), &cmd) != nil {
 			continue
 		}
-		switch msg.Type {
+		switch cmd.Type {
+		case "", "connected", "watchers":
+			// stream control frames with no action here
 		case "viewer_comment", "viewer_decision":
-			wake(msg.Type)
+			wake(cmd.Type)
 		case "session_ended":
 			return ErrSessionEnded
+		default:
+			// Any control command (set_model, abort, future types): the sidecar
+			// dispatches on cmd.Type.
+			if onCmd != nil {
+				onCmd(cmd)
+			}
 		}
 	}
 	return sc.Err()
