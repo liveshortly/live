@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/liveshortly/live/internal/api"
+	"github.com/liveshortly/live/internal/archive"
 	"github.com/liveshortly/live/internal/perm"
 )
 
@@ -40,6 +41,10 @@ type Sidecar struct {
 	Client    *api.Client
 	SessionID string
 	WebURL    string
+
+	// Archive, when non-nil, receives a local copy of every emitted event.
+	// Opt-in: only the real daemon wires it (cmd/live), so tests stay off ~/.liveshortly.
+	Archive *archive.DB
 
 	// OnComment, when set (PTY mode), is the sole delivery for a viewer comment:
 	// it's shown to the operator and nothing else routes it (the agent can't be
@@ -148,6 +153,13 @@ func (s *Sidecar) Start(ctx context.Context) {
 // Emit queues one event for upload; never blocks the caller for long — when
 // the queue is full the event is dropped (feed is best-effort, agent is not).
 func (s *Sidecar) Emit(eventType string, payload map[string]any) {
+	// Owner's local archive: tee every event here (before upload, so it is kept
+	// even if the server is down or the queue drops it). Best-effort.
+	if s.Archive != nil {
+		if err := s.Archive.Append(s.SessionID, 0, 0, "agent", eventType, payload, time.Now()); err != nil {
+			s.Log.Printf("archive %s: %v", eventType, err)
+		}
+	}
 	select {
 	case s.events <- event{eventType, payload}:
 	default:
