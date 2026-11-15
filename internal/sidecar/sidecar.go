@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	_ "embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -70,6 +71,20 @@ type Sidecar struct {
 	// this is where the run mode ends the agent so the process can exit.
 	OnEnded func()
 
+	// OnSetModel / OnAbort, when set, deliver mid-session commands pushed on the
+	// agent stream (the headless path — pi has no tmux pane for `/model`). They
+	// run on the stream goroutine. Left nil by agents that take commands another
+	// way (claude switches models via its tmux pane), so those commands no-op.
+	OnSetModel func(model string)
+	OnAbort    func()
+
+	// StructuredImages: when true, the run mode consumes buffered viewer images
+	// itself via TakeImages at comment-delivery time (pi passes them as prompt
+	// image parts), so drain leaves them alone. When false (default), drain
+	// materialises them as temp files and appends the paths to the comment text —
+	// the best-effort path for text-delivered agents (claude's tmux pane).
+	StructuredImages bool
+
 	Log *log.Logger
 
 	events chan event
@@ -85,6 +100,10 @@ type Sidecar struct {
 
 	subMu sync.Mutex
 	subs  map[chan api.Comment]struct{}
+
+	imgMu      sync.Mutex
+	pendImages []PendingImage
+	imgDir     string // temp dir for materialised images, cleaned on Shutdown
 
 	// permAllow remembers "always allow" decisions (web-permissions mode) so a
 	// remembered tool/command auto-allows on later calls without re-prompting.
@@ -145,6 +164,12 @@ func (s *Sidecar) Shutdown() {
 		_ = s.httpSrv.Shutdown(ctx)
 		cancel()
 	}
+	s.imgMu.Lock()
+	if s.imgDir != "" {
+		_ = os.RemoveAll(s.imgDir)
+		s.imgDir = ""
+	}
+	s.imgMu.Unlock()
 	close(s.events)
 
 	done := make(chan struct{})
@@ -210,7 +235,7 @@ func (s *Sidecar) receiveComments(ctx context.Context) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		if !sseGone {
-			err := s.Client.AgentStream(ctx, s.SessionID, func(string) { s.drain() })
+			err := s.Client.AgentStream(ctx, s.SessionID, func(string) { s.drain() }, s.handleCommand)
 			if err == api.ErrAgentStreamUnsupported {
 				sseGone = true
 				s.Log.Printf("agent stream unsupported — falling back to polling")
@@ -248,11 +273,116 @@ func (s *Sidecar) receiveComments(ctx context.Context) {
 	}
 }
 
+// handleCommand dispatches a mid-session control command pushed on the agent
+// stream. The switch on cmd.Type is the single extension point: a new command
+// type is one more case plus one field on api.AgentCommand. Unknown types (an
+// older client meeting a newer server) are ignored.
+func (s *Sidecar) handleCommand(cmd api.AgentCommand) {
+	switch cmd.Type {
+	case "set_model":
+		if s.OnSetModel != nil {
+			s.OnSetModel(cmd.Model)
+		}
+	case "abort":
+		if s.OnAbort != nil {
+			s.OnAbort()
+		}
+	case "attach_image":
+		s.bufferImage(cmd)
+	}
+}
+
+// PendingImage is one viewer-pasted image buffered until the comment that
+// references it is delivered to the agent. Data is raw base64.
+type PendingImage struct {
+	Index int
+	Mime  string
+	Data  string
+}
+
+// bufferImage decodes-checks and buffers an attach_image command. The base64 is
+// kept as-is (pi re-encodes it into a prompt image part; the text path writes a
+// temp file). A frame that doesn't decode or isn't an image is dropped.
+func (s *Sidecar) bufferImage(cmd api.AgentCommand) {
+	if cmd.Data == "" || !strings.HasPrefix(cmd.Mime, "image/") {
+		return
+	}
+	if _, err := base64.StdEncoding.DecodeString(cmd.Data); err != nil {
+		return
+	}
+	s.imgMu.Lock()
+	s.pendImages = append(s.pendImages, PendingImage{Index: cmd.Index, Mime: cmd.Mime, Data: cmd.Data})
+	s.imgMu.Unlock()
+}
+
+// TakeImages returns and clears the buffered images (for structured delivery).
+func (s *Sidecar) TakeImages() []PendingImage {
+	s.imgMu.Lock()
+	defer s.imgMu.Unlock()
+	imgs := s.pendImages
+	s.pendImages = nil
+	return imgs
+}
+
+// imageFiles materialises images as temp files and returns their paths, for
+// agents that take images by path (claude's pane). Best-effort: undecodable or
+// unwritable images are skipped. The temp dir is removed on Shutdown.
+func (s *Sidecar) imageFiles(imgs []PendingImage) []string {
+	if len(imgs) == 0 {
+		return nil
+	}
+	s.imgMu.Lock()
+	if s.imgDir == "" {
+		if dir, err := os.MkdirTemp("", "live-img-"); err == nil {
+			s.imgDir = dir
+		}
+	}
+	dir := s.imgDir
+	s.imgMu.Unlock()
+	if dir == "" {
+		return nil
+	}
+	var paths []string
+	for _, im := range imgs {
+		raw, err := base64.StdEncoding.DecodeString(im.Data)
+		if err != nil {
+			continue
+		}
+		name := fmt.Sprintf("image-%d%s", im.Index, imageExt(im.Mime))
+		p := filepath.Join(dir, name)
+		if os.WriteFile(p, raw, 0o600) == nil {
+			paths = append(paths, p)
+		}
+	}
+	return paths
+}
+
+// imageExt maps an image mime to a file extension (default .png).
+func imageExt(mime string) string {
+	switch mime {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
+	}
+	return ".png"
+}
+
 // drain pops all pending viewer comments from the server and routes them.
 func (s *Sidecar) drain() {
 	comments, err := s.Client.DrainPending(s.SessionID)
 	if err != nil || len(comments) == 0 {
 		return
+	}
+	// Text-delivered agents (default) get viewer images as temp-file paths
+	// appended to the comment text — best effort. Structured agents (pi) leave
+	// the buffer for TakeImages at send time.
+	if !s.StructuredImages {
+		if paths := s.imageFiles(s.TakeImages()); len(paths) > 0 {
+			comments[0].Message += "\n\nAttached image(s): " + strings.Join(paths, " ")
+		}
 	}
 	// Additive terminal echo: show every comment in the CLI without consuming
 	// it — delivery to the agent still happens below.

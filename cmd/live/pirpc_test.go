@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/liveshortly/live/internal/sidecar"
+)
 
 func TestPiModelsParsesTable(t *testing.T) {
 	out := `provider         model                       context  max-out  thinking  images
@@ -18,6 +22,30 @@ openai           gpt-6.1-sol                 400K     128K     yes       yes
 	}
 	if got[2].ID != "openai/gpt-6.1-sol" {
 		t.Errorf("row 2 = %+v", got[2])
+	}
+}
+
+func TestParsePiModel(t *testing.T) {
+	cases := []struct {
+		id                string
+		wantOK            bool
+		provider, modelID string
+	}{
+		{"anthropic/claude-opus-5-5", true, "anthropic", "claude-opus-5-5"},
+		{"openai/gpt-6.1-sol", true, "openai", "gpt-6.1-sol"},
+		{" qwen-uncensored/qwen3.6-35b ", true, "qwen-uncensored", "qwen3.6-35b"}, // trimmed
+		{"openrouter/meta/llama-4", true, "openrouter", "meta/llama-4"},           // cut on first '/'
+		{"opus", false, "", ""},         // no provider
+		{"/claude-opus", false, "", ""}, // empty provider
+		{"anthropic/", false, "", ""},   // empty model
+		{"", false, "", ""},
+	}
+	for _, c := range cases {
+		provider, modelID, ok := parsePiModel(c.id)
+		if ok != c.wantOK || provider != c.provider || modelID != c.modelID {
+			t.Errorf("parsePiModel(%q) = (%q,%q,%v), want (%q,%q,%v)",
+				c.id, provider, modelID, ok, c.provider, c.modelID, c.wantOK)
+		}
 	}
 }
 
@@ -39,5 +67,21 @@ func TestPermOptions(t *testing.T) {
 			t.Errorf("permOptions(%v) = (%q,%q,%v), want (%q,%q,%v)",
 				c.opts, allow, block, ok, c.allow, c.block, c.wantOK)
 		}
+	}
+}
+
+func TestPiImageParts(t *testing.T) {
+	if piImageParts(nil) != nil {
+		t.Fatal("nil images should yield nil parts")
+	}
+	parts := piImageParts([]sidecar.PendingImage{
+		{Index: 1, Mime: "image/png", Data: "AAAA"},
+		{Index: 2, Mime: "image/jpeg", Data: "BBBB"},
+	})
+	if len(parts) != 2 {
+		t.Fatalf("parts = %v", parts)
+	}
+	if parts[0]["type"] != "image" || parts[0]["data"] != "AAAA" || parts[0]["mimeType"] != "image/png" {
+		t.Fatalf("parts[0] = %v (want pi ImageContent shape)", parts[0])
 	}
 }

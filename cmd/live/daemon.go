@@ -299,6 +299,10 @@ func cmdDaemon(args []string) int {
 				if err := setSessionModel(cmd); err != nil {
 					fmt.Fprintf(os.Stderr, "\x1b[31m● live\x1b[0m model switch refused: %v\n", err)
 				}
+			case "abort":
+				if err := abortSession(cmd); err != nil {
+					fmt.Fprintf(os.Stderr, "\x1b[31m● live\x1b[0m stop refused: %v\n", err)
+				}
 			}
 		})
 		switch {
@@ -783,5 +787,28 @@ func setSessionModel(cmd api.SpawnCommand) error {
 		return fmt.Errorf("could not submit the model switch: %v", err)
 	}
 	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m switched %s to /model %s\n", id[:8], model)
+	return nil
+}
+
+// abortSession interrupts the running turn in the session's tmux pane — the
+// tmux-side "Stop current action". It sends Escape, which is claude's interrupt
+// (it cancels the current turn without killing the session; C-c would). A
+// session this machine does not host has no matching pane and the send fails
+// quietly. The headless/pi Stop uses the agent-stream `abort` frame instead.
+func abortSession(cmd api.SpawnCommand) error {
+	id := strings.TrimSpace(cmd.SessionID)
+	if !sessionIDRe.MatchString(id) {
+		return fmt.Errorf("invalid session id")
+	}
+	target := "live-" + id[:8]
+	if err := exec.Command("tmux", "-L", tmuxSocket, "has-session", "-t", target).Run(); err != nil {
+		return fmt.Errorf("session %s is not hosted on this machine", id[:8])
+	}
+	// Escape = claude's "stop current action". A named key (not -l), so tmux
+	// sends the actual Escape keypress.
+	if err := exec.Command("tmux", "-L", tmuxSocket, "send-keys", "-t", target, "Escape").Run(); err != nil {
+		return fmt.Errorf("could not interrupt the session pane: %v", err)
+	}
+	fmt.Fprintf(os.Stderr, "\x1b[32m● live\x1b[0m stopped current action in %s\n", id[:8])
 	return nil
 }
