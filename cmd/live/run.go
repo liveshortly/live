@@ -24,6 +24,7 @@ import (
 
 	"github.com/liveshortly/live/internal/adapter"
 	"github.com/liveshortly/live/internal/api"
+	"github.com/liveshortly/live/internal/archive"
 	"github.com/liveshortly/live/internal/auth"
 	"github.com/liveshortly/live/internal/harness"
 	"github.com/liveshortly/live/internal/hostcfg"
@@ -362,6 +363,11 @@ func cmdRun(args []string) int {
 		WebPermissions: webPerms && hooks,
 		Agent:          sidecar.AgentDisplayName(prof.framework),
 		Log:            logger,
+	}
+	if a, err := archive.Default(); err != nil {
+		logger.Printf("archive open: %v", err)
+	} else {
+		sc.Archive = a
 	}
 	// The server ended the session (from the web, or reaped). A headless run
 	// has nobody to close the agent, so end it and let this process exit
